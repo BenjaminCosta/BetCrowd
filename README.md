@@ -179,3 +179,4 @@ Proyecto desarrollado para BetCrowd - Todos los derechos reservados.
 ---
 
 **Nota**: Este proyecto móvil coexiste con la versión web en la carpeta `betgrow-ui-vision-main`. Ambos comparten la misma estructura lógica y diseño visual adaptado a cada plataforma.
+# BetCrowd
