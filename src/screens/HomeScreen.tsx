@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Button,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +13,8 @@ import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
 import { useTheme } from '../context/ThemeContext';
+import { db } from '../lib/firebase';
+import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 
 const tournaments = [
   {
@@ -56,6 +59,19 @@ const HomeScreen = ({ navigation }: any) => {
     return () => clearTimeout(timer);
   }, []);
 
+  async function probarFirestore() {
+    try {
+      const ref = doc(db, "debug", "ping");
+      await setDoc(ref, { ok: true, createdAt: serverTimestamp() });
+      const snap = await getDoc(ref);
+      console.log("Firestore:", snap.exists(), snap.data());
+      alert("✅ Firestore funciona! Revisa la consola");
+    } catch (error) {
+      console.error("Error Firestore:", error);
+      alert("❌ Error: " + error);
+    }
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar />
@@ -63,6 +79,11 @@ const HomeScreen = ({ navigation }: any) => {
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
+          {/* Botón de prueba Firestore */}
+          <View style={{ marginBottom: 16 }}>
+            <Button title="🔥 Probar Firestore" onPress={probarFirestore} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View>

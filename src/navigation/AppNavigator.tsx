@@ -2,10 +2,11 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
@@ -109,11 +110,18 @@ const MainTabs = () => {
   );
 };
 
-export const AppNavigator = () => {
+const AuthStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
+    </Stack.Navigator>
+  );
+};
+
+const AppStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="TournamentDetails" component={TournamentDetailsScreen} />
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
@@ -127,6 +135,38 @@ export const AppNavigator = () => {
       <Stack.Screen name="NotFound" component={NotFoundScreen} />
     </Stack.Navigator>
   );
+};
+
+const LoadingScreen = () => {
+  const { theme } = useTheme();
+  const colors = Colors[theme];
+  
+  return (
+    <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={Gradients.primary as any}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.loadingLogoGradient}
+      >
+        <Ionicons name="flame" size={48} color="#FFFFFF" />
+      </LinearGradient>
+      <ActivityIndicator size="large" color={colors.primary} style={styles.loadingSpinner} />
+      <Text style={[styles.loadingText, { color: colors.foreground }]}>
+        <Text style={{ color: colors.primary }}>BET</Text>CROWD
+      </Text>
+    </View>
+  );
+};
+
+export const AppNavigator = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  return user ? <AppStack /> : <AuthStack />;
 };
 
 const styles = StyleSheet.create({
@@ -145,5 +185,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 10,
     elevation: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingLogoGradient: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  loadingSpinner: {
+    marginTop: 16,
+  },
+  loadingText: {
+    fontSize: 32,
+    fontWeight: '700',
+    marginTop: 16,
   },
 });

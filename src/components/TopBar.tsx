@@ -44,7 +44,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
               <Ionicons name="flame" size={20} color="#FFFFFF" />
             </LinearGradient>
             <Text style={[styles.logoText, { color: colors.foreground }]}>
-              <Text style={styles.logoBet}>BET</Text>
+              <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
             </Text>
           </View>
@@ -110,9 +110,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  logoBet: {
-    // color applied inline
   },
   rightIcons: {
     flexDirection: 'row',

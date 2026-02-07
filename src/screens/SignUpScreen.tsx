@@ -8,16 +8,21 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { PrimaryButton } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { getFirebaseErrorMessage } from '../services/authService';
 
 const SignUpScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { signUp } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState('');
@@ -25,14 +30,39 @@ const SignUpScreen = ({ navigation }: any) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSignUp = () => {
-    // Validación básica
-    if (password !== confirmPassword) {
-      alert('Las contraseñas no coinciden');
+  const handleSignUp = async () => {
+    // Basic validation
+    if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
+      Alert.alert('Error', 'Por favor completa todos los campos');
       return;
     }
-    navigation.replace('Main');
+
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Las contraseñas no coinciden');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await signUp({
+        email: email.trim(),
+        password,
+        displayName: name.trim(),
+      });
+      // Navigation is handled automatically by AppNavigator when auth state changes
+    } catch (error: any) {
+      const message = getFirebaseErrorMessage(error.code);
+      Alert.alert('Error al registrarte', message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -69,7 +99,7 @@ const SignUpScreen = ({ navigation }: any) => {
               <Ionicons name="flame" size={40} color="#FFFFFF" />
             </LinearGradient>
             <Text style={[styles.logoText, { color: colors.foreground }]}>
-              <Text style={styles.logoBet}>BET</Text>
+              <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
@@ -150,6 +180,11 @@ const SignUpScreen = ({ navigation }: any) => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
+                  textContentType="password"
+                  autoComplete="off"
+                  importantForAutofill="no"
+                  autoCorrect={false}
+                  autoCapitalize="none"
                 />
                 <TouchableOpacity
                   style={styles.eyeIcon}
@@ -180,6 +215,11 @@ const SignUpScreen = ({ navigation }: any) => {
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry={!showConfirmPassword}
+                  textContentType="password"
+                  autoComplete="off"
+                  importantForAutofill="no"
+                  autoCorrect={false}
+                  autoCapitalize="none"
                 />
                 <TouchableOpacity
                   style={styles.eyeIcon}
@@ -206,9 +246,11 @@ const SignUpScreen = ({ navigation }: any) => {
 
             {/* SignUp Button */}
             <PrimaryButton
-              title="Crear Cuenta"
+              title={isLoading ? undefined : "Crear Cuenta"}
               onPress={handleSignUp}
-            />
+            >
+              {isLoading && <ActivityIndicator color="#FFFFFF" />}
+            </PrimaryButton>
 
             {/* Divider */}
             <View style={styles.dividerContainer}>
@@ -305,9 +347,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     marginBottom: Spacing.xs,
-  },
-  logoBet: {
-    // color applied inline
   },
   subtitle: {
     fontSize: 14,

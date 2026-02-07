@@ -6,16 +6,40 @@ import {
   TouchableOpacity,
   StyleSheet,
   Switch,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 const ProfileScreen = ({ navigation }: any) => {
   const { theme, toggleTheme } = useTheme();
   const colors = Colors[theme];
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Cerrar Sesión',
+      '¿Estás seguro que deseas cerrar sesión?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar Sesión',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo cerrar sesión. Intenta nuevamente.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -33,10 +57,10 @@ const ProfileScreen = ({ navigation }: any) => {
           </LinearGradient>
           
           <Text style={[styles.userName, { color: colors.foreground }]}>
-            Juan García
+            {user?.displayName || 'Usuario'}
           </Text>
           <Text style={[styles.userEmail, { color: colors.mutedForeground }]}>
-            juan.garcia@example.com
+            {user?.email}
           </Text>
 
           <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
@@ -140,7 +164,7 @@ const ProfileScreen = ({ navigation }: any) => {
         {/* Logout */}
         <TouchableOpacity
           style={styles.logoutButton}
-          onPress={() => navigation.replace('Login')}
+          onPress={handleSignOut}
         >
           <Text style={[styles.logoutText, { color: colors.destructive }]}>
             Cerrar Sesión

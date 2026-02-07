@@ -8,22 +8,42 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { PrimaryButton } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { getFirebaseErrorMessage } from '../services/authService';
 
 const LoginScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { signIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
-    navigation.replace('Main');
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Por favor completa todos los campos');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await signIn(email.trim(), password);
+      // Navigation is handled automatically by AppNavigator when auth state changes
+    } catch (error: any) {
+      const message = getFirebaseErrorMessage(error.code);
+      Alert.alert('Error al iniciar sesión', message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -52,7 +72,7 @@ const LoginScreen = ({ navigation }: any) => {
               <Ionicons name="flame" size={48} color="#FFFFFF" />
             </LinearGradient>
             <Text style={[styles.logoText, { color: colors.foreground }]}>
-              <Text style={styles.logoBet}>BET</Text>
+              <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
@@ -118,7 +138,11 @@ const LoginScreen = ({ navigation }: any) => {
             </TouchableOpacity>
 
             <PrimaryButton onPress={handleLogin} style={styles.loginButton}>
-              Iniciar Sesión
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                'Iniciar Sesión'
+              )}
             </PrimaryButton>
 
             <View style={styles.dividerContainer}>
@@ -221,9 +245,6 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontWeight: '900',
     letterSpacing: 1,
-  },
-  logoBet: {
-    // color applied inline
   },
   subtitle: {
     fontSize: 16,
