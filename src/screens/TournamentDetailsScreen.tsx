@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,34 +6,126 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { getTournament, getTournamentMemberCount, getMyTournamentRole, Tournament } from '../services/tournamentService';
 
-const TournamentDetailsScreen = ({ navigation }: any) => {
+const TournamentDetailsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { user } = useAuth();
+  const { tournamentId } = route.params || {};
 
-  // Datos de ejemplo
-  const tournament = {
-    name: 'Final Champions League',
-    description: 'Predicciones para los partidos de la final de la Champions League. ¡Participa y demuestra tus conocimientos!',
-    startDate: '15/06/2026',
-    endDate: '20/06/2026',
-    contributionPerPerson: 1000,
-    currency: 'ARS',
-    totalParticipants: 8,
-    isParticipating: true,
-    isAdmin: true,
-    inviteCode: 'CHAMP2026',
+  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [memberCount, setMemberCount] = useState(0);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (tournamentId) {
+      loadTournamentDetails();
+    }
+  }, [tournamentId]);
+
+  const loadTournamentDetails = async () => {
+    try {
+      setLoading(true);
+      const [tournamentData, count, role] = await Promise.all([
+        getTournament(tournamentId),
+        getTournamentMemberCount(tournamentId),
+        user ? getMyTournamentRole(tournamentId, user.uid) : Promise.resolve(null),
+      ]);
+      setTournament(tournamentData);
+      setMemberCount(count);
+      setUserRole(role);
+    } catch (error) {
+      console.error('Error loading tournament details:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const userContribution = tournament.isParticipating ? tournament.contributionPerPerson : 0;
-  const totalPool = tournament.contributionPerPerson * tournament.totalParticipants;
-  const currentBalance = 350; // Ejemplo: ganando +350 o perdiendo -350
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar showBackButton />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+            Cargando torneo...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!tournament) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar showBackButton />
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color={colors.mutedForeground} />
+          <Text style={[styles.errorText, { color: colors.foreground }]}>
+            Torneo no encontrado
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const isOwner = tournament.ownerId === user?.uid;
+  const isAdmin = isOwner || userRole === 'admin' || userRole === 'owner';
+  const isParticipating = userRole !== null;
+  
+  const contribution = tournament.contribution || 0;
+  const totalPool = contribution * memberCount;
+  const currency = tournament.currency || 'ARS';
+
+  // Badge logic based on dates and status
+  const getBadgeInfo = () => {
+    if (tournament.status === 'active') {
+      return { label: 'ACTIVO', color: '#DC2E4B' };
+    }
+    
+    const now = new Date();
+    if (tournament.endDate) {
+      const endDate = new Date(tournament.endDate);
+      if (endDate < now) {
+        return { label: 'FINALIZADO', color: '#6B7280' };
+      }
+    }
+    
+    if (tournament.startDate) {
+      const startDate = new Date(tournament.startDate);
+      if (startDate > now) {
+        return { label: 'PRÓXIMO', color: '#FF8C00' };
+      }
+    }
+    
+    return { label: 'EN CURSO', color: '#DC2E4B' };
+  };
+
+  const badgeInfo = getBadgeInfo();
+
+  // Format label mapping
+  const getFormatLabel = (formatId: string) => {
+    const formatMap: Record<string, string> = {
+      'liga': 'Liga',
+      'eliminatoria': 'Eliminatoria',
+      'grupos-eliminatoria': 'Grupos + Eliminatoria',
+      'evento-unico': 'Evento único',
+      'serie': 'Serie (Bo3/Bo5)',
+      'bracket': 'Eliminación Directa',
+      'points': 'Puntos',
+    };
+    return formatMap[formatId] || formatId;
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -45,14 +137,16 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
           <Text style={[styles.tournamentName, { color: colors.foreground }]}>
             {tournament.name}
           </Text>
-          <View style={styles.liveBadge}>
-            <Ionicons name="flame" size={14} color="#DC2E4B" />
-            <Text style={styles.liveBadgeText}>EN VIVO</Text>
+          <View style={[styles.liveBadge, { backgroundColor: `${badgeInfo.color}33` }]}>
+            <Ionicons name="flame" size={14} color={badgeInfo.color} />
+            <Text style={[styles.liveBadgeText, { color: badgeInfo.color }]}>
+              {badgeInfo.label}
+            </Text>
           </View>
         </View>
 
         <Text style={[styles.description, { color: colors.mutedForeground }]}>
-          {tournament.description}
+          {tournament.description || 'Sin descripción'}
         </Text>
 
         {/* Info Cards */}
@@ -63,7 +157,7 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
               Inicio
             </Text>
             <Text style={[styles.infoValue, { color: colors.foreground }]}>
-              {tournament.startDate}
+              {tournament.startDate || 'Sin fecha'}
             </Text>
           </View>
 
@@ -73,7 +167,7 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
               Fin
             </Text>
             <Text style={[styles.infoValue, { color: colors.foreground }]}>
-              {tournament.endDate}
+              {tournament.endDate || 'Sin fecha'}
             </Text>
           </View>
 
@@ -83,7 +177,7 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
               Participantes
             </Text>
             <Text style={[styles.infoValue, { color: colors.foreground }]}>
-              {tournament.totalParticipants}
+              {memberCount} / {tournament.participantsEstimated}
             </Text>
           </View>
 
@@ -105,23 +199,27 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
           </Text>
           
           <View style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.balanceRow}>
-              <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>
-                Aportaste:
-              </Text>
-              <Text style={[styles.balanceValue, { color: colors.foreground }]}>
-                ${userContribution} {tournament.currency}
-              </Text>
-            </View>
+            {isParticipating && (
+              <>
+                <View style={styles.balanceRow}>
+                  <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>
+                    Aportaste:
+                  </Text>
+                  <Text style={[styles.balanceValue, { color: colors.foreground }]}>
+                    ${contribution.toLocaleString()} {currency}
+                  </Text>
+                </View>
 
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              </>
+            )}
 
             <View style={styles.balanceRow}>
               <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>
                 Pozo total:
               </Text>
               <Text style={[styles.balanceValue, { color: colors.foreground }]}>
-                ${totalPool} {tournament.currency}
+                ${totalPool.toLocaleString()} {currency}
               </Text>
             </View>
 
@@ -129,13 +227,10 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
 
             <View style={styles.balanceRow}>
               <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>
-                Estimación actual:
+                Formato:
               </Text>
-              <Text style={[
-                styles.balanceHighlight,
-                { color: currentBalance >= 0 ? colors.success : colors.destructive }
-              ]}>
-                {currentBalance >= 0 ? '+' : ''}{currentBalance} {tournament.currency}
+              <Text style={[styles.balanceValue, { color: colors.foreground }]}>
+                {getFormatLabel(tournament.format)}
               </Text>
             </View>
 
@@ -151,7 +246,7 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
         {/* Acciones */}
         <View style={styles.section}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('Predictions')}
+            onPress={() => navigation.navigate('TournamentPredictions', { tournamentId })}
           >
             <LinearGradient
               colors={Gradients.primary as any}
@@ -166,9 +261,12 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
             </LinearGradient>
           </TouchableOpacity>
 
-          {tournament.isAdmin && (
+          {isAdmin && (
             <>
-              <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TouchableOpacity 
+                style={[styles.secondaryButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => navigation.navigate('TournamentEvents', { tournamentId })}
+              >
                 <Ionicons name="calendar" size={20} color={colors.foreground} />
                 <Text style={[styles.secondaryButtonText, { color: colors.foreground }]}>
                   Gestionar Eventos
@@ -192,6 +290,25 @@ const TournamentDetailsScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '700',
   },
   content: {
     flex: 1,

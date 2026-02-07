@@ -5,7 +5,9 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
@@ -14,33 +16,7 @@ import { LoadingBar } from '../components/LoadingBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { getUserProfile } from '../services/userService';
-
-const tournaments = [
-  {
-    id: 1,
-    name: 'Final Champions League',
-    participants: 248,
-    prize: '1,500',
-    status: 'live',
-    endsIn: '2h 15m',
-  },
-  {
-    id: 2,
-    name: 'La Liga Jornada 15',
-    participants: 1024,
-    prize: '3,000',
-    status: 'upcoming',
-    startsIn: '5h 30m',
-  },
-  {
-    id: 3,
-    name: 'NBA All-Stars Night',
-    participants: 512,
-    prize: '2,250',
-    status: 'live',
-    endsIn: '45m',
-  },
-];
+import { listMyTournaments, Tournament } from '../services/tournamentService';
 
 const stats = [
   { label: 'Victorias', value: '12', icon: 'trophy' },
@@ -54,6 +30,8 @@ const HomeScreen = ({ navigation }: any) => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [loadingTournaments, setLoadingTournaments] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
@@ -63,6 +41,13 @@ const HomeScreen = ({ navigation }: any) => {
   useEffect(() => {
     loadUserName();
   }, [user]);
+
+  // Refresh tournaments when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadTournaments();
+    }, [user])
+  );
 
   const loadUserName = async () => {
     if (!user) return;
@@ -81,6 +66,21 @@ const HomeScreen = ({ navigation }: any) => {
     } catch (error) {
       console.error('Error loading user name:', error);
       setUserName('Usuario');
+    }
+  };
+
+  const loadTournaments = async () => {
+    if (!user) return;
+    try {
+      setLoadingTournaments(true);
+      const myTournaments = await listMyTournaments();
+      setTournaments(myTournaments);
+    } catch (error) {
+      console.error('Error loading tournaments:', error);
+      // Show empty state on error
+      setTournaments([]);
+    } finally {
+      setLoadingTournaments(false);
     }
   };
 
@@ -140,75 +140,77 @@ const HomeScreen = ({ navigation }: any) => {
           </View>
 
           {/* Tournaments List */}
-          <View style={styles.tournamentsList}>
-            {tournaments.map((tournament) => (
+          {loadingTournaments ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+                Cargando torneos...
+              </Text>
+            </View>
+          ) : tournaments.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="trophy-outline" size={64} color={colors.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                Sin torneos
+              </Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                Crea tu primer torneo o únete usando un código de invitación
+              </Text>
               <TouchableOpacity
-                key={tournament.id}
-                style={[styles.tournamentCard, { backgroundColor: colors.card }]}
-                onPress={() => navigation.navigate('TournamentDetails')}
+                style={[styles.createButton, { backgroundColor: colors.primary }]}
+                onPress={() => navigation.navigate('CreateTournament')}
               >
-                <View style={styles.tournamentHeader}>
-                  <View style={styles.tournamentInfo}>
-                    {tournament.status === 'live' && (
-                      <View style={styles.liveBadge}>
-                        <Ionicons name="flame" size={12} color="#DC2E4B" />
-                        <Text style={styles.liveBadgeText}>EN VIVO</Text>
-                      </View>
-                    )}
-                    {tournament.status === 'upcoming' && (
-                      <View style={styles.upcomingBadge}>
-                        <Text style={styles.upcomingBadgeText}>PRÓXIMO</Text>
-                      </View>
-                    )}
-                    <Text style={[styles.tournamentName, { color: colors.foreground }]}>
-                      {tournament.name}
-                    </Text>
-                  </View>
-                  <View style={styles.prizeContainer}>
-                    <Text style={styles.prizeValue}>{tournament.prize}</Text>
-                    <Text style={[styles.prizeLabel, { color: colors.mutedForeground }]}>
-                      Premio
-                    </Text>
-                  </View>
-                </View>
-                
-                <View style={styles.tournamentFooter}>
-                  <View style={styles.tournamentMeta}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="people" size={16} color={colors.mutedForeground} />
-                      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-                        {tournament.participants}
+                <Text style={styles.createButtonText}>Crear Torneo</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.tournamentsList}>
+              {tournaments.map((tournament) => (
+                <TouchableOpacity
+                  key={tournament.id}
+                  style={[styles.tournamentCard, { backgroundColor: colors.card }]}
+                  onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
+                >
+                  <View style={styles.tournamentHeader}>
+                    <View style={styles.tournamentInfo}>
+                      <Text style={[styles.tournamentName, { color: colors.foreground }]}>
+                        {tournament.name}
+                      </Text>
+                      <Text style={[styles.tournamentFormat, { color: colors.mutedForeground }]}>
+                        {tournament.format === 'bracket' ? 'Eliminación Directa' : 'Puntos'}
                       </Text>
                     </View>
-                    <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-                      {tournament.status === 'live'
-                        ? `Termina en ${tournament.endsIn}`
-                        : `Inicia en ${tournament.startsIn}`}
-                    </Text>
+                    <View style={styles.prizeContainer}>
+                      <Text style={styles.prizeValue}>${tournament.contribution}</Text>
+                      <Text style={[styles.prizeLabel, { color: colors.mutedForeground }]}>
+                        Aporte
+                      </Text>
+                    </View>
                   </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      tournament.status === 'live'
-                        ? { backgroundColor: colors.primary }
-                        : { backgroundColor: colors.secondary, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.actionButtonText,
-                        tournament.status === 'live'
-                          ? { color: '#FFFFFF' }
-                          : { color: colors.foreground },
-                      ]}
+                  
+                  <View style={styles.tournamentFooter}>
+                    <View style={styles.tournamentMeta}>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="people" size={16} color={colors.mutedForeground} />
+                        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                          0 / {tournament.participantsEstimated}
+                        </Text>
+                      </View>
+                      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                        Código: {tournament.inviteCode}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: colors.primary }]}
+                      onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
                     >
-                      {tournament.status === 'live' ? 'Unirme' : 'Recordar'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+                      <Text style={styles.actionButtonText}>Ver</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -345,6 +347,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  tournamentFormat: {
+    fontSize: 12,
+    marginTop: 4,
+  },
   prizeContainer: {
     alignItems: 'flex-end',
   },
@@ -378,11 +384,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    borderWidth: 1,
   },
   actionButtonText: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  loadingContainer: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+  },
+  emptyContainer: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  createButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  createButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

@@ -20,6 +20,8 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
 import TournamentDetailsScreen from '../screens/TournamentDetailsScreen';
+import TournamentPredictionsScreen from '../screens/TournamentPredictionsScreen';
+import TournamentEventsScreen from '../screens/TournamentEventsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import JoinCodeScreen from '../screens/JoinCodeScreen';
 import NotFoundScreen from '../screens/NotFoundScreen';
@@ -124,6 +126,8 @@ const AppStack = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="TournamentDetails" component={TournamentDetailsScreen} />
+      <Stack.Screen name="TournamentPredictions" component={TournamentPredictionsScreen} />
+      <Stack.Screen name="TournamentEvents" component={TournamentEventsScreen} />
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
       <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />

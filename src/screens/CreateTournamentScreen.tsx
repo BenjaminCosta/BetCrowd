@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
@@ -14,6 +15,7 @@ import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
 import { Card, Input, PrimaryButton, SectionHeader, Chip, Badge } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
+import { createTournament } from '../services/tournamentService';
 
 // Formatos de torneo
 const formatOptions = [
@@ -38,17 +40,66 @@ const CreateTournamentScreen = ({ navigation }: any) => {
   const [showStartDateModal, setShowStartDateModal] = useState(false);
   const [showEndDateModal, setShowEndDateModal] = useState(false);
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    // Validation
+    if (!tournamentName.trim()) {
+      Alert.alert('Error', 'El nombre del torneo es requerido');
+      return;
+    }
+
+    if (!selectedFormat) {
+      Alert.alert('Error', 'Debes seleccionar un formato de torneo');
+      return;
+    }
+
+    const contributionNum = parseInt(contribution) || 0;
+    const participantsNum = parseInt(participants) || 0;
+
+    if (contributionNum < 0) {
+      Alert.alert('Error', 'El aporte no puede ser negativo');
+      return;
+    }
+
+    if (participantsNum <= 0) {
+      Alert.alert('Error', 'Debe haber al menos 1 participante');
+      return;
+    }
+
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      const { tournamentId, inviteCode } = await createTournament({
+        name: tournamentName.trim(),
+        description: description.trim(),
+        format: selectedFormat,
+        contribution: contributionNum,
+        participantsEstimated: participantsNum,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      });
+
+      Alert.alert(
+        '¡Torneo creado!',
+        `Tu torneo se ha creado exitosamente.\n\nCódigo de invitación: ${inviteCode}`,
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'No se pudo crear el torneo');
+    } finally {
       setIsLoading(false);
-      navigation.goBack();
-    }, 1500);
+    }
   };
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Seleccionar fecha';
-    const date = new Date(dateString);
+    // Parse date in local timezone to avoid UTC offset issues
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     return date.toLocaleDateString('es-ES', { 
       day: '2-digit', 
       month: 'short', 
