@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Button,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,8 +12,8 @@ import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
 import { useTheme } from '../context/ThemeContext';
-import { db } from '../lib/firebase';
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
+import { getUserProfile } from '../services/userService';
 
 const tournaments = [
   {
@@ -52,25 +51,38 @@ const stats = [
 const HomeScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
     return () => clearTimeout(timer);
   }, []);
 
-  async function probarFirestore() {
+  useEffect(() => {
+    loadUserName();
+  }, [user]);
+
+  const loadUserName = async () => {
+    if (!user) return;
     try {
-      const ref = doc(db, "debug", "ping");
-      await setDoc(ref, { ok: true, createdAt: serverTimestamp() });
-      const snap = await getDoc(ref);
-      console.log("Firestore:", snap.exists(), snap.data());
-      alert("✅ Firestore funciona! Revisa la consola");
+      const profile = await getUserProfile(user.uid);
+      if (profile) {
+        const name = profile.fullName || profile.displayName || user.email?.split('@')[0] || 'Usuario';
+        // Get first name only
+        const firstName = name.split(' ')[0];
+        setUserName(firstName);
+      } else {
+        const name = user.displayName || user.email?.split('@')[0] || 'Usuario';
+        const firstName = name.split(' ')[0];
+        setUserName(firstName);
+      }
     } catch (error) {
-      console.error("Error Firestore:", error);
-      alert("❌ Error: " + error);
+      console.error('Error loading user name:', error);
+      setUserName('Usuario');
     }
-  }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -79,11 +91,6 @@ const HomeScreen = ({ navigation }: any) => {
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
-          {/* Botón de prueba Firestore */}
-          <View style={{ marginBottom: 16 }}>
-            <Button title="🔥 Probar Firestore" onPress={probarFirestore} />
-          </View>
-
           {/* Header */}
           <View style={styles.header}>
             <View>
@@ -91,7 +98,7 @@ const HomeScreen = ({ navigation }: any) => {
                 Bienvenido de vuelta
               </Text>
               <Text style={[styles.userName, { color: colors.foreground }]}>
-                Juan García
+                {userName || 'Usuario'}
               </Text>
             </View>
           </View>

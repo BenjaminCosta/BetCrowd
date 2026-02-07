@@ -1,10 +1,12 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { getUserProfile } from '../services/userService';
 
 interface TopBarProps {
   showBackButton?: boolean;
@@ -14,6 +16,37 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
   const navigation = useNavigation<NavigationProp<any>>();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { user } = useAuth();
+  const [photoURL, setPhotoURL] = useState<string>('');
+  const [fullName, setFullName] = useState<string>('');
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [user]);
+
+  const loadUserProfile = async () => {
+    if (!user) return;
+    try {
+      const profile = await getUserProfile(user.uid);
+      if (profile) {
+        setPhotoURL(profile.photoURL || '');
+        setFullName(profile.fullName || profile.displayName || '');
+      }
+    } catch (error) {
+      console.error('Error loading profile in TopBar:', error);
+    }
+  };
+
+  const getInitials = () => {
+    if (fullName) {
+      const parts = fullName.trim().split(' ');
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return fullName.substring(0, 2).toUpperCase();
+    }
+    return user?.email?.substring(0, 2).toUpperCase() || 'U';
+  };
 
   const handleNavigate = (screen: string) => {
     try {
@@ -34,7 +67,10 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
             <Ionicons name="arrow-back" size={24} color={colors.foreground} />
           </TouchableOpacity>
         ) : (
-          <View style={styles.logoContainer}>
+          <TouchableOpacity 
+            style={styles.logoContainer}
+            onPress={() => handleNavigate('Inicio')}
+          >
             <LinearGradient
               colors={Gradients.primary as any}
               start={{ x: 0, y: 0 }}
@@ -47,7 +83,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
               <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
             </Text>
-          </View>
+          </TouchableOpacity>
         )}
         
         <View style={styles.rightIcons}>
@@ -67,14 +103,18 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
             style={styles.iconButton}
             onPress={() => handleNavigate('Perfil')}
           >
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatarGradient}
-            >
-              <Text style={styles.avatarText}>JG</Text>
-            </LinearGradient>
+            {photoURL ? (
+              <Image source={{ uri: photoURL }} style={styles.avatarImage} />
+            ) : (
+              <LinearGradient
+                colors={Gradients.primary as any}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.avatarGradient}
+              >
+                <Text style={styles.avatarText}>{getInitials()}</Text>
+              </LinearGradient>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -125,6 +165,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  avatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   avatarText: {
     color: '#FFFFFF',

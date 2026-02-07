@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Switch,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,11 +15,42 @@ import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { getUserProfile } from '../services/userService';
 
 const ProfileScreen = ({ navigation }: any) => {
   const { theme, toggleTheme } = useTheme();
   const colors = Colors[theme];
   const { user, signOut } = useAuth();
+  const [photoURL, setPhotoURL] = useState<string>('');
+  const [fullName, setFullName] = useState<string>('');
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [user]);
+
+  const loadUserProfile = async () => {
+    if (!user) return;
+    try {
+      const profile = await getUserProfile(user.uid);
+      if (profile) {
+        setPhotoURL(profile.photoURL || '');
+        setFullName(profile.fullName || profile.displayName || '');
+      }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  const getInitials = () => {
+    if (fullName) {
+      const parts = fullName.trim().split(' ');
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return fullName.substring(0, 2).toUpperCase();
+    }
+    return user?.email?.substring(0, 2).toUpperCase() || 'U';
+  };
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -47,17 +79,21 @@ const ProfileScreen = ({ navigation }: any) => {
       <ScrollView style={styles.content}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <LinearGradient
-            colors={Gradients.primary as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.avatar}
-          >
-            <Text style={styles.avatarText}>JG</Text>
-          </LinearGradient>
+          {photoURL ? (
+            <Image source={{ uri: photoURL }} style={styles.avatarImage} />
+          ) : (
+            <LinearGradient
+              colors={Gradients.primary as any}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatar}
+            >
+              <Text style={styles.avatarText}>{getInitials()}</Text>
+            </LinearGradient>
+          )}
           
           <Text style={[styles.userName, { color: colors.foreground }]}>
-            {user?.displayName || 'Usuario'}
+            {fullName || user?.displayName || 'Usuario'}
           </Text>
           <Text style={[styles.userEmail, { color: colors.mutedForeground }]}>
             {user?.email}
@@ -193,6 +229,12 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     marginBottom: 16,
   },
   avatarText: {
