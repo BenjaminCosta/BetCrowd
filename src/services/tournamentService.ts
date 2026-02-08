@@ -35,10 +35,13 @@ export interface Tournament {
   endDate?: string;
   ownerId: string;
   inviteCode: string;
-  status: string;
+  status: string; // active, archived, deleted, locked
+  hasActivity: boolean; // true if events/bets exist
   currency?: string;
   createdAt: any;
   updatedAt: any;
+  deletedAt?: any;
+  deletedBy?: string;
 }
 
 export interface TournamentRef {
@@ -102,6 +105,7 @@ export const createTournament = async (input: CreateTournamentInput): Promise<{ 
           ownerId: user.uid,
           inviteCode,
           status: 'active',
+          hasActivity: false,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
@@ -316,4 +320,134 @@ export const listenMyTournaments = (
 
     callback(tournaments);
   });
+};
+
+/**
+ * Update basic tournament fields (always allowed)
+ */
+export const updateTournamentBasic = async (
+  tournamentId: string,
+  updates: { name?: string; description?: string }
+): Promise<void> => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Debes iniciar sesión para editar el torneo');
+  }
+
+  try {
+    const tournamentRef = doc(db, 'tournaments', tournamentId);
+    await setDoc(
+      tournamentRef,
+      {
+        ...updates,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error: any) {
+    throw new Error(error.message || 'No se pudo actualizar el torneo');
+  }
+};
+
+/**
+ * Update tournament configuration (only if hasActivity is false)
+ */
+export const updateTournamentConfig = async (
+  tournamentId: string,
+  config: {
+    format?: string;
+    contribution?: number;
+    currency?: string;
+    startDate?: string;
+    endDate?: string;
+    participantsEstimated?: number;
+  }
+): Promise<void> => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Debes iniciar sesión para editar el torneo');
+  }
+
+  try {
+    // Check if tournament has activity
+    const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
+    
+    if (!tournamentDoc.exists()) {
+      throw new Error('Torneo no encontrado');
+    }
+
+    const tournament = tournamentDoc.data() as Tournament;
+
+    if (tournament.hasActivity) {
+      throw new Error(
+        'No se pueden editar estos campos porque el torneo ya tiene actividad (eventos o predicciones)'
+      );
+    }
+
+    const tournamentRef = doc(db, 'tournaments', tournamentId);
+    await setDoc(
+      tournamentRef,
+      {
+        ...config,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error: any) {
+    throw error;
+  }
+};
+
+/**
+ * Archive a tournament (soft delete with status=archived)
+ */
+export const archiveTournament = async (tournamentId: string): Promise<void> => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Debes iniciar sesión para archivar el torneo');
+  }
+
+  try {
+    const tournamentRef = doc(db, 'tournaments', tournamentId);
+    await setDoc(
+      tournamentRef,
+      {
+        status: 'archived',
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error: any) {
+    throw new Error(error.message || 'No se pudo archivar el torneo');
+  }
+};
+
+/**
+ * Soft delete a tournament (status=deleted)
+ */
+export const deleteTournamentSoft = async (tournamentId: string): Promise<void> => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Debes iniciar sesión para eliminar el torneo');
+  }
+
+  try {
+    const tournamentRef = doc(db, 'tournaments', tournamentId);
+    await setDoc(
+      tournamentRef,
+      {
+        status: 'deleted',
+        deletedAt: serverTimestamp(),
+        deletedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error: any) {
+    throw new Error(error.message || 'No se pudo eliminar el torneo');
+  }
 };

@@ -93,29 +93,32 @@ const HomeScreen = ({ navigation }: any) => {
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <View>
-              <Text style={[styles.welcomeText, { color: colors.mutedForeground }]}>
-                Bienvenido de vuelta
-              </Text>
-              <Text style={[styles.userName, { color: colors.foreground }]}>
-                {userName || 'Usuario'}
-              </Text>
+            <View style={styles.headerContent}>
+              <View style={styles.greetingContainer}>
+                <Text style={[styles.welcomeText, { color: colors.mutedForeground }]}>
+                  Bienvenido de vuelta
+                </Text>
+                <Text style={[styles.userName, { color: colors.foreground }]}>
+                  {userName || 'Usuario'}
+                </Text>
+              </View>
             </View>
           </View>
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
-            {stats.map((stat) => (
+            {stats.map((stat, index) => (
               <View
                 key={stat.label}
-                style={[styles.statCard, { backgroundColor: colors.secondary }]}
+                style={[styles.statCard, { backgroundColor: colors.card }]}
               >
-                <Ionicons
-                  name={stat.icon as any}
-                  size={20}
-                  color="#FF8C00"
-                  style={styles.statIcon}
-                />
+                <View style={[styles.statIconCircle, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons
+                    name={stat.icon as any}
+                    size={22}
+                    color={colors.primary}
+                  />
+                </View>
                 <Text style={[styles.statValue, { color: colors.foreground }]}>
                   {stat.value}
                 </Text>
@@ -131,7 +134,10 @@ const HomeScreen = ({ navigation }: any) => {
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
               Torneos Activos
             </Text>
-            <TouchableOpacity style={styles.viewAll}>
+            <TouchableOpacity 
+              style={styles.viewAll}
+              onPress={() => navigation.navigate('Eventos')}
+            >
               <Text style={[styles.viewAllText, { color: colors.primary }]}>
                 Ver Todos
               </Text>
@@ -147,7 +153,7 @@ const HomeScreen = ({ navigation }: any) => {
                 Cargando torneos...
               </Text>
             </View>
-          ) : tournaments.length === 0 ? (
+          ) : tournaments.filter((t) => t.status !== 'deleted').length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="trophy-outline" size={64} color={colors.mutedForeground} />
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
@@ -165,47 +171,72 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           ) : (
             <View style={styles.tournamentsList}>
-              {tournaments.map((tournament) => (
+              {tournaments
+                .filter((t) => t.status !== 'deleted')
+                .map((tournament) => (
                 <TouchableOpacity
                   key={tournament.id}
                   style={[styles.tournamentCard, { backgroundColor: colors.card }]}
                   onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
+                  activeOpacity={0.7}
                 >
+                  <View style={styles.cardGradientOverlay}>
+                    <LinearGradient
+                      colors={[colors.primary + '10', 'transparent']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.gradientBackground}
+                    />
+                  </View>
+                  
                   <View style={styles.tournamentHeader}>
                     <View style={styles.tournamentInfo}>
                       <Text style={[styles.tournamentName, { color: colors.foreground }]}>
                         {tournament.name}
                       </Text>
-                      <Text style={[styles.tournamentFormat, { color: colors.mutedForeground }]}>
-                        {tournament.format === 'bracket' ? 'Eliminación Directa' : 'Puntos'}
-                      </Text>
+                      <View style={styles.formatBadge}>
+                        <Ionicons 
+                          name={tournament.format === 'bracket' ? 'git-branch' : 'trophy'} 
+                          size={12} 
+                          color={colors.primary} 
+                        />
+                        <Text style={[styles.tournamentFormat, { color: colors.mutedForeground }]}>
+                          {tournament.format === 'bracket' ? 'Eliminatoria' : 'Liga'}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.prizeContainer}>
-                      <Text style={styles.prizeValue}>${tournament.contribution}</Text>
-                      <Text style={[styles.prizeLabel, { color: colors.mutedForeground }]}>
+                    <View style={[styles.prizeContainer, { backgroundColor: colors.primary + '15' }]}>
+                      <Text style={[styles.prizeValue, { color: colors.primary }]}>${tournament.contribution}</Text>
+                      <Text style={[styles.prizeLabel, { color: colors.primary }]}>
                         Aporte
                       </Text>
                     </View>
                   </View>
                   
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                  
                   <View style={styles.tournamentFooter}>
                     <View style={styles.tournamentMeta}>
                       <View style={styles.metaItem}>
-                        <Ionicons name="people" size={16} color={colors.mutedForeground} />
-                        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-                          0 / {tournament.participantsEstimated}
+                        <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
+                          <Ionicons name="people" size={14} color={colors.primary} />
+                        </View>
+                        <Text style={[styles.metaText, { color: colors.foreground }]}>
+                          {tournament.participantsEstimated} participantes
                         </Text>
                       </View>
-                      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-                        Código: {tournament.inviteCode}
-                      </Text>
+                      <View style={styles.metaItem}>
+                        <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
+                          <Ionicons name="key" size={14} color={colors.primary} />
+                        </View>
+                        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                          {tournament.inviteCode}
+                        </Text>
+                      </View>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: colors.primary }]}
-                      onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
-                    >
-                      <Text style={styles.actionButtonText}>Ver</Text>
-                    </TouchableOpacity>
+                    <View style={[styles.viewButton, { backgroundColor: colors.primary }]}>
+                      <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                    </View>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -229,18 +260,24 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
+    paddingTop: 8,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  greetingContainer: {
+    gap: 4,
   },
   welcomeText: {
-    fontSize: 14,
-    marginBottom: 4,
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   userName: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
+    letterSpacing: -0.5,
   },
   userAvatar: {
     width: 48,
@@ -257,24 +294,36 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 28,
   },
   statCard: {
     flex: 1,
-    padding: 12,
-    borderRadius: 12,
+    padding: 18,
+    borderRadius: 16,
     alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  statIcon: {
-    marginBottom: 4,
+  statIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
+    marginTop: 4,
   },
   statLabel: {
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -299,22 +348,36 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   tournamentCard: {
+    padding: 18,
     borderRadius: 16,
-    padding: 16,
+    marginBottom: 14,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+  },
+  cardGradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gradientBackground: {
+    flex: 1,
   },
   tournamentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   tournamentInfo: {
     flex: 1,
-    gap: 8,
+    marginRight: 12,
+    gap: 6,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -344,29 +407,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tournamentName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
+  },
+  formatBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   tournamentFormat: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
   },
   prizeContainer: {
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 80,
   },
   prizeValue: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#DC2E4B',
   },
   prizeLabel: {
-    fontSize: 10,
+    fontSize: 11,
+    fontWeight: '600',
     marginTop: 2,
+  },
+  dividerLine: {
+    height: 1,
+    marginBottom: 16,
   },
   tournamentFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
   },
   tournamentMeta: {
     flex: 1,
@@ -375,20 +452,30 @@ const styles = StyleSheet.create({
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
+  },
+  metaIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   metaText: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '500',
   },
-  actionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  viewButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   loadingContainer: {
     paddingVertical: 48,

@@ -252,34 +252,65 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
               colors={Gradients.primary as any}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.actionButton}
+              style={styles.primaryActionButton}
             >
-              <Ionicons name="trophy" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>
-                Ver Predicciones
-              </Text>
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="football" size={22} color="#FFFFFF" />
+              </View>
+              <View style={styles.actionContent}>
+                <Text style={styles.actionButtonText}>
+                  Ver Apuestas
+                </Text>
+                <Text style={[styles.actionButtonSubtext, { color: 'rgba(255, 255, 255, 0.85)' }]}>
+                  Gestiona tus pronósticos
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
             </LinearGradient>
           </TouchableOpacity>
 
           {isAdmin && (
-            <>
+            <View style={styles.adminActions}>
               <TouchableOpacity 
-                style={[styles.secondaryButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
                 onPress={() => navigation.navigate('TournamentEvents', { tournamentId })}
               >
-                <Ionicons name="calendar" size={20} color={colors.foreground} />
-                <Text style={[styles.secondaryButtonText, { color: colors.foreground }]}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
+                  <Ionicons name="calendar" size={18} color={colors.primary} />
+                </View>
+                <Text style={[styles.modernSecondaryButtonText, { color: colors.foreground }]}>
                   Gestionar Eventos
                 </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.foreground} />
-                <Text style={[styles.secondaryButtonText, { color: colors.foreground }]}>
+              {isOwner && (
+                <TouchableOpacity 
+                  style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
+                  onPress={() => navigation.navigate('TournamentSettings', { tournamentId })}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
+                    <Ionicons name="settings" size={18} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.modernSecondaryButtonText, { color: colors.foreground }]}>
+                    Configuración
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity 
+                style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                </View>
+                <Text style={[styles.modernSecondaryButtonText, { color: colors.foreground }]}>
                   Cargar Resultados
                 </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
               </TouchableOpacity>
-            </>
+            </View>
           )}
         </View>
       </ScrollView>
@@ -411,32 +442,60 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 16,
   },
-  actionButton: {
+  primaryActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 20,
+    borderRadius: 16,
+    gap: 14,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  actionIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
     justifyContent: 'center',
-    height: 52,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 12,
+  },
+  actionContent: {
+    flex: 1,
+    gap: 2,
   },
   actionButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
   },
-  secondaryButton: {
+  actionButtonSubtext: {
+    fontSize: 13,
+    opacity: 0.9,
+  },
+  adminActions: {
+    gap: 10,
+  },
+  modernSecondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 52,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 12,
-    borderWidth: 1,
+    padding: 16,
+    borderRadius: 14,
+    gap: 12,
   },
-  secondaryButtonText: {
-    fontSize: 16,
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modernSecondaryButtonText: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
   },
 });
