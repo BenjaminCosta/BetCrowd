@@ -1,27 +1,134 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, Badge, Chip, SectionHeader, Divider } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
-
-// Mock data
-const mockEvent = {
-  name: 'Pelea estelar UFC 300',
-  participantA: 'Jon Jones',
-  participantB: 'Stipe Miocic',
-};
+import { getEvent, deleteEvent, cancelEvent, type Event } from '../services/eventService';
+import { isUserAdmin } from '../services/tournamentService';
+import { auth } from '../lib/firebase';
 
 const chipAmounts = ['0', '100', '200', '500', '1000'];
 
-const EventDetailsScreen = ({ navigation }: any) => {
+const EventDetailsScreen = ({ route, navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { tournamentId, eventId } = route.params;
+
+  const [loading, setLoading] = useState(true);
+  const [event, setEvent] = useState<Event | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState('0');
+
+  useEffect(() => {
+    loadEventData();
+  }, []);
+
+  const loadEventData = async () => {
+    try {
+      setLoading(true);
+      const eventData = await getEvent(tournamentId, eventId);
+      setEvent(eventData);
+
+      if (auth.currentUser) {
+        const adminStatus = await isUserAdmin(tournamentId, auth.currentUser.uid);
+        setIsAdmin(adminStatus);
+      }
+    } catch (error: any) {
+      console.error('Error loading event:', error);
+      Alert.alert('Error', error.message || 'No se pudo cargar el evento');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Eliminar evento',
+      '¿Estás seguro que deseas eliminar este evento permanentemente?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEvent(tournamentId, eventId);
+              Alert.alert('Éxito', 'Evento eliminado');
+              navigation.goBack();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'No se pudo eliminar el evento');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancel = () => {
+    Alert.alert(
+      'Cancelar evento',
+      '¿Deseas marcar este evento como cancelado?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí',
+          onPress: async () => {
+            try {
+              await cancelEvent(tournamentId, eventId);
+              Alert.alert('Éxito', 'Evento cancelado');
+              loadEventData();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'No se pudo cancelar el evento');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'upcoming':
+        return <Badge variant="warning">PRÓXIMO</Badge>;
+      case 'live':
+        return <Badge variant="danger">EN VIVO</Badge>;
+      case 'finished':
+        return <Badge variant="default">FINALIZADO</Badge>;
+      case 'cancelled':
+        return <Badge variant="default">CANCELADO</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar showBackButton />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!event) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar showBackButton />
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+            Evento no encontrado
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -31,19 +138,87 @@ const EventDetailsScreen = ({ navigation }: any) => {
         <View style={styles.content}>
           {/* Event Header */}
           <View style={styles.header}>
-            <Text style={[styles.eventName, { color: colors.foreground }]}>
-              {mockEvent.name}
-            </Text>
-            <View style={styles.participants}>
-              <Text style={[styles.participant, { color: colors.foreground }]}>
-                {mockEvent.participantA}
+            <View style={styles.titleRow}>
+              <Text style={[styles.eventName, { color: colors.foreground }]}>
+                {event.title}
               </Text>
-              <Text style={[styles.vs, { color: colors.mutedForeground }]}>VS</Text>
-              <Text style={[styles.participant, { color: colors.foreground }]}>
-                {mockEvent.participantB}
-              </Text>
+              {getStatusBadge(event.status)}
             </View>
+
+            {(event.homeTeam || event.awayTeam) && (
+              <View style={styles.participants}>
+                <Text style={[styles.participant, { color: colors.foreground }]}>
+                  {event.homeTeam || 'TBD'}
+                </Text>
+                <Text style={[styles.vs, { color: colors.mutedForeground }]}>VS</Text>
+                <Text style={[styles.participant, { color: colors.foreground }]}>
+                  {event.awayTeam || 'TBD'}
+                </Text>
+              </View>
+            )}
+
+            {event.startsAt && (
+              <View style={styles.dateRow}>
+                <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
+                <Text style={[styles.dateText, { color: colors.mutedForeground }]}>
+                  {event.startsAt.toDate().toLocaleString('es-AR', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {event.notes && (
+              <View style={[styles.notesCard, { backgroundColor: colors.muted }]}>
+                <Ionicons name="information-circle-outline" size={16} color={colors.mutedForeground} />
+                <Text style={[styles.notesText, { color: colors.mutedForeground }]}>
+                  {event.notes}
+                </Text>
+              </View>
+            )}
           </View>
+
+          {/* Admin Actions */}
+          {isAdmin && event.status !== 'cancelled' && (
+            <Card style={styles.adminCard}>
+              <Text style={[styles.adminTitle, { color: colors.foreground }]}>
+                Acciones de administrador
+              </Text>
+              <View style={styles.adminButtons}>
+                <TouchableOpacity
+                  style={[styles.adminButton, { backgroundColor: colors.accent }]}
+                  onPress={() => {
+                    Alert.alert('Editar evento', 'Funcionalidad de edición próximamente');
+                  }}
+                >
+                  <Ionicons name="create-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.adminButtonText}>Editar</Text>
+                </TouchableOpacity>
+
+                {event.status !== 'finished' && (
+                  <TouchableOpacity
+                    style={[styles.adminButton, { backgroundColor: colors.warning }]}
+                    onPress={handleCancel}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.adminButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.adminButton, { backgroundColor: colors.destructive }]}
+                  onPress={handleDelete}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.adminButtonText}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            </Card>
+          )}
 
           {/* Mercado: Ganador */}
           <Card style={styles.marketCard}>
@@ -71,7 +246,7 @@ const EventDetailsScreen = ({ navigation }: any) => {
                 onPress={() => setSelectedOption('A')}
               >
                 <Text style={[styles.optionText, { color: colors.foreground }]}>
-                  {mockEvent.participantA}
+                  {event.homeTeam || 'Opción A'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -83,7 +258,7 @@ const EventDetailsScreen = ({ navigation }: any) => {
                 onPress={() => setSelectedOption('B')}
               >
                 <Text style={[styles.optionText, { color: colors.foreground }]}>
-                  {mockEvent.participantB}
+                  {event.awayTeam || 'Opción B'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -212,6 +387,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
   scrollView: {
     flex: 1,
   },
@@ -221,15 +405,23 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: Spacing.xl,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
   eventName: {
     fontSize: 24,
     fontWeight: '900',
-    marginBottom: Spacing.md,
+    flex: 1,
   },
   participants: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   participant: {
     fontSize: 18,
@@ -238,6 +430,54 @@ const styles = StyleSheet.create({
   vs: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  dateText: {
+    fontSize: 14,
+  },
+  notesCard: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    marginTop: Spacing.sm,
+  },
+  notesText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  adminCard: {
+    marginBottom: Spacing.lg,
+  },
+  adminTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: Spacing.md,
+  },
+  adminButtons: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  adminButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  adminButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   marketCard: {
     marginBottom: Spacing.lg,

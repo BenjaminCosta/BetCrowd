@@ -289,6 +289,14 @@ export const getMyTournamentRole = async (tournamentId: string, uid: string): Pr
 };
 
 /**
+ * Check if user is admin (owner or admin role)
+ */
+export const isUserAdmin = async (tournamentId: string, uid: string): Promise<boolean> => {
+  const role = await getMyTournamentRole(tournamentId, uid);
+  return role === 'owner' || role === 'admin';
+};
+
+/**
  * Listen to user's tournaments in real-time (optional)
  */
 export const listenMyTournaments = (

@@ -13,7 +13,8 @@ import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { getTournament } from '../services/tournamentService';
+import { getTournament, isUserAdmin } from '../services/tournamentService';
+import { listenEvents, Event } from '../services/eventService';
 
 const TournamentEventsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -22,24 +23,55 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
   const { tournamentId } = route.params || {};
 
   const [tournament, setTournament] = useState<any>(null);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (tournamentId) {
+    if (tournamentId && user) {
       loadTournament();
+      checkAdminStatus();
     }
+  }, [tournamentId, user]);
+
+  useEffect(() => {
+    if (!tournamentId) return;
+
+    const unsubscribe = listenEvents(tournamentId, (updatedEvents) => {
+      setEvents(updatedEvents);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [tournamentId]);
 
   const loadTournament = async () => {
     try {
-      setLoading(true);
       const tournamentData = await getTournament(tournamentId);
       setTournament(tournamentData);
     } catch (error) {
       console.error('Error loading tournament:', error);
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const checkAdminStatus = async () => {
+    if (!user) return;
+    try {
+      const admin = await isUserAdmin(tournamentId, user.uid);
+      setIsAdmin(admin);
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; color: string }> = {
+      upcoming: { label: 'PRÓXIMO', color: '#FF8C00' },
+      live: { label: 'EN VIVO', color: '#DC2E4B' },
+      finished: { label: 'FINALIZADO', color: '#6B7280' },
+      cancelled: { label: 'CANCELADO', color: '#6B7280' },
+    };
+    return statusMap[status] || { label: status.toUpperCase(), color: '#6B7280' };
   };
 
   if (loading) {
@@ -64,7 +96,7 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
         {tournament && (
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.foreground }]}>
-              Gestionar Eventos
+              Eventos del Torneo
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               {tournament.name}
@@ -72,33 +104,84 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
           </View>
         )}
 
-        {/* Create Event Button */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate('CreateEvent', { tournamentId })}
-        >
-          <LinearGradient
-            colors={Gradients.primary as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.createButton}
+        {/* Create Event Button - Only for admins */}
+        {isAdmin && (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreateEvent', { tournamentId })}
           >
-            <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.createButtonText}>
-              Crear Evento
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={Gradients.primary as any}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.createButton}
+            >
+              <Ionicons name="add-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.createButtonText}>
+                Crear Evento
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
-        {/* Empty State */}
-        <View style={styles.emptyContainer}>
-          <Ionicons name="calendar-outline" size={64} color={colors.mutedForeground} />
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            No hay eventos
-          </Text>
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Crea el primer evento para que los participantes puedan hacer predicciones
-          </Text>
-        </View>
+        {/* Events List */}
+        {events.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="calendar-outline" size={64} color={colors.mutedForeground} />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              Todavía no hay eventos
+            </Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+              {isAdmin 
+                ? 'Crea el primer evento para que los participantes puedan hacer predicciones' 
+                : 'El administrador aún no ha creado eventos para este torneo'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.eventsList}>
+            {events.map((event) => {
+              const badge = getStatusBadge(event.status);
+              return (
+                <TouchableOpacity
+                  key={event.id}
+                  style={[styles.eventCard, { backgroundColor: colors.card }]}
+                  onPress={() => navigation.navigate('EventDetails', { tournamentId, eventId: event.id })}
+                >
+                  <View style={styles.eventHeader}>
+                    <View style={styles.eventInfo}>
+                      <Text style={[styles.eventTitle, { color: colors.foreground }]}>
+                        {event.title}
+                      </Text>
+                      {event.homeTeam && event.awayTeam && (
+                        <Text style={[styles.eventTeams, { color: colors.mutedForeground }]}>
+                          {event.homeTeam} vs {event.awayTeam}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: badge.color + '20' }]}>
+                      <Text style={[styles.statusBadgeText, { color: badge.color }]}>
+                        {badge.label}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {event.startsAt && (
+                    <View style={styles.eventFooter}>
+                      <Ionicons name="time-outline" size={14} color={colors.mutedForeground} />
+                      <Text style={[styles.eventTime, { color: colors.mutedForeground }]}>
+                        {event.startsAt.toDate().toLocaleDateString('es-ES', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -160,6 +243,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  eventsList: {
+    gap: 12,
+  },
+  eventCard: {
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  eventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  eventInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  eventTeams: {
+    fontSize: 14,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  eventFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  eventTime: {
+    fontSize: 12,
   },
 });
 
