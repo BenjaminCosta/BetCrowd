@@ -118,7 +118,7 @@ const ProfileScreen = ({ navigation }: any) => {
             </Text>
           </View>
           <View style={[styles.statBox, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statValue, { color: colors.accent }]}>68%</Text>
+            <Text style={[styles.statValue, { color: colors.primary }]}>68%</Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
               Efectividad
             </Text>

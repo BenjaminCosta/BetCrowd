@@ -6,9 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
+  RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -18,8 +17,8 @@ import { LoadingBar } from '../components/LoadingBar';
 import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useTournaments } from '../context/TournamentsContext';
 import { getUserProfile } from '../services/userService';
-import { listMyTournaments, Tournament, isUserAdmin } from '../services/tournamentService';
 
 // Format label mapping
 const getFormatLabel = (formatId: string) => {
@@ -58,11 +57,9 @@ const HomeScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { tournaments, adminStatuses, loading: loadingTournaments, refreshing, refresh } = useTournaments();
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [loadingTournaments, setLoadingTournaments] = useState(true);
-  const [adminStatuses, setAdminStatuses] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
@@ -72,13 +69,6 @@ const HomeScreen = ({ navigation }: any) => {
   useEffect(() => {
     loadUserName();
   }, [user]);
-
-  // Refresh tournaments when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      loadTournaments();
-    }, [user])
-  );
 
   const loadUserName = async () => {
     if (!user) return;
@@ -100,29 +90,8 @@ const HomeScreen = ({ navigation }: any) => {
     }
   };
 
-  const loadTournaments = async () => {
-    if (!user) return;
-    try {
-      setLoadingTournaments(true);
-      const myTournaments = await listMyTournaments();
-      setTournaments(myTournaments);
-      
-      // Check admin status for each tournament
-      const statuses: Record<string, boolean> = {};
-      await Promise.all(
-        myTournaments.map(async (tournament) => {
-          const admin = await isUserAdmin(tournament.id, user.uid);
-          statuses[tournament.id] = admin;
-        })
-      );
-      setAdminStatuses(statuses);
-    } catch (error) {
-      console.error('Error loading tournaments:', error);
-      // Show empty state on error
-      setTournaments([]);
-    } finally {
-      setLoadingTournaments(false);
-    }
+  const handleEditTournament = (tournament: any) => {
+    navigation.navigate('TournamentSettings', { tournamentId: tournament.id });
   };
 
   return (
@@ -131,7 +100,17 @@ const HomeScreen = ({ navigation }: any) => {
         <TopBar />
         <LoadingBar isLoading={isLoading} />
       
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>

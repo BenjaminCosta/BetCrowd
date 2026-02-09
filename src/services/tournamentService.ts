@@ -48,6 +48,13 @@ export interface TournamentRef {
   tournamentId: string;
   role: string;
   joinedAt: any;
+  // Denormalized fields for fast loading
+  name: string;
+  format: string;
+  contribution: number;
+  participantsEstimated: number;
+  inviteCode: string;
+  status: string;
 }
 
 /**
@@ -119,11 +126,18 @@ export const createTournament = async (input: CreateTournamentInput): Promise<{ 
           joinedAt: serverTimestamp(),
         });
 
-        // Create user tournament reference
+        // Create user tournament reference with denormalized data
         const userTournamentRef = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
         transaction.set(userTournamentRef, {
           role: 'owner',
           joinedAt: serverTimestamp(),
+          // Denormalized fields for fast loading
+          name: input.name,
+          format: input.format,
+          contribution: input.contribution,
+          participantsEstimated: input.participantsEstimated,
+          inviteCode,
+          status: 'active',
         });
 
         // Create invite code index
@@ -178,17 +192,32 @@ export const joinTournamentByInviteCode = async (code: string): Promise<string> 
       throw new Error('Ya eres miembro de este torneo');
     }
 
+    // Get tournament data for denormalization
+    const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
+    if (!tournamentDoc.exists()) {
+      throw new Error('El torneo no existe');
+    }
+
+    const tournamentData = tournamentDoc.data();
+
     // Create member entry
     await setDoc(memberRef, {
       role: 'member',
       joinedAt: serverTimestamp(),
     });
 
-    // Create user tournament reference
+    // Create user tournament reference with denormalized data
     const userTournamentRef = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
     await setDoc(userTournamentRef, {
       role: 'member',
       joinedAt: serverTimestamp(),
+      // Denormalized fields for fast loading
+      name: tournamentData.name,
+      format: tournamentData.format,
+      contribution: tournamentData.contribution,
+      participantsEstimated: tournamentData.participantsEstimated,
+      inviteCode: tournamentData.inviteCode,
+      status: tournamentData.status,
     });
 
     return tournamentId;
@@ -297,41 +326,138 @@ export const isUserAdmin = async (tournamentId: string, uid: string): Promise<bo
 };
 
 /**
- * Listen to user's tournaments in real-time (optional)
+ * Listen to user's tournament refs in real-time
+ * Returns unsubscribe function
+ * Now returns denormalized data directly from tournamentRefs
  */
-export const listenMyTournaments = (
-  callback: (tournaments: Tournament[]) => void
-): Unsubscribe | null => {
-  const user = auth.currentUser;
-
-  if (!user) {
-    return null;
-  }
-
-  const tournamentRefsRef = collection(db, 'users', user.uid, 'tournamentRefs');
+export const listenMyTournamentRefs = (
+  uid: string,
+  callback: (refs: TournamentRef[]) => void,
+  onError?: (error: Error) => void
+): Unsubscribe => {
+  const tournamentRefsRef = collection(db, 'users', uid, 'tournamentRefs');
   const q = query(tournamentRefsRef, orderBy('joinedAt', 'desc'));
 
-  return onSnapshot(q, async (snapshot) => {
-    const tournaments: Tournament[] = [];
-    
-    for (const refDoc of snapshot.docs) {
-      const tournamentId = refDoc.id;
-      const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-      
-      if (tournamentDoc.exists()) {
-        tournaments.push({
-          id: tournamentDoc.id,
-          ...tournamentDoc.data(),
-        } as Tournament);
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const refs: TournamentRef[] = snapshot.docs.map(doc => ({
+        tournamentId: doc.id,
+        role: doc.data().role || 'member',
+        joinedAt: doc.data().joinedAt,
+        // Denormalized fields
+        name: doc.data().name || '',
+        format: doc.data().format || '',
+        contribution: doc.data().contribution || 0,
+        participantsEstimated: doc.data().participantsEstimated || 0,
+        inviteCode: doc.data().inviteCode || '',
+        status: doc.data().status || 'active',
+      }));
+
+      // Check if any refs are missing denormalized data and fix them
+      refs.forEach(async (ref) => {
+        if (!ref.name) {
+          try {
+            const tournamentDoc = await getDoc(doc(db, 'tournaments', ref.tournamentId));
+            if (tournamentDoc.exists()) {
+              const tournamentData = tournamentDoc.data();
+              const userTournamentRef = doc(db, 'users', uid, 'tournamentRefs', ref.tournamentId);
+              await setDoc(userTournamentRef, {
+                name: tournamentData.name,
+                format: tournamentData.format,
+                contribution: tournamentData.contribution,
+                participantsEstimated: tournamentData.participantsEstimated,
+                inviteCode: tournamentData.inviteCode,
+                status: tournamentData.status || 'active',
+              }, { merge: true });
+            }
+          } catch (error) {
+            // Silent fail for migration
+          }
+        }
+      });
+
+      callback(refs);
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
       }
     }
+  );
+};
 
-    callback(tournaments);
+/**
+ * Listen to a single tournament in real-time
+ * Returns unsubscribe function
+ */
+export const listenTournament = (
+  tournamentId: string,
+  callback: (tournament: Tournament | null) => void
+): Unsubscribe => {
+  const tournamentRef = doc(db, 'tournaments', tournamentId);
+
+  return onSnapshot(tournamentRef, (snapshot) => {
+    if (snapshot.exists()) {
+      callback({
+        id: snapshot.id,
+        ...snapshot.data(),
+      } as Tournament);
+    } else {
+      callback(null);
+    }
   });
 };
 
 /**
+ * Listen to user's role in a tournament in real-time
+ * Returns unsubscribe function
+ */
+export const listenMyRole = (
+  tournamentId: string,
+  uid: string,
+  callback: (role: string | null) => void
+): Unsubscribe => {
+  const memberRef = doc(db, 'tournaments', tournamentId, 'members', uid);
+
+  return onSnapshot(memberRef, (snapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.data()?.role || null);
+    } else {
+      callback(null);
+    }
+  });
+};
+
+/**
+ * Helper: Sync denormalized tournament data to all members' tournamentRefs
+ * Call this after updating tournament fields that are denormalized
+ */
+const syncDenormalizedData = async (
+  tournamentId: string,
+  updates: Partial<Pick<TournamentRef, 'name' | 'format' | 'contribution' | 'participantsEstimated' | 'inviteCode' | 'status'>>
+): Promise<void> => {
+  try {
+    // Get all members
+    const membersRef = collection(db, 'tournaments', tournamentId, 'members');
+    const membersSnapshot = await getDocs(membersRef);
+
+    // Update each member's tournamentRef
+    const updatePromises = membersSnapshot.docs.map(memberDoc => {
+      const userId = memberDoc.id;
+      const userTournamentRef = doc(db, 'users', userId, 'tournamentRefs', tournamentId);
+      return setDoc(userTournamentRef, updates, { merge: true });
+    });
+
+    await Promise.all(updatePromises);
+  } catch (error) {
+    console.error('Error syncing denormalized data:', error);
+  }
+};
+
+/**
  * Update basic tournament fields (always allowed)
+ * Also syncs denormalized data to all members
  */
 export const updateTournamentBasic = async (
   tournamentId: string,
@@ -353,6 +479,11 @@ export const updateTournamentBasic = async (
       },
       { merge: true }
     );
+
+    // Sync denormalized data if name changed
+    if (updates.name) {
+      await syncDenormalizedData(tournamentId, { name: updates.name });
+    }
   } catch (error: any) {
     throw new Error(error.message || 'No se pudo actualizar el torneo');
   }
@@ -360,6 +491,7 @@ export const updateTournamentBasic = async (
 
 /**
  * Update tournament configuration (only if hasActivity is false)
+ * Also syncs denormalized data to all members
  */
 export const updateTournamentConfig = async (
   tournamentId: string,
@@ -403,6 +535,16 @@ export const updateTournamentConfig = async (
       },
       { merge: true }
     );
+
+    // Sync denormalized data
+    const denormalizedUpdates: Partial<TournamentRef> = {};
+    if (config.format) denormalizedUpdates.format = config.format;
+    if (config.contribution !== undefined) denormalizedUpdates.contribution = config.contribution;
+    if (config.participantsEstimated !== undefined) denormalizedUpdates.participantsEstimated = config.participantsEstimated;
+
+    if (Object.keys(denormalizedUpdates).length > 0) {
+      await syncDenormalizedData(tournamentId, denormalizedUpdates);
+    }
   } catch (error: any) {
     throw error;
   }
@@ -410,6 +552,7 @@ export const updateTournamentConfig = async (
 
 /**
  * Archive a tournament (soft delete with status=archived)
+ * Also syncs status to all members
  */
 export const archiveTournament = async (tournamentId: string): Promise<void> => {
   const user = auth.currentUser;
@@ -428,6 +571,9 @@ export const archiveTournament = async (tournamentId: string): Promise<void> => 
       },
       { merge: true }
     );
+
+    // Sync status to all members
+    await syncDenormalizedData(tournamentId, { status: 'archived' });
   } catch (error: any) {
     throw new Error(error.message || 'No se pudo archivar el torneo');
   }

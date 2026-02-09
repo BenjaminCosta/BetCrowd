@@ -76,7 +76,7 @@ const SearchScreen = ({ navigation }: any) => {
         <View style={styles.content}>
           {/* Search Input */}
           <View style={styles.searchSection}>
-            <View style={styles.searchInputContainer}>
+            <View style={[styles.searchInputContainer, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
               <Ionicons name="search" size={20} color={colors.mutedForeground} />
               <Input
                 value={searchQuery}
@@ -220,7 +220,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
-    borderWidth: 1,
   },
   searchInput: {
     flex: 1,

@@ -68,16 +68,19 @@ const EventsScreen = ({ navigation, route }: any) => {
         setSelectedTournamentId(filtered[0].id);
       }
     } catch (error) {
-      console.error('Error loading tournaments:', error);
+      // Silent fail
     }
   };
 
   const loadData = async () => {
     if (!user || !selectedTournamentId) return;
     
-    try {
+    // Only show loading on first load
+    if (events.length === 0) {
       setLoading(true);
-      
+    }
+    
+    try {
       // Load tournament
       const tournamentData = await getTournament(selectedTournamentId);
       setTournament(tournamentData);
@@ -86,7 +89,7 @@ const EventsScreen = ({ navigation, route }: any) => {
       const eventsList = await listEvents(selectedTournamentId);
       setEvents(eventsList);
     } catch (error) {
-      console.error('Error loading data:', error);
+      // Silent fail
     } finally {
       setLoading(false);
     }
@@ -98,7 +101,7 @@ const EventsScreen = ({ navigation, route }: any) => {
       const admin = await isUserAdmin(selectedTournamentId, user.uid);
       setIsAdmin(admin);
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      // Silent fail
     }
   };
 

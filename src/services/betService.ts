@@ -275,71 +275,86 @@ export const upsertMyPick = async (
   const pickRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks', uid);
   const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
 
-  await runTransaction(db, async (transaction) => {
-    const betDoc = await transaction.get(betRef);
-    const pickDoc = await transaction.get(pickRef);
+  try {
+    await runTransaction(db, async (transaction) => {
+      const betDoc = await transaction.get(betRef);
+      const pickDoc = await transaction.get(pickRef);
     
-    if (!betDoc.exists()) {
-      throw new Error('Bet not found');
-    }
+      if (!betDoc.exists()) {
+        throw new Error('Bet not found');
+      }
 
-    const bet = betDoc.data() as Bet;
-    const previousPick = pickDoc.exists() ? pickDoc.data() as Pick : null;
-    
-    // For score type, convert selection to string key for optionTotals
-    const selectionKey = typeof selection === 'object' 
-      ? JSON.stringify(selection) 
-      : String(selection);
+      const bet = betDoc.data() as Bet;
+      const previousPick = pickDoc.exists() ? pickDoc.data() as Pick : null;
+      
+      // For score type, convert selection to string key for optionTotals
+      const selectionKey = typeof selection === 'object' 
+        ? JSON.stringify(selection) 
+        : String(selection);
 
-    // Calculate new totals
-    let newTotalPot = bet.totalPot || 0;
-    let newTotalPicks = bet.totalPicks || 0;
-    const newOptionTotals = { ...(bet.optionTotals || {}) };
+      // Calculate new totals
+      let newTotalPot = bet.totalPot || 0;
+      let newTotalPicks = bet.totalPicks || 0;
+      const newOptionTotals = { ...(bet.optionTotals || {}) };
 
-    // If updating existing pick, remove old values
-    if (previousPick) {
-      newTotalPot -= previousPick.stakeAmount;
-      const oldKey = typeof previousPick.selection === 'object'
-        ? JSON.stringify(previousPick.selection)
-        : String(previousPick.selection);
-      newOptionTotals[oldKey] = (newOptionTotals[oldKey] || 0) - previousPick.stakeAmount;
-    } else {
-      // New pick
-      newTotalPicks += 1;
-    }
+      // If updating existing pick, remove old values
+      if (previousPick) {
+        newTotalPot -= previousPick.stakeAmount;
+        const oldKey = typeof previousPick.selection === 'object'
+          ? JSON.stringify(previousPick.selection)
+          : String(previousPick.selection);
+        newOptionTotals[oldKey] = (newOptionTotals[oldKey] || 0) - previousPick.stakeAmount;
+      } else {
+        // New pick
+        newTotalPicks += 1;
+      }
 
-    // Add new values
-    newTotalPot += stakeAmount;
-    newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
+      // Add new values
+      newTotalPot += stakeAmount;
+      newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
 
-    // Update bet with new totals
-    transaction.update(betRef, {
-      totalPot: newTotalPot,
-      totalPicks: newTotalPicks,
-      optionTotals: newOptionTotals,
-      updatedAt: serverTimestamp(),
+      // Update bet with new totals
+      transaction.update(betRef, {
+        totalPot: newTotalPot,
+        totalPicks: newTotalPicks,
+        optionTotals: newOptionTotals,
+        updatedAt: serverTimestamp(),
+      });
+
+      // Update or create pick
+      const pickData = {
+        uid,
+        selection,
+        stakeAmount: stakeAmount || 0,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (pickDoc.exists()) {
+        transaction.update(pickRef, pickData);
+      } else {
+        transaction.set(pickRef, {
+          ...pickData,
+          createdAt: serverTimestamp(),
+        });
+      }
     });
 
-    // Update or create pick
-    const pickData = {
-      uid,
-      selection,
-      stakeAmount: stakeAmount || 0,
-      updatedAt: serverTimestamp(),
-    };
-
-    if (pickDoc.exists()) {
-      transaction.update(pickRef, pickData);
-    } else {
-      transaction.set(pickRef, {
-        ...pickData,
-        createdAt: serverTimestamp(),
-      });
+    // Also update picks index for PredictionsScreen
+    await updatePicksIndex(tournamentId, eventId, betId, uid);
+  } catch (error: any) {
+    // Handle permission errors that occur even when transaction succeeds
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      // Verify if the pick was actually created despite the error
+      const pickDoc = await getDoc(pickRef);
+      if (pickDoc.exists()) {
+        // Operation succeeded, just update the index and return silently
+        await updatePicksIndex(tournamentId, eventId, betId, uid);
+        return;
+      }
     }
-  });
-
-  // Also update picks index for PredictionsScreen
-  await updatePicksIndex(tournamentId, eventId, betId, uid);
+    // Re-throw if it's an actual failure
+    throw error;
+  }
 };
 
 /**

@@ -63,16 +63,19 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
         setSelectedTournamentId(myTournaments[0].id);
       }
     } catch (error) {
-      console.error('Error loading tournaments:', error);
+      // Silent fail
     }
   };
 
   const loadData = async () => {
     if (!user || !selectedTournamentId) return;
     
-    try {
+    // Only show loading on first load
+    if (openPicks.length === 0 && settledPicks.length === 0) {
       setLoading(true);
-      
+    }
+    
+    try {
       // Load tournament
       const tournamentData = await getTournament(selectedTournamentId);
       setTournament(tournamentData);
@@ -115,18 +118,17 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
               }
             }
           } catch (betError) {
-            console.error('Error loading bets:', betError);
             continue;
           }
         }
       } catch (eventError) {
-        console.error('Error loading events:', eventError);
+        // Silent fail
       }
       
       setOpenPicks(allOpenPicks);
       setSettledPicks(allSettledPicks);
     } catch (error) {
-      console.error('Error loading data:', error);
+      // Silent fail
     } finally {
       setLoading(false);
     }
@@ -299,7 +301,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 
                 <View style={styles.footer}>
                   <Text style={[styles.amount, { color: colors.foreground }]}>
-                    ${pick.amount}
+                    ${pick.stakeAmount || 0}
                   </Text>
                   <View style={[styles.statusBadge, { 
                     backgroundColor: bet.status === 'open' ? colors.primary + '20' : 

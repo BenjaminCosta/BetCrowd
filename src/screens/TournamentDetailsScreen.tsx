@@ -274,25 +274,13 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
             <View style={styles.adminActions}>
               <TouchableOpacity 
                 style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
-                onPress={() => navigation.navigate('Apuestas')}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
-                  <Ionicons name="football" size={18} color={colors.primary} />
-                </View>
-                <Text style={[styles.modernSecondaryButtonText, { color: colors.foreground }]}>
-                  Ver Apuestas
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
                 onPress={() => navigation.navigate('TournamentEvents', { tournamentId })}
               >
                 <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
                   <Ionicons name="calendar" size={18} color={colors.primary} />
                 </View>
                 <Text style={[styles.modernSecondaryButtonText, { color: colors.foreground }]}>
-                  Gestionar Eventos
+                  Ver Eventos
                 </Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
               </TouchableOpacity>
