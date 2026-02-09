@@ -18,6 +18,33 @@ import { useAuth } from '../context/AuthContext';
 import { getUserProfile } from '../services/userService';
 import { listMyTournaments, Tournament } from '../services/tournamentService';
 
+// Format label mapping
+const getFormatLabel = (formatId: string) => {
+  const formatMap: Record<string, string> = {
+    'liga': 'Liga',
+    'eliminatoria': 'Eliminatoria',
+    'grupos-eliminatoria': 'Grupos + Eliminatoria',
+    'evento-unico': 'Evento único',
+    'serie': 'Serie (Bo3/Bo5)',
+    'bracket': 'Eliminación Directa',
+    'points': 'Puntos',
+  };
+  return formatMap[formatId] || formatId;
+};
+
+const getFormatIcon = (formatId: string) => {
+  const iconMap: Record<string, any> = {
+    'liga': 'trophy',
+    'eliminatoria': 'git-branch',
+    'grupos-eliminatoria': 'grid',
+    'evento-unico': 'flag',
+    'serie': 'list',
+    'bracket': 'git-branch',
+    'points': 'analytics',
+  };
+  return iconMap[formatId] || 'trophy';
+};
+
 const stats = [
   { label: 'Victorias', value: '12', icon: 'trophy' },
   { label: 'Efectividad', value: '68%', icon: 'trending-up' },
@@ -196,12 +223,12 @@ const HomeScreen = ({ navigation }: any) => {
                       </Text>
                       <View style={styles.formatBadge}>
                         <Ionicons 
-                          name={tournament.format === 'bracket' ? 'git-branch' : 'trophy'} 
+                          name={getFormatIcon(tournament.format)} 
                           size={12} 
                           color={colors.primary} 
                         />
                         <Text style={[styles.tournamentFormat, { color: colors.mutedForeground }]}>
-                          {tournament.format === 'bracket' ? 'Eliminatoria' : 'Liga'}
+                          {getFormatLabel(tournament.format)}
                         </Text>
                       </View>
                     </View>

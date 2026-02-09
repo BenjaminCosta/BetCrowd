@@ -10,8 +10,6 @@ import { getEvent, deleteEvent, cancelEvent, type Event } from '../services/even
 import { isUserAdmin } from '../services/tournamentService';
 import { auth } from '../lib/firebase';
 
-const chipAmounts = ['0', '100', '200', '500', '1000'];
-
 const EventDetailsScreen = ({ route, navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -20,9 +18,6 @@ const EventDetailsScreen = ({ route, navigation }: any) => {
   const [loading, setLoading] = useState(true);
   const [event, setEvent] = useState<Event | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [selectedAmount, setSelectedAmount] = useState('0');
 
   useEffect(() => {
     loadEventData();
@@ -190,6 +185,24 @@ const EventDetailsScreen = ({ route, navigation }: any) => {
             )}
           </View>
 
+          {/* View Bets Button */}
+          <TouchableOpacity
+            style={[styles.betsButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() =>
+              navigation.navigate('BetsList', {
+                tournamentId,
+                eventId,
+                eventTitle: event.title,
+              })
+            }
+          >
+            <Ionicons name="cash-outline" size={20} color={colors.foreground} />
+            <Text style={[styles.betsButtonText, { color: colors.foreground }]}>
+              Ver Apuestas
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+          </TouchableOpacity>
+
           {/* Admin Actions */}
           {isAdmin && event.status !== 'cancelled' && (
             <Card style={styles.adminCard}>
@@ -237,164 +250,6 @@ const EventDetailsScreen = ({ route, navigation }: any) => {
               </View>
             </Card>
           )}
-
-          {/* Mercado: Ganador */}
-          <Card style={styles.marketCard}>
-            <View style={styles.marketHeader}>
-              <View>
-                <Text style={[styles.marketTitle, { color: colors.foreground }]}>
-                  Ganador
-                </Text>
-                <Text style={[styles.marketSubtitle, { color: colors.mutedForeground }]}>
-                  ¿Quién ganará el evento?
-                </Text>
-              </View>
-              <Badge variant="pending">PENDIENTE</Badge>
-            </View>
-
-            <Divider style={{ marginVertical: Spacing.md }} />
-
-            <View style={styles.optionsGrid}>
-              <TouchableOpacity
-                style={[
-                  styles.optionButton,
-                  { backgroundColor: colors.secondary, borderColor: colors.border },
-                  selectedOption === 'A' && styles.optionButtonSelected,
-                ]}
-                onPress={() => setSelectedOption('A')}
-              >
-                <Text style={[styles.optionText, { color: colors.foreground }]}>
-                  {event.homeTeam || 'Opción A'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.optionButton,
-                  { backgroundColor: colors.secondary, borderColor: colors.border },
-                  selectedOption === 'B' && styles.optionButtonSelected,
-                ]}
-                onPress={() => setSelectedOption('B')}
-              >
-                <Text style={[styles.optionText, { color: colors.foreground }]}>
-                  {event.awayTeam || 'Opción B'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.amountsSection}>
-              <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>
-                Monto de apuesta (ARS)
-              </Text>
-              <View style={styles.chipContainer}>
-                {chipAmounts.map((amount) => (
-                  <Chip
-                    key={amount}
-                    label={`$${amount}`}
-                    selected={selectedAmount === amount}
-                    onPress={() => setSelectedAmount(amount)}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.infoSection}>
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                  Pozo del mercado:
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                  $2,400
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                  Multiplicador estimado:
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.accent }]}>
-                  2.5x
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                  Cobro estimado:
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.success }]}>
-                  $250
-                </Text>
-              </View>
-            </View>
-
-            <View style={[styles.disclaimer, { backgroundColor: colors.muted }]}>
-              <Ionicons name="information-circle-outline" size={16} color={colors.mutedForeground} />
-              <Text style={[styles.disclaimerText, { color: colors.mutedForeground }]}>
-                Se activa con 2 apuestas. Si no se activa, se devuelve el aporte.
-              </Text>
-            </View>
-          </Card>
-
-          {/* Mercado: Método */}
-          <Card style={styles.marketCard}>
-            <View style={styles.marketHeader}>
-              <View>
-                <Text style={[styles.marketTitle, { color: colors.foreground }]}>
-                  Método de victoria
-                </Text>
-                <Text style={[styles.marketSubtitle, { color: colors.mutedForeground }]}>
-                  ¿Cómo terminará el evento?
-                </Text>
-              </View>
-              <Badge variant="active">ACTIVO</Badge>
-            </View>
-
-            <Divider style={{ marginVertical: Spacing.md }} />
-
-            <View style={styles.methodOptions}>
-              <TouchableOpacity
-                style={[
-                  styles.methodButton,
-                  { backgroundColor: colors.secondary, borderColor: colors.border },
-                ]}
-              >
-                <Ionicons name="flash" size={24} color={colors.accent} />
-                <Text style={[styles.methodText, { color: colors.foreground }]}>
-                  KO/TKO
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.methodButton,
-                  { backgroundColor: colors.secondary, borderColor: colors.border },
-                ]}
-              >
-                <Ionicons name="fitness" size={24} color={colors.accent} />
-                <Text style={[styles.methodText, { color: colors.foreground }]}>
-                  Sumisión
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.methodButton,
-                  { backgroundColor: colors.secondary, borderColor: colors.border },
-                ]}
-              >
-                <Ionicons name="trophy" size={24} color={colors.accent} />
-                <Text style={[styles.methodText, { color: colors.foreground }]}>
-                  Decisión
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.infoSection}>
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                  Pozo del mercado:
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                  $1,800
-                </Text>
-              </View>
-            </View>
-          </Card>
         </View>
       </ScrollView>
     </View>
@@ -469,6 +324,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
+  },
+  betsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  betsButtonText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
   },
   adminCard: {
     marginBottom: Spacing.lg,

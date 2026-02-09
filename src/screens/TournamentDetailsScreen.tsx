@@ -87,6 +87,33 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
   const totalPool = contribution * memberCount;
   const currency = tournament.currency || 'ARS';
 
+  // Format label mapping
+  const getFormatLabel = (formatId: string) => {
+    const formatMap: Record<string, string> = {
+      'liga': 'Liga',
+      'eliminatoria': 'Eliminatoria',
+      'grupos-eliminatoria': 'Grupos + Eliminatoria',
+      'evento-unico': 'Evento único',
+      'serie': 'Serie (Bo3/Bo5)',
+      'bracket': 'Eliminación Directa',
+      'points': 'Puntos',
+    };
+    return formatMap[formatId] || formatId;
+  };
+
+  const getFormatIcon = (formatId: string) => {
+    const iconMap: Record<string, any> = {
+      'liga': 'trophy',
+      'eliminatoria': 'git-branch',
+      'grupos-eliminatoria': 'grid',
+      'evento-unico': 'flag',
+      'serie': 'list',
+      'bracket': 'git-branch',
+      'points': 'analytics',
+    };
+    return iconMap[formatId] || 'trophy';
+  };
+
   // Badge logic based on dates and status
   const getBadgeInfo = () => {
     if (tournament.status === 'active') {
@@ -113,41 +140,38 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
 
   const badgeInfo = getBadgeInfo();
 
-  // Format label mapping
-  const getFormatLabel = (formatId: string) => {
-    const formatMap: Record<string, string> = {
-      'liga': 'Liga',
-      'eliminatoria': 'Eliminatoria',
-      'grupos-eliminatoria': 'Grupos + Eliminatoria',
-      'evento-unico': 'Evento único',
-      'serie': 'Serie (Bo3/Bo5)',
-      'bracket': 'Eliminación Directa',
-      'points': 'Puntos',
-    };
-    return formatMap[formatId] || formatId;
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar showBackButton />
       
       <ScrollView style={styles.content}>
-        {/* Tournament Header */}
+        {/* Header Section */}
         <View style={styles.header}>
-          <Text style={[styles.tournamentName, { color: colors.foreground }]}>
-            {tournament.name}
-          </Text>
-          <View style={[styles.liveBadge, { backgroundColor: `${badgeInfo.color}33` }]}>
-            <Ionicons name="flame" size={14} color={badgeInfo.color} />
-            <Text style={[styles.liveBadgeText, { color: badgeInfo.color }]}>
-              {badgeInfo.label}
+          <View style={styles.titleRow}>
+            <Text style={[styles.tournamentName, { color: colors.foreground }]}>
+              {tournament.name}
             </Text>
+            <View style={[styles.statusBadge, { backgroundColor: badgeInfo.color }]}>
+              <Text style={styles.statusBadgeText}>{badgeInfo.label}</Text>
+            </View>
+          </View>
+          <View style={styles.metaRow}>
+            <View style={[styles.formatBadge, { backgroundColor: colors.primary + '15' }]}>
+              <Ionicons name={getFormatIcon(tournament.format)} size={14} color={colors.primary} />
+              <Text style={[styles.formatText, { color: colors.primary }]}>
+                {getFormatLabel(tournament.format)}
+              </Text>
+            </View>
           </View>
         </View>
 
-        <Text style={[styles.description, { color: colors.mutedForeground }]}>
-          {tournament.description || 'Sin descripción'}
-        </Text>
+        {tournament.description && (
+          <View style={[styles.descriptionCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.description, { color: colors.mutedForeground }]}>
+              {tournament.description}
+            </Text>
+          </View>
+        )}
 
         {/* Info Cards */}
         <View style={styles.infoGrid}>
@@ -346,15 +370,57 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   header: {
+    marginBottom: 16,
+  },
+  titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 12,
+    gap: 12,
   },
   tournamentName: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '900',
     flex: 1,
+    letterSpacing: -0.5,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  statusBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  formatBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  formatText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  descriptionCard: {
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  description: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -369,11 +435,6 @@ const styles = StyleSheet.create({
     color: '#DC2E4B',
     fontSize: 10,
     fontWeight: '700',
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 24,
   },
   infoGrid: {
     flexDirection: 'row',

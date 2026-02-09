@@ -29,6 +29,9 @@ import NotFoundScreen from '../screens/NotFoundScreen';
 import SearchScreen from '../screens/SearchScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
 import EventDetailsScreen from '../screens/EventDetailsScreen';
+import BetsListScreen from '../screens/BetsListScreen';
+import CreateBetScreen from '../screens/CreateBetScreen';
+import BetDetailsScreen from '../screens/BetDetailsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -132,6 +135,9 @@ const AppStack = () => {
       <Stack.Screen name="TournamentEvents" component={TournamentEventsScreen} />
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
       <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
+      <Stack.Screen name="BetsList" component={BetsListScreen} />
+      <Stack.Screen name="CreateBet" component={CreateBetScreen} />
+      <Stack.Screen name="BetDetails" component={BetDetailsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
