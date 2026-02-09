@@ -265,12 +265,30 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.sm,
     borderWidth: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  eventCardGradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+  },
+  eventGradientBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.03,
   },
   eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    zIndex: 1,
   },
   eventInfo: {
     flex: 1,
@@ -278,20 +296,22 @@ const styles = StyleSheet.create({
   },
   eventTitle: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
     marginBottom: 2,
   },
   eventTeams: {
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '400',
   },
   eventRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   eventDate: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 0,
+    zIndex: 1,
   },
   // SwipeableRow styles
   swipeActions: {
@@ -370,35 +390,38 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, exp
       onPress={onPress}
       activeOpacity={0.7}
     >
+      <View style={styles.eventCardGradientOverlay}>
+        <LinearGradient
+          colors={[colors.primary + '10', 'transparent']}
+          style={styles.eventGradientBackground}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      </View>
       <View style={styles.eventHeader}>
         <View style={styles.eventInfo}>
           <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
             {event.title}
           </Text>
-          {(event.homeTeam || event.awayTeam) && (
-            <Text style={[styles.eventTeams, { color: colors.mutedForeground }]} numberOfLines={1}>
-              {event.homeTeam || 'TBD'} vs {event.awayTeam || 'TBD'}
+          {event.startsAt && (
+            <Text style={[styles.eventDate, { color: colors.mutedForeground }]}>
+              {formatDate(event.startsAt)}
             </Text>
           )}
         </View>
         <View style={styles.eventRight}>
           <Ionicons
             name={getStatusIcon(event.status)}
-            size={20}
+            size={18}
             color={getStatusColor(event.status)}
           />
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
+            size={18}
             color={colors.mutedForeground}
           />
         </View>
       </View>
-      {event.startsAt && (
-        <Text style={[styles.eventDate, { color: colors.mutedForeground }]}>
-          {formatDate(event.startsAt)}
-        </Text>
-      )}
     </TouchableOpacity>
   );
 };

@@ -4,7 +4,7 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export interface SignUpData {
@@ -38,8 +38,36 @@ export const signUp = async ({ email, password, displayName }: SignUpData) => {
   }
 };
 
-export const signIn = async (email: string, password: string) => {
+export const signIn = async (emailOrUsername: string, password: string) => {
   try {
+    let email = emailOrUsername;
+    
+    // If it doesn't look like an email (no @), treat it as username
+    if (!emailOrUsername.includes('@')) {
+      try {
+        // Search for user with this username
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('username', '==', emailOrUsername.toLowerCase().trim()));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          const error: any = new Error('Usuario no encontrado');
+          error.code = 'auth/user-not-found';
+          throw error;
+        }
+        
+        // Get email from user document
+        const userData = querySnapshot.docs[0].data();
+        email = userData.email;
+      } catch (error: any) {
+        // If there's an error searching for username, throw user-not-found
+        if (error.code) throw error;
+        const newError: any = new Error('Usuario no encontrado');
+        newError.code = 'auth/user-not-found';
+        throw newError;
+      }
+    }
+    
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return userCredential.user;
   } catch (error: any) {
@@ -62,7 +90,7 @@ export const getFirebaseErrorMessage = (errorCode: string): string => {
     case 'auth/user-disabled':
       return 'Esta cuenta ha sido deshabilitada';
     case 'auth/user-not-found':
-      return 'No existe una cuenta con este email';
+      return 'No existe una cuenta con este email o usuario';
     case 'auth/wrong-password':
       return 'Contraseña incorrecta';
     case 'auth/email-already-in-use':

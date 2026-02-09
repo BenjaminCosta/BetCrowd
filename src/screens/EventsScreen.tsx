@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
@@ -107,14 +108,20 @@ const EventsScreen = ({ navigation }: any) => {
                     ]}
                   >
                     <TouchableOpacity
-                      style={[styles.tournamentCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                      style={[styles.tournamentCard, { backgroundColor: colors.card }]}
                       onPress={() => navigation.navigate('TournamentEvents', { tournamentId: tournament.id })}
                       activeOpacity={0.7}
                     >
+                      <View style={styles.cardGradientOverlay}>
+                        <LinearGradient
+                          colors={[colors.primary + '10', 'transparent']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.gradientBackground}
+                        />
+                      </View>
+                      
                       <View style={styles.tournamentHeader}>
-                        <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
-                          <Ionicons name="trophy" size={20} color={colors.primary} />
-                        </View>
                         <View style={styles.tournamentInfo}>
                           <Text style={[styles.tournamentName, { color: colors.foreground }]} numberOfLines={1}>
                             {tournament.name}
@@ -125,7 +132,32 @@ const EventsScreen = ({ navigation }: any) => {
                             </Text>
                           )}
                         </View>
-                        <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+                      </View>
+                      
+                      <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                      
+                      <View style={styles.tournamentFooter}>
+                        <View style={styles.tournamentMeta}>
+                          <View style={styles.metaItem}>
+                            <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
+                              <Ionicons name="people" size={14} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.metaText, { color: colors.foreground }]}>
+                              {tournament.participantsEstimated || 0} participantes
+                            </Text>
+                          </View>
+                          <View style={styles.metaItem}>
+                            <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
+                              <Ionicons name="key" size={14} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                              {tournament.inviteCode}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={[styles.viewButton, { backgroundColor: colors.primary }]}>
+                          <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                        </View>
                       </View>
                     </TouchableOpacity>
                   </SwipeableRow>
@@ -178,30 +210,86 @@ const styles = StyleSheet.create({
   tournamentCard: {
     padding: Spacing.lg,
     borderRadius: BorderRadius.lg,
-    borderWidth: 1,
+    marginBottom: Spacing.md,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardGradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gradientBackground: {
+    flex: 1,
   },
   tournamentHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
   },
   tournamentInfo: {
     flex: 1,
   },
   tournamentName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
   },
   tournamentDesc: {
     fontSize: 13,
+  },
+  prizeContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+  },
+  prizeValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  prizeLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  dividerLine: {
+    height: 1,
+    marginBottom: Spacing.md,
+  },
+  tournamentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tournamentMeta: {
+    flex: 1,
+    gap: Spacing.sm,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metaIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  metaText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  viewButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

@@ -147,30 +147,17 @@ const LoginScreen = ({ navigation }: any) => {
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
             </View>
 
-            <View style={styles.socialButtons}>
-              <TouchableOpacity 
-                style={[styles.socialButton, { 
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                }]}
-              >
-                <Ionicons name="logo-google" size={20} color={colors.foreground} />
-                <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
-                  Google
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.socialButton, { 
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                }]}
-              >
-                <Ionicons name="logo-apple" size={20} color={colors.foreground} />
-                <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
-                  Apple
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity 
+              style={[styles.socialButton, { 
+                backgroundColor: colors.secondary,
+                borderColor: colors.border,
+              }]}
+            >
+              <Ionicons name="logo-google" size={20} color={colors.foreground} />
+              <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
+                Google
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.signupContainer}
