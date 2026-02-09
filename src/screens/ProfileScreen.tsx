@@ -99,15 +99,13 @@ const ProfileScreen = ({ navigation }: any) => {
             {user?.email}
           </Text>
 
-          <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.editButton}
-            >
+          <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}
+            style={[
+              styles. editButton,
+              { backgroundColor: colors.primary },
+            ]}>
+           
               <Text style={styles.editButtonText}>Editar Perfil</Text>
-            </LinearGradient>
           </TouchableOpacity>
         </View>
 

@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,49 +17,126 @@ import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { listMyTournaments, Tournament, isUserAdmin } from '../services/tournamentService';
+import { listMyTournaments, getTournament, Tournament, isUserAdmin } from '../services/tournamentService';
+import { listEvents, deleteEvent, cancelEvent } from '../services/eventService';
 import { SwipeableRow } from '../components/BetanoComponents';
 
-const EventsScreen = ({ navigation }: any) => {
+const EventsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { tournamentId: routeTournamentId } = route?.params || {};
   
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(routeTournamentId || null);
+  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adminStatuses, setAdminStatuses] = useState<Record<string, boolean>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     loadTournaments();
   }, [user]);
 
+  useEffect(() => {
+    if (selectedTournamentId && user) {
+      loadData();
+      checkAdminStatus();
+    }
+  }, [selectedTournamentId, user]);
+
+  // Refresh when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (selectedTournamentId && user) {
+        loadData();
+      }
+    }, [selectedTournamentId, user])
+  );
+
   const loadTournaments = async () => {
     if (!user) return;
     
     try {
-      setLoading(true);
       const myTournaments = await listMyTournaments();
       const filtered = myTournaments.filter(t => t.status !== 'deleted');
       setTournaments(filtered);
       
-      // Check admin status for each tournament
-      const statuses: Record<string, boolean> = {};
-      await Promise.all(
-        filtered.map(async (tournament) => {
-          const admin = await isUserAdmin(tournament.id, user.uid);
-          statuses[tournament.id] = admin;
-        })
-      );
-      setAdminStatuses(statuses);
+      // Auto-select first tournament if none selected
+      if (!selectedTournamentId && filtered.length > 0) {
+        setSelectedTournamentId(filtered[0].id);
+      }
     } catch (error) {
       console.error('Error loading tournaments:', error);
+    }
+  };
+
+  const loadData = async () => {
+    if (!user || !selectedTournamentId) return;
+    
+    try {
+      setLoading(true);
+      
+      // Load tournament
+      const tournamentData = await getTournament(selectedTournamentId);
+      setTournament(tournamentData);
+      
+      // Load events
+      const eventsList = await listEvents(selectedTournamentId);
+      setEvents(eventsList);
+    } catch (error) {
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEditTournament = (tournament: Tournament) => {
-    navigation.navigate('TournamentSettings', { tournamentId: tournament.id });
+  const checkAdminStatus = async () => {
+    if (!user || !selectedTournamentId) return;
+    try {
+      const admin = await isUserAdmin(selectedTournamentId, user.uid);
+      setIsAdmin(admin);
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([loadTournaments(), loadData()]);
+    setRefreshing(false);
+  };
+
+  const handleEditEvent = (event: any) => {
+    navigation.navigate('CreateEvent', {
+      tournamentId: selectedTournamentId,
+      eventId: event.id,
+      editMode: true,
+    });
+  };
+
+  const handleDeleteEvent = (event: any) => {
+    Alert.alert(
+      'Eliminar evento',
+      `¿Estás seguro que deseas eliminar "${event.title}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEvent(selectedTournamentId!, event.id);
+              Alert.alert('Éxito', 'Evento eliminado');
+              loadData();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'No se pudo eliminar');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -66,6 +145,9 @@ const EventsScreen = ({ navigation }: any) => {
         <TopBar />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+            Cargando eventos...
+          </Text>
         </View>
       </View>
     );
@@ -75,96 +157,164 @@ const EventsScreen = ({ navigation }: any) => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <TopBar />
-        <ScrollView style={styles.content}>
+        
+        <ScrollView 
+          style={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        >
+        {/* Header */}
+        <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Torneos y Eventos
+            Eventos
           </Text>
-          
-          {tournaments.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="trophy-outline" size={64} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                Sin torneos
-              </Text>
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                Crea un torneo o únete a uno para ver eventos
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.tournamentsList}>
-              {tournaments.map((tournament) => {
-                const isAdmin = adminStatuses[tournament.id] || false;
-                return (
-                  <SwipeableRow
-                    key={tournament.id}
-                    enabled={isAdmin}
-                    actions={[
-                      {
-                        label: 'Editar',
-                        icon: 'create-outline',
-                        color: colors.primary,
-                        onPress: () => handleEditTournament(tournament),
-                      },
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={[styles.tournamentCard, { backgroundColor: colors.card }]}
-                      onPress={() => navigation.navigate('TournamentEvents', { tournamentId: tournament.id })}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.cardGradientOverlay}>
-                        <LinearGradient
-                          colors={[colors.primary + '10', 'transparent']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={styles.gradientBackground}
+        </View>
+
+        {/* Tournament Selector */}
+        {tournaments.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tournamentSelector}>
+            {tournaments.map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                style={[
+                  styles.tournamentChip,
+                  { 
+                    backgroundColor: selectedTournamentId === t.id ? colors.primary : colors.card,
+                    borderColor: colors.border,
+                  }
+                ]}
+                onPress={() => setSelectedTournamentId(t.id)}
+              >
+                <Text style={[
+                  styles.tournamentChipText,
+                  { color: selectedTournamentId === t.id ? '#FFFFFF' : colors.foreground }
+                ]}>
+                  {t.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {tournament && (
+          <View style={styles.tournamentInfo}>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              {tournament.name}
+            </Text>
+          </View>
+        )}
+
+        {events.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="calendar-outline" size={64} color={colors.mutedForeground} />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              Sin eventos
+            </Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+              {tournaments.length === 0 
+                ? 'Crea un torneo o únete a uno para ver eventos'
+                : 'Este torneo aún no tiene eventos'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.eventsList}>
+            {events.map((event) => (
+              <SwipeableRow
+                key={event.id}
+                enabled={isAdmin}
+                actions={[
+                  {
+                    label: 'Editar',
+                    icon: 'create-outline',
+                    color: colors.primary,
+                    onPress: () => handleEditEvent(event),
+                  },
+                  {
+                    label: 'Eliminar',
+                    icon: 'trash-outline',
+                    color: colors.destructive,
+                    onPress: () => handleDeleteEvent(event),
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={[styles.eventCard, { backgroundColor: colors.card }]}
+                  onPress={() => navigation.navigate('EventDetails', { 
+                    tournamentId: selectedTournamentId, 
+                    eventId: event.id 
+                  })}
+                  activeOpacity={0.7}
+                >
+                <View style={styles.cardGradientOverlay}>
+                  <LinearGradient
+                    colors={[colors.primary + '10', 'transparent']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.gradientBackground}
+                  />
+                </View>
+                
+                <View style={styles.eventHeader}>
+                  <View style={styles.eventInfo}>
+                    <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
+                      {event.title}
+                    </Text>
+                    {event.description && (
+                      <Text style={[styles.eventDesc, { color: colors.mutedForeground }]} numberOfLines={2}>
+                        {event.description}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                
+                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                
+                <View style={styles.eventFooter}>
+                  <View style={styles.eventMeta}>
+                    <View style={styles.metaItem}>
+                      <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
+                        <Ionicons name="calendar" size={14} color={colors.primary} />
+                      </View>
+                      <Text style={[styles.metaText, { color: colors.foreground }]}>
+                        {new Date(event.startDate?.seconds * 1000 || Date.now()).toLocaleDateString('es-ES', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
+                        <Ionicons 
+                          name={event.status === 'upcoming' ? 'time-outline' : 
+                                event.status === 'live' ? 'play-circle' : 
+                                'checkmark-circle'} 
+                          size={14} 
+                          color={colors.primary} 
                         />
                       </View>
-                      
-                      <View style={styles.tournamentHeader}>
-                        <View style={styles.tournamentInfo}>
-                          <Text style={[styles.tournamentName, { color: colors.foreground }]} numberOfLines={1}>
-                            {tournament.name}
-                          </Text>
-                          {tournament.description && (
-                            <Text style={[styles.tournamentDesc, { color: colors.mutedForeground }]} numberOfLines={1}>
-                              {tournament.description}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                      
-                      <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-                      
-                      <View style={styles.tournamentFooter}>
-                        <View style={styles.tournamentMeta}>
-                          <View style={styles.metaItem}>
-                            <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
-                              <Ionicons name="people" size={14} color={colors.primary} />
-                            </View>
-                            <Text style={[styles.metaText, { color: colors.foreground }]}>
-                              {tournament.participantsEstimated || 0} participantes
-                            </Text>
-                          </View>
-                          <View style={styles.metaItem}>
-                            <View style={[styles.metaIconCircle, { backgroundColor: colors.secondary }]}>
-                              <Ionicons name="key" size={14} color={colors.primary} />
-                            </View>
-                            <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-                              {tournament.inviteCode}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={[styles.viewButton, { backgroundColor: colors.primary }]}>
-                          <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  </SwipeableRow>
-                );
-              })}
-            </View>
-          )}
+                      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                        {event.status === 'upcoming' ? 'Próximo' : 
+                         event.status === 'live' ? 'En vivo' : 
+                         'Finalizado'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[styles.viewButton, { backgroundColor: colors.primary }]}>
+                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </SwipeableRow>
+            ))}
+          </View>
+        )}
         </ScrollView>
       </View>
     </GestureHandlerRootView>
@@ -183,11 +333,38 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: Spacing.md,
+  },
+  loadingText: {
+    fontSize: 14,
+  },
+  header: {
+    marginBottom: Spacing.md,
   },
   title: {
     fontSize: 28,
     fontWeight: '700',
-    marginBottom: Spacing.xl,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+  },
+  tournamentSelector: {
+    marginBottom: Spacing.lg,
+  },
+  tournamentChip: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.sm,
+    borderWidth: 1,
+  },
+  tournamentChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tournamentInfo: {
+    marginBottom: Spacing.md,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -204,10 +381,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 32,
   },
-  tournamentsList: {
+  eventsList: {
     gap: Spacing.md,
   },
-  tournamentCard: {
+  eventCard: {
     padding: Spacing.lg,
     borderRadius: BorderRadius.lg,
     marginBottom: Spacing.md,
@@ -224,47 +401,33 @@ const styles = StyleSheet.create({
   gradientBackground: {
     flex: 1,
   },
-  tournamentHeader: {
+  eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: Spacing.md,
   },
-  tournamentInfo: {
+  eventInfo: {
     flex: 1,
   },
-  tournamentName: {
+  eventTitle: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 4,
   },
-  tournamentDesc: {
+  eventDesc: {
     fontSize: 13,
-  },
-  prizeContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.sm,
-    alignItems: 'center',
-  },
-  prizeValue: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  prizeLabel: {
-    fontSize: 10,
-    fontWeight: '600',
   },
   dividerLine: {
     height: 1,
     marginBottom: Spacing.md,
   },
-  tournamentFooter: {
+  eventFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  tournamentMeta: {
+  eventMeta: {
     flex: 1,
     gap: Spacing.sm,
   },

@@ -6,17 +6,20 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
+import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { getUserProfile } from '../services/userService';
-import { listMyTournaments, Tournament } from '../services/tournamentService';
+import { listMyTournaments, Tournament, isUserAdmin } from '../services/tournamentService';
 
 // Format label mapping
 const getFormatLabel = (formatId: string) => {
@@ -59,6 +62,7 @@ const HomeScreen = ({ navigation }: any) => {
   const [userName, setUserName] = useState<string>('');
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loadingTournaments, setLoadingTournaments] = useState(true);
+  const [adminStatuses, setAdminStatuses] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
@@ -102,6 +106,16 @@ const HomeScreen = ({ navigation }: any) => {
       setLoadingTournaments(true);
       const myTournaments = await listMyTournaments();
       setTournaments(myTournaments);
+      
+      // Check admin status for each tournament
+      const statuses: Record<string, boolean> = {};
+      await Promise.all(
+        myTournaments.map(async (tournament) => {
+          const admin = await isUserAdmin(tournament.id, user.uid);
+          statuses[tournament.id] = admin;
+        })
+      );
+      setAdminStatuses(statuses);
     } catch (error) {
       console.error('Error loading tournaments:', error);
       // Show empty state on error
@@ -112,9 +126,10 @@ const HomeScreen = ({ navigation }: any) => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <TopBar />
-      <LoadingBar isLoading={isLoading} />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar />
+        <LoadingBar isLoading={isLoading} />
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
@@ -200,13 +215,26 @@ const HomeScreen = ({ navigation }: any) => {
             <View style={styles.tournamentsList}>
               {tournaments
                 .filter((t) => t.status !== 'deleted')
-                .map((tournament) => (
-                <TouchableOpacity
-                  key={tournament.id}
-                  style={[styles.tournamentCard, { backgroundColor: colors.card }]}
-                  onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
-                  activeOpacity={0.7}
-                >
+                .map((tournament) => {
+                  const isAdmin = adminStatuses[tournament.id] || false;
+                  return (
+                  <SwipeableRow
+                    key={tournament.id}
+                    enabled={isAdmin}
+                    actions={[
+                      {
+                        label: 'Editar',
+                        icon: 'create-outline',
+                        color: colors.primary,
+                        onPress: () => handleEditTournament(tournament),
+                      },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={[styles.tournamentCard, { backgroundColor: colors.card }]}
+                      onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
+                      activeOpacity={0.7}
+                    >
                   <View style={styles.cardGradientOverlay}>
                     <LinearGradient
                       colors={[colors.primary + '10', 'transparent']}
@@ -266,12 +294,15 @@ const HomeScreen = ({ navigation }: any) => {
                     </View>
                   </View>
                 </TouchableOpacity>
-              ))}
+              </SwipeableRow>
+            );
+          })}
             </View>
           )}
         </View>
       </ScrollView>
-    </View>
+      </View>
+    </GestureHandlerRootView>
   );
 };
 

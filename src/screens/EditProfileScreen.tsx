@@ -396,7 +396,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           >
             {saving && <ActivityIndicator color="#FFFFFF" />}
           </PrimaryButton>
-
+          
           {/* Cancel Button */}
           <TouchableOpacity 
             style={styles.cancelButton}

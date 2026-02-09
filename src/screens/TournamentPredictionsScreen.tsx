@@ -6,7 +6,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
@@ -28,6 +30,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const [openPicks, setOpenPicks] = useState<any[]>([]);
   const [settledPicks, setSettledPicks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
 
   useEffect(() => {
@@ -39,6 +42,15 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
       loadData();
     }
   }, [selectedTournamentId, user]);
+
+  // Refresh when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (selectedTournamentId && user) {
+        loadData();
+      }
+    }, [selectedTournamentId, user])
+  );
 
   const loadTournaments = async () => {
     if (!user) return;
@@ -120,6 +132,12 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([loadTournaments(), loadData()]);
+    setRefreshing(false);
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -140,7 +158,17 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar />
       
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>
