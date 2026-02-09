@@ -107,19 +107,13 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
         {/* Create Event Button - Only for admins */}
         {isAdmin && (
           <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => navigation.navigate('CreateEvent', { tournamentId })}
           >
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.createButton}
-            >
-              <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-              <Text style={styles.createButtonText}>
-                Crear Evento
-              </Text>
-            </LinearGradient>
+            <Ionicons name="add-circle-outline" size={20} color={colors.foreground} />
+            <Text style={[styles.createButtonText, { color: colors.foreground }]}>
+              Crear Evento
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -221,13 +215,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 52,
     borderRadius: 12,
+    borderWidth: 1,
     gap: 8,
     marginBottom: 32,
   },
   createButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
   },
   emptyContainer: {
     paddingVertical: 64,

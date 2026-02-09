@@ -46,6 +46,14 @@ const EventDetailsScreen = ({ route, navigation }: any) => {
     }
   };
 
+  const handleEdit = () => {
+    navigation.navigate('CreateEvent', {
+      tournamentId,
+      eventId,
+      editMode: true,
+    });
+  };
+
   const handleDelete = () => {
     Alert.alert(
       'Eliminar evento',
@@ -185,36 +193,46 @@ const EventDetailsScreen = ({ route, navigation }: any) => {
           {/* Admin Actions */}
           {isAdmin && event.status !== 'cancelled' && (
             <Card style={styles.adminCard}>
-              <Text style={[styles.adminTitle, { color: colors.foreground }]}>
-                Acciones de administrador
-              </Text>
               <View style={styles.adminButtons}>
                 <TouchableOpacity
-                  style={[styles.adminButton, { backgroundColor: colors.accent }]}
-                  onPress={() => {
-                    Alert.alert('Editar evento', 'Funcionalidad de edición próximamente');
-                  }}
+                  style={[
+                    styles.adminButton,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                  onPress={handleEdit}
                 >
-                  <Ionicons name="create-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.adminButtonText}>Editar</Text>
+                  <Ionicons name="create-outline" size={18} color={colors.foreground} />
+                  <Text style={[styles.adminButtonText, { color: colors.foreground }]}>
+                    Editar
+                  </Text>
                 </TouchableOpacity>
 
                 {event.status !== 'finished' && (
                   <TouchableOpacity
-                    style={[styles.adminButton, { backgroundColor: colors.warning }]}
+                    style={[
+                      styles.adminButton,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
                     onPress={handleCancel}
                   >
-                    <Ionicons name="close-circle-outline" size={20} color="#FFFFFF" />
-                    <Text style={styles.adminButtonText}>Cancelar</Text>
+                    <Ionicons name="close-circle-outline" size={18} color={colors.mutedForeground} />
+                    <Text style={[styles.adminButtonText, { color: colors.mutedForeground }]}>
+                      Cancelar
+                    </Text>
                   </TouchableOpacity>
                 )}
 
                 <TouchableOpacity
-                  style={[styles.adminButton, { backgroundColor: colors.destructive }]}
+                  style={[
+                    styles.adminButton,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
                   onPress={handleDelete}
                 >
-                  <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.adminButtonText}>Eliminar</Text>
+                  <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+                  <Text style={[styles.adminButtonText, { color: colors.destructive }]}>
+                    Eliminar
+                  </Text>
                 </TouchableOpacity>
               </View>
             </Card>
@@ -455,11 +473,6 @@ const styles = StyleSheet.create({
   adminCard: {
     marginBottom: Spacing.lg,
   },
-  adminTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: Spacing.md,
-  },
   adminButtons: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -472,12 +485,12 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.sm,
     borderRadius: BorderRadius.md,
+    borderWidth: 1,
     gap: Spacing.xs,
   },
   adminButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
   },
   marketCard: {
     marginBottom: Spacing.lg,

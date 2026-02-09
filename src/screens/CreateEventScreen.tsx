@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing } from '../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, Input, SectionHeader } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
 import { getTournament } from '../services/tournamentService';
-import { createEvent, createEventsBatch, listEvents } from '../services/eventService';
+import { createEvent, createEventsBatch, listEvents, getEvent, updateEvent } from '../services/eventService';
 
 const CreateEventScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { tournamentId } = route.params || {};
+  const { tournamentId, eventId, editMode } = route.params || {};
 
   const [tournament, setTournament] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -28,18 +28,29 @@ const CreateEventScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     if (tournamentId) {
-      loadTournament();
+      loadData();
     }
-  }, [tournamentId]);
+  }, [tournamentId, eventId]);
 
-  const loadTournament = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       const tournamentData = await getTournament(tournamentId);
       setTournament(tournamentData);
+
+      // If edit mode, load event data
+      if (editMode && eventId) {
+        const eventData = await getEvent(tournamentId, eventId);
+        if (eventData) {
+          setTitle(eventData.title);
+          setHomeTeam(eventData.homeTeam || '');
+          setAwayTeam(eventData.awayTeam || '');
+          setNotes(eventData.notes || '');
+        }
+      }
     } catch (error) {
-      console.error('Error loading tournament:', error);
-      Alert.alert('Error', 'No se pudo cargar el torneo');
+      console.error('Error loading data:', error);
+      Alert.alert('Error', 'No se pudo cargar los datos');
     } finally {
       setLoading(false);
     }
@@ -135,19 +146,30 @@ const CreateEventScreen = ({ navigation, route }: any) => {
 
     try {
       setCreating(true);
-      await createEvent(tournamentId, {
+
+      const eventData = {
         title: title.trim(),
-        type: 'custom',
+        type: 'custom' as const,
         startsAt: null,
-        status: 'upcoming',
+        status: 'upcoming' as const,
         ...(homeTeam && { homeTeam: homeTeam.trim() }),
         ...(awayTeam && { awayTeam: awayTeam.trim() }),
         ...(notes && { notes: notes.trim() }),
-      });
+      };
 
-      Alert.alert('Éxito', 'Evento creado', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      if (editMode && eventId) {
+        // Update existing event
+        await updateEvent(tournamentId, eventId, eventData);
+        Alert.alert('Éxito', 'Evento actualizado', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      } else {
+        // Create new event
+        await createEvent(tournamentId, eventData);
+        Alert.alert('Éxito', 'Evento creado', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      }
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -156,41 +178,72 @@ const CreateEventScreen = ({ navigation, route }: any) => {
   };
 
   const renderTemplates = () => {
-    if (!tournament) return null;
+    if (!tournament || editMode) return null; // Hide templates in edit mode
 
     const templates: Record<string, string[]> = {
-      liga: [],
+      liga: ['Fecha 1', 'Fecha 2', 'Fecha 3'],
       eliminatoria: ['Octavos de final', 'Cuartos de final', 'Semifinal', 'Final'],
-      'grupos-eliminatoria': ['Fase de grupos - Fecha 1', 'Octavos de final', 'Cuartos de final', 'Semifinal', 'Final'],
-      serie: [],
+      'grupos-eliminatoria': ['Grupo A - Fecha 1', 'Grupo B - Fecha 1', 'Cuartos de final', 'Semifinal', 'Final'],
+      serie: ['Juego 1', 'Juego 2', 'Juego 3'],
       'evento-unico': ['Evento principal'],
     };
 
     const formatTemplates = templates[tournament.format] || [];
+    const showBulkCreate = tournament.format === 'liga' || tournament.format === 'serie';
     
-    if (formatTemplates.length === 0 && (tournament.format === 'liga' || tournament.format === 'serie')) {
+    if (showBulkCreate) {
       return (
         <Card style={styles.templatesCard}>
-          <SectionHeader title="Creación rápida" />
+          <View style={styles.templateHeader}>
+            <Ionicons name="flash" size={20} color={colors.accent} />
+            <Text style={[styles.templateTitle, { color: colors.foreground }]}>
+              Creación rápida
+            </Text>
+          </View>
           <Text style={[styles.templateHint, { color: colors.mutedForeground }]}>
-            Crea múltiples {tournament.format === 'liga' ? 'fechas' : 'juegos'} a la vez
+            Crea múltiples {tournament.format === 'liga' ? 'fechas' : 'juegos'} simultáneamente
           </Text>
-          <View style={styles.bulkRow}>
-            <Input
-              value={bulkCount}
-              onChangeText={setBulkCount}
-              placeholder="Cantidad (1-20)"
-              keyboardType="numeric"
-              style={{ flex: 1 }}
-            />
-            <TouchableOpacity
-              style={[styles.bulkButton, { backgroundColor: colors.primary }]}
-              onPress={handleBulkCreate}
-              disabled={creating}
-            >
-              <Ionicons name="flash" size={18} color="#FFFFFF" />
-              <Text style={styles.bulkButtonText}>Crear</Text>
-            </TouchableOpacity>
+
+          {/* Quick templates */}
+          <View style={styles.templatesGrid}>
+            {formatTemplates.map((template) => (
+              <TouchableOpacity
+                key={template}
+                style={[styles.templateChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                onPress={() => handleQuickCreate(template)}
+                disabled={creating}
+              >
+                <Text style={[styles.templateChipText, { color: colors.foreground }]}>
+                  {template}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Bulk creation */}
+          <View style={styles.bulkSection}>
+            <View style={styles.bulkHeader}>
+              <Ionicons name="layers-outline" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.bulkLabel, { color: colors.mutedForeground }]}>
+                O crea varias a la vez
+              </Text>
+            </View>
+            <View style={styles.bulkRow}>
+              <Input
+                value={bulkCount}
+                onChangeText={setBulkCount}
+                placeholder="Cantidad (1-20)"
+                keyboardType="numeric"
+                style={{ flex: 1 }}
+              />
+              <TouchableOpacity
+                style={[styles.bulkButton, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                onPress={handleBulkCreate}
+                disabled={creating}
+              >
+                <Text style={[styles.bulkButtonText, { color: colors.foreground }]}>Crear</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Card>
       );
@@ -199,15 +252,20 @@ const CreateEventScreen = ({ navigation, route }: any) => {
     if (formatTemplates.length > 0) {
       return (
         <Card style={styles.templatesCard}>
-          <SectionHeader title="Plantillas rápidas" />
+          <View style={styles.templateHeader}>
+            <Ionicons name="flash" size={20} color={colors.accent} />
+            <Text style={[styles.templateTitle, { color: colors.foreground }]}>
+              Plantillas rápidas
+            </Text>
+          </View>
           <Text style={[styles.templateHint, { color: colors.mutedForeground }]}>
-            Crea eventos con un toque
+            Selecciona una plantilla para crear el evento instantáneamente
           </Text>
           <View style={styles.templatesGrid}>
             {formatTemplates.map((template) => (
               <TouchableOpacity
                 key={template}
-                style={[styles.templateChip, { backgroundColor: colors.secondary }]}
+                style={[styles.templateChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}
                 onPress={() => handleQuickCreate(template)}
                 disabled={creating}
               >
@@ -243,7 +301,7 @@ const CreateEventScreen = ({ navigation, route }: any) => {
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.foreground }]}>
-              Crear Evento
+              {editMode ? 'Editar Evento' : 'Crear Evento'}
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               {tournament?.name || 'Torneo'}
@@ -253,7 +311,12 @@ const CreateEventScreen = ({ navigation, route }: any) => {
           {renderTemplates()}
 
           <Card style={styles.formCard}>
-            <SectionHeader title="Evento personalizado" />
+            <View style={styles.formHeader}>
+              <Ionicons name="create-outline" size={20} color={colors.foreground} />
+              <Text style={[styles.formTitle, { color: colors.foreground }]}>
+                {editMode ? 'Detalles del evento' : 'Evento personalizado'}
+              </Text>
+            </View>
             
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>
@@ -309,8 +372,14 @@ const CreateEventScreen = ({ navigation, route }: any) => {
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-                  <Text style={styles.createButtonText}>Crear Evento</Text>
+                  <Ionicons
+                    name={editMode ? 'checkmark-circle' : 'add-circle'}
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.createButtonText}>
+                    {editMode ? 'Guardar Cambios' : 'Crear Evento'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -351,44 +420,80 @@ const styles = StyleSheet.create({
   templatesCard: {
     marginBottom: Spacing.lg,
   },
+  templateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  templateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
   templateHint: {
     fontSize: 13,
+    lineHeight: 18,
     marginBottom: Spacing.md,
   },
   templatesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   templateChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
   },
   templateChipText: {
     fontSize: 13,
     fontWeight: '600',
   },
+  bulkSection: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  bulkHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  bulkLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   bulkRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.sm,
     alignItems: 'center',
   },
   bulkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
   },
   bulkButtonText: {
-    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
   formCard: {
     marginBottom: Spacing.xl,
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  formTitle: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   formGroup: {
     marginBottom: Spacing.lg,
