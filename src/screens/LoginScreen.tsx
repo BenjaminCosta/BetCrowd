@@ -10,6 +10,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -69,7 +70,7 @@ const LoginScreen = ({ navigation }: any) => {
               end={{ x: 1, y: 1 }}
               style={styles.logoGradient}
             >
-              <Ionicons name="flame" size={48} color="#FFFFFF" />
+              <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
             </LinearGradient>
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
@@ -240,6 +241,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 10,
+  },
+  logoImage: {
+    width: 60,
+    height: 60,
   },
   logoText: {
     fontSize: 40,

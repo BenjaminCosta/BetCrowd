@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
@@ -161,7 +161,7 @@ const LoadingScreen = () => {
         end={{ x: 1, y: 1 }}
         style={styles.loadingLogoGradient}
       >
-        <Ionicons name="flame" size={48} color="#FFFFFF" />
+        <Image source={require('../../assets/icon.png')} style={styles.loadingLogoImage} />
       </LinearGradient>
       <ActivityIndicator size="large" color={colors.primary} style={styles.loadingSpinner} />
       <Text style={[styles.loadingText, { color: colors.foreground }]}>
@@ -210,6 +210,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  loadingLogoImage: {
+    width: 60,
+    height: 60,
   },
   loadingSpinner: {
     marginTop: 16,

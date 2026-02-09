@@ -6,15 +6,21 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients } from '../theme/colors';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { getTournament, isUserAdmin } from '../services/tournamentService';
-import { listenEvents, Event } from '../services/eventService';
+import { listenEvents, deleteEvent, cancelEvent, Event } from '../services/eventService';
+import { listenBets, Bet, hasUserPicked, calculateOdds } from '../services/betService';
+import { EventCard, SwipeableRow, BetCardCompact } from '../components/BetanoComponents';
 
 const TournamentEventsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -24,6 +30,9 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
 
   const [tournament, setTournament] = useState<any>(null);
   const [events, setEvents] = useState<Event[]>([]);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [eventBets, setEventBets] = useState<Record<string, Bet[]>>({});
+  const [userPicks, setUserPicks] = useState<Record<string, Record<string, boolean>>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -45,6 +54,29 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
     return () => unsubscribe();
   }, [tournamentId]);
 
+  // Listen to bets for expanded event
+  useEffect(() => {
+    if (!expandedEventId || !tournamentId) return;
+
+    const unsubscribe = listenBets(tournamentId, expandedEventId, async (bets) => {
+      setEventBets((prev) => ({ ...prev, [expandedEventId]: bets }));
+
+      // Check user picks
+      if (user) {
+        const picks: Record<string, boolean> = {};
+        await Promise.all(
+          bets.map(async (bet) => {
+            const hasPick = await hasUserPicked(tournamentId, expandedEventId, bet.id, user.uid);
+            picks[bet.id] = hasPick;
+          })
+        );
+        setUserPicks((prev) => ({ ...prev, [expandedEventId]: picks }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [expandedEventId, tournamentId, user]);
+
   const loadTournament = async () => {
     try {
       const tournamentData = await getTournament(tournamentId);
@@ -64,14 +96,71 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: string }> = {
-      upcoming: { label: 'PRÓXIMO', color: '#FF8C00' },
-      live: { label: 'EN VIVO', color: '#DC2E4B' },
-      finished: { label: 'FINALIZADO', color: '#6B7280' },
-      cancelled: { label: 'CANCELADO', color: '#6B7280' },
-    };
-    return statusMap[status] || { label: status.toUpperCase(), color: '#6B7280' };
+  const toggleEventExpansion = (eventId: string) => {
+    setExpandedEventId((prev) => (prev === eventId ? null : eventId));
+  };
+
+  const handleCreateEvent = () => {
+    navigation.navigate('CreateEvent', { tournamentId });
+  };
+
+  const handleEditEvent = (event: Event) => {
+    navigation.navigate('CreateEvent', {
+      tournamentId,
+      eventId: event.id,
+      editMode: true,
+    });
+  };
+
+  const handleDeleteEvent = (event: Event) => {
+    Alert.alert(
+      'Eliminar evento',
+      `¿Estás seguro que deseas eliminar "${event.title}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEvent(tournamentId, event.id);
+              Alert.alert('Éxito', 'Evento eliminado');
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'No se pudo eliminar');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelEvent = (event: Event) => {
+    Alert.alert('Cancelar evento', `¿Deseas cancelar "${event.title}"?`, [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Sí',
+        onPress: async () => {
+          try {
+            await cancelEvent(tournamentId, event.id);
+            Alert.alert('Éxito', 'Evento cancelado');
+          } catch (error: any) {
+            Alert.alert('Error', error.message || 'No se pudo cancelar');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCreateBet = (eventId: string) => {
+    navigation.navigate('CreateBet', { tournamentId, eventId });
+  };
+
+  const handleBetOptionPress = (eventId: string, bet: Bet, option: string) => {
+    navigation.navigate('BetDetails', {
+      tournamentId,
+      eventId,
+      betId: bet.id,
+    });
   };
 
   if (loading) {
@@ -89,105 +178,127 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <TopBar showBackButton />
-      
-      <ScrollView style={styles.content}>
-        {tournament && (
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              Eventos del Torneo
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {tournament.name}
-            </Text>
-          </View>
-        )}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar showBackButton />
 
-        {/* Create Event Button - Only for admins */}
-        {isAdmin && (
-          <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => navigation.navigate('CreateEvent', { tournamentId })}
-          >
-            <Ionicons name="add-circle-outline" size={20} color={colors.foreground} />
-            <Text style={[styles.createButtonText, { color: colors.foreground }]}>
-              Crear Evento
-            </Text>
-          </TouchableOpacity>
-        )}
+        <ScrollView style={styles.content}>
+          {/* Tournament Header */}
+          {tournament && (
+            <View style={styles.header}>
+              <Text style={[styles.title, { color: colors.foreground }]}>Eventos del Torneo</Text>
+              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+                {tournament.name}
+              </Text>
+            </View>
+          )}
 
-        {/* Events List */}
-        {events.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="calendar-outline" size={64} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              Todavía no hay eventos
-            </Text>
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              {isAdmin 
-                ? 'Crea el primer evento para que los participantes puedan hacer predicciones' 
-                : 'El administrador aún no ha creado eventos para este torneo'}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.eventsList}>
-            {events.map((event) => {
-              const badge = getStatusBadge(event.status);
-              return (
-                <TouchableOpacity
-                  key={event.id}
-                  style={[styles.eventCard, { backgroundColor: colors.card }]}
-                  onPress={() => navigation.navigate('EventDetails', { tournamentId, eventId: event.id })}
-                >
-                  <View style={styles.eventHeader}>
-                    <View style={styles.eventInfo}>
-                      <Text style={[styles.eventTitle, { color: colors.foreground }]}>
-                        {event.title}
-                      </Text>
-                      {event.homeTeam && event.awayTeam && (
-                        <Text style={[styles.eventTeams, { color: colors.mutedForeground }]}>
-                          {event.homeTeam} vs {event.awayTeam}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: badge.color + '20' }]}>
-                      <Text style={[styles.statusBadgeText, { color: badge.color }]}>
-                        {badge.label}
-                      </Text>
-                    </View>
+          {/* Create Event Button (Admin) */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={[styles.createButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={handleCreateEvent}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.foreground} />
+              <Text style={[styles.createButtonText, { color: colors.foreground }]}>
+                Crear Evento
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Events List */}
+          {events.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={64} color={colors.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Sin eventos</Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                {isAdmin ? 'Crea el primer evento del torneo' : 'No hay eventos disponibles aún'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.eventsList}>
+              {events.map((event) => {
+                const isExpanded = expandedEventId === event.id;
+                const bets = eventBets[event.id] || [];
+                const picks = userPicks[event.id] || {};
+
+                return (
+                  <View key={event.id}>
+                    {/* Event Card with Swipe Actions */}
+                    <SwipeableRow
+                      enabled={isAdmin}
+                      actions={[
+                        {
+                          label: 'Editar',
+                          icon: 'create-outline',
+                          color: colors.primary,
+                          onPress: () => handleEditEvent(event),
+                        },
+                        {
+                          label: 'Eliminar',
+                          icon: 'trash-outline',
+                          color: colors.destructive,
+                          onPress: () => handleDeleteEvent(event),
+                        },
+                      ]}
+                    >
+                      <EventCard
+                        event={event}
+                        theme={theme}
+                        onPress={() => toggleEventExpansion(event.id)}
+                        expanded={isExpanded}
+                      />
+                    </SwipeableRow>
+
+                    {/* Expanded Bets Section */}
+                    {isExpanded && (
+                      <View style={[styles.betsSection, { backgroundColor: colors.secondary }]}>
+                        {/* Create Bet Button */}
+                        {isAdmin && (
+                          <TouchableOpacity
+                            style={[styles.createBetButton, { borderColor: colors.border }]}
+                            onPress={() => handleCreateBet(event.id)}
+                          >
+                            <Ionicons name="add" size={18} color={colors.primary} />
+                            <Text style={[styles.createBetText, { color: colors.primary }]}>
+                              Crear Apuesta
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {/* Bets List */}
+                        {bets.length === 0 ? (
+                          <Text style={[styles.noBetsText, { color: colors.mutedForeground }]}>
+                            {isAdmin ? 'Crea la primera apuesta' : 'No hay apuestas disponibles'}
+                          </Text>
+                        ) : (
+                          bets.map((bet) => (
+                            <BetCardCompact
+                              key={bet.id}
+                              bet={bet}
+                              theme={theme}
+                              onOptionPress={(option) => handleBetOptionPress(event.id, bet, option)}
+                              userSelection={picks[bet.id] ? '✓' : null}
+                              showOdds={true}
+                            />
+                          ))
+                        )}
+                      </View>
+                    )}
                   </View>
-                  
-                  {event.startsAt && (
-                    <View style={styles.eventFooter}>
-                      <Ionicons name="time-outline" size={14} color={colors.mutedForeground} />
-                      <Text style={[styles.eventTime, { color: colors.mutedForeground }]}>
-                        {event.startsAt.toDate().toLocaleDateString('es-ES', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
-    </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    </GestureHandlerRootView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -198,87 +309,78 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 14,
   },
+  content: {
+    flex: 1,
+    padding: Spacing.lg,
+  },
   header: {
-    marginBottom: 24,
+    marginBottom: Spacing.xl,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: '900',
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
   },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 52,
-    borderRadius: 12,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
-    gap: 8,
-    marginBottom: 32,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
   },
   createButtonText: {
     fontSize: 15,
     fontWeight: '600',
   },
   emptyContainer: {
-    paddingVertical: 64,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
     gap: 12,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    marginTop: 16,
   },
   emptyText: {
     fontSize: 14,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    maxWidth: 250,
   },
   eventsList: {
-    gap: 12,
+    gap: 0,
   },
-  eventCard: {
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
+  betsSection: {
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: -Spacing.sm,
   },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  eventInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  eventTeams: {
-    fontSize: 14,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  eventFooter: {
+  createBetButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginBottom: Spacing.md,
+    gap: 6,
   },
-  eventTime: {
-    fontSize: 12,
+  createBetText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  noBetsText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: Spacing.lg,
   },
 });
 

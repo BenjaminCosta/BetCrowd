@@ -77,7 +77,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
               end={{ x: 1, y: 0 }}
               style={styles.logoGradient}
             >
-              <Ionicons name="flame" size={20} color="#FFFFFF" />
+              <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
             </LinearGradient>
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
@@ -145,6 +145,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  logoImage: {
+    width: 24,
+    height: 24,
   },
   logoText: {
     fontSize: 20,

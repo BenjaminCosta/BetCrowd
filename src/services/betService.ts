@@ -12,10 +12,11 @@ import {
   Timestamp,
   serverTimestamp,
   writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 
-// Bet interface
+// Bet interface with odds calculation fields
 export interface Bet {
   id: string;
   title: string;
@@ -32,6 +33,10 @@ export interface Bet {
   result?: any; // filled when settled
   // For over_under type
   line?: number;
+  // Odds calculation fields
+  totalPot?: number; // sum of all stakes
+  totalPicks?: number; // count of picks
+  optionTotals?: Record<string, number>; // stake per option
 }
 
 export interface BetInput {
@@ -127,6 +132,12 @@ export const createBet = async (
 
   const betRef = doc(collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets'));
   
+  // Initialize optionTotals based on options
+  const initialOptionTotals: Record<string, number> = {};
+  (input.options || []).forEach(option => {
+    initialOptionTotals[option] = 0;
+  });
+  
   const betData = {
     title: input.title,
     description: input.description || '',
@@ -139,6 +150,10 @@ export const createBet = async (
     createdBy: user.uid,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    // Initialize odds fields
+    totalPot: 0,
+    totalPicks: 0,
+    optionTotals: initialOptionTotals,
     ...(input.line !== undefined && { line: input.line }),
   };
 
@@ -247,7 +262,7 @@ export const getMyPick = async (
 };
 
 /**
- * Create or update user's pick
+ * Create or update user's pick with transaction to update bet odds
  */
 export const upsertMyPick = async (
   tournamentId: string,
@@ -258,25 +273,73 @@ export const upsertMyPick = async (
   stakeAmount: number
 ): Promise<void> => {
   const pickRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks', uid);
-  const pickDoc = await getDoc(pickRef);
-  
-  const pickData = {
-    uid,
-    selection,
-    stakeAmount: stakeAmount || 0,
-    updatedAt: serverTimestamp(),
-  };
+  const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
 
-  if (pickDoc.exists()) {
-    // Update existing pick
-    await updateDoc(pickRef, pickData);
-  } else {
-    // Create new pick
-    await setDoc(pickRef, {
-      ...pickData,
-      createdAt: serverTimestamp(),
+  await runTransaction(db, async (transaction) => {
+    const betDoc = await transaction.get(betRef);
+    const pickDoc = await transaction.get(pickRef);
+    
+    if (!betDoc.exists()) {
+      throw new Error('Bet not found');
+    }
+
+    const bet = betDoc.data() as Bet;
+    const previousPick = pickDoc.exists() ? pickDoc.data() as Pick : null;
+    
+    // For score type, convert selection to string key for optionTotals
+    const selectionKey = typeof selection === 'object' 
+      ? JSON.stringify(selection) 
+      : String(selection);
+
+    // Calculate new totals
+    let newTotalPot = bet.totalPot || 0;
+    let newTotalPicks = bet.totalPicks || 0;
+    const newOptionTotals = { ...(bet.optionTotals || {}) };
+
+    // If updating existing pick, remove old values
+    if (previousPick) {
+      newTotalPot -= previousPick.stakeAmount;
+      const oldKey = typeof previousPick.selection === 'object'
+        ? JSON.stringify(previousPick.selection)
+        : String(previousPick.selection);
+      newOptionTotals[oldKey] = (newOptionTotals[oldKey] || 0) - previousPick.stakeAmount;
+    } else {
+      // New pick
+      newTotalPicks += 1;
+    }
+
+    // Add new values
+    newTotalPot += stakeAmount;
+    newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
+
+    // Update bet with new totals
+    transaction.update(betRef, {
+      totalPot: newTotalPot,
+      totalPicks: newTotalPicks,
+      optionTotals: newOptionTotals,
+      updatedAt: serverTimestamp(),
     });
-  }
+
+    // Update or create pick
+    const pickData = {
+      uid,
+      selection,
+      stakeAmount: stakeAmount || 0,
+      updatedAt: serverTimestamp(),
+    };
+
+    if (pickDoc.exists()) {
+      transaction.update(pickRef, pickData);
+    } else {
+      transaction.set(pickRef, {
+        ...pickData,
+        createdAt: serverTimestamp(),
+      });
+    }
+  });
+
+  // Also update picks index for PredictionsScreen
+  await updatePicksIndex(tournamentId, eventId, betId, uid);
 };
 
 /**
@@ -327,4 +390,100 @@ export const hasUserPicked = async (
 ): Promise<boolean> => {
   const pick = await getMyPick(tournamentId, eventId, betId, uid);
   return pick !== null;
+};
+
+/**
+ * Calculate odds for each option in a bet
+ * Returns a map of option -> odds (e.g., "1.85")
+ */
+export const calculateOdds = (bet: Bet, fee: number = 0.05): Record<string, string> => {
+  const odds: Record<string, string> = {};
+  
+  if (!bet.totalPot || bet.totalPot === 0 || !bet.optionTotals) {
+    // No picks yet, show default odds
+    bet.options.forEach(option => {
+      odds[option] = '—';
+    });
+    return odds;
+  }
+
+  const effectivePot = bet.totalPot * (1 - fee);
+
+  bet.options.forEach(option => {
+    const amountOnOption = bet.optionTotals?.[option] || 0;
+    
+    if (amountOnOption === 0) {
+      // No one picked this option, show max odds or placeholder
+      odds[option] = '—';
+    } else {
+      const calculatedOdds = effectivePot / amountOnOption;
+      // Cap at 99.99 for display
+      const cappedOdds = Math.min(calculatedOdds, 99.99);
+      odds[option] = cappedOdds.toFixed(2);
+    }
+  });
+
+  return odds;
+};
+
+/**
+ * Update user's picks index for PredictionsScreen
+ */
+const updatePicksIndex = async (
+  tournamentId: string,
+  eventId: string,
+  betId: string,
+  uid: string
+): Promise<void> => {
+  const indexRef = doc(db, 'users', uid, 'picksIndex', `${tournamentId}_${eventId}_${betId}`);
+  
+  await setDoc(indexRef, {
+    tournamentId,
+    eventId,
+    betId,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+/**
+ * Get user's picks across a tournament (for PredictionsScreen)
+ */
+export const getUserPicksForTournament = async (
+  uid: string,
+  tournamentId: string
+): Promise<Array<{
+  tournamentId: string;
+  eventId: string;
+  betId: string;
+  pick?: Pick;
+  bet?: Bet;
+}>> => {
+  const indexRef = collection(db, 'users', uid, 'picksIndex');
+  const q = query(indexRef, orderBy('updatedAt', 'desc'));
+  const snapshot = await getDocs(q);
+  
+  const picks: Array<any> = [];
+  
+  for (const indexDoc of snapshot.docs) {
+    const data = indexDoc.data();
+    
+    // Filter by tournament
+    if (data.tournamentId !== tournamentId) continue;
+    
+    // Get the actual pick and bet data
+    const pickData = await getMyPick(data.tournamentId, data.eventId, data.betId, uid);
+    const betData = await getBet(data.tournamentId, data.eventId, data.betId);
+    
+    if (pickData && betData) {
+      picks.push({
+        tournamentId: data.tournamentId,
+        eventId: data.eventId,
+        betId: data.betId,
+        pick: pickData,
+        bet: betData,
+      });
+    }
+  }
+  
+  return picks;
 };
