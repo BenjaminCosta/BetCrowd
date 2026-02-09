@@ -21,6 +21,7 @@ import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { PrimaryButton } from '../components/CommonComponents';
 import { useAuth } from '../context/AuthContext';
+import { auth } from '../lib/firebase';
 import { getUserProfile, updateFullProfile, UpdateProfileData } from '../services/userService';
 import { uploadAvatar } from '../services/storageService';
 import { changePassword, validatePasswordChange, getPasswordErrorMessage } from '../services/passwordService';
@@ -120,6 +121,14 @@ const EditProfileScreen = ({ navigation }: any) => {
       }
 
       await updateFullProfile(user.uid, originalUsername, updateData);
+      
+      // Update displayName in Firebase Auth
+      if (auth.currentUser && fullName.trim() !== auth.currentUser.displayName) {
+        const { updateProfile } = await import('firebase/auth');
+        await updateProfile(auth.currentUser, {
+          displayName: fullName.trim(),
+        });
+      }
 
       Alert.alert('¡Éxito!', 'Tu perfil se actualizó correctamente', [
         {

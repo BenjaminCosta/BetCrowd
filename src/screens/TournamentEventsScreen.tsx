@@ -273,14 +273,24 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
                           </Text>
                         ) : (
                           bets.map((bet) => (
-                            <BetCardCompact
-                              key={bet.id}
-                              bet={bet}
-                              theme={theme}
-                              onOptionPress={(option) => handleBetOptionPress(event.id, bet, option)}
-                              userSelection={picks[bet.id] ? '✓' : null}
-                              showOdds={true}
-                            />
+                            <View key={bet.id} style={styles.betCardWrapper}>
+                              <BetCardCompact
+                                bet={bet}
+                                theme={theme}
+                                onOptionPress={(option) => handleBetOptionPress(event.id, bet, option)}
+                                userSelection={picks[bet.id] ? '✓' : null}
+                                showOdds={true}
+                              />
+                              {isAdmin && (
+                                <TouchableOpacity
+                                  style={[styles.editBetButton, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                                  onPress={() => navigation.navigate('CreateBet', { tournamentId, eventId: event.id, betId: bet.id, editMode: true })}
+                                >
+                                  <Ionicons name="create-outline" size={16} color={colors.primary} />
+                                  <Text style={[styles.editBetText, { color: colors.primary }]}>Editar Apuesta</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
                           ))
                         )}
                       </View>
@@ -381,7 +391,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: Spacing.lg,
+  },  betCardWrapper: {
+    marginBottom: Spacing.sm,
   },
-});
+  editBetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    marginTop: Spacing.xs,
+  },
+  editBetText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },});
 
 export default TournamentEventsScreen;

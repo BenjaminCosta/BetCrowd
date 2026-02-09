@@ -71,14 +71,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
             style={styles.logoContainer}
             onPress={() => handleNavigate('Inicio')}
           >
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.logoGradient}
-            >
-              <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
-            </LinearGradient>
+            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
@@ -139,16 +132,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  logoGradient: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   logoImage: {
-    width: 24,
-    height: 24,
+    width: 40,
+    height: 40,
   },
   logoText: {
     fontSize: 20,

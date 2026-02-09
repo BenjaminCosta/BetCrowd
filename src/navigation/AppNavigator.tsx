@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import HomeScreen from '../screens/HomeScreen';
 import EventsScreen from '../screens/EventsScreen';
 import CreateTournamentScreen from '../screens/CreateTournamentScreen';
-import PredictionsScreen from '../screens/PredictionsScreen';
+import TournamentPredictionsScreen from '../screens/TournamentPredictionsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
@@ -20,7 +20,6 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
 import TournamentDetailsScreen from '../screens/TournamentDetailsScreen';
-import TournamentPredictionsScreen from '../screens/TournamentPredictionsScreen';
 import TournamentEventsScreen from '../screens/TournamentEventsScreen';
 import TournamentSettingsScreen from '../screens/TournamentSettingsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -32,6 +31,7 @@ import EventDetailsScreen from '../screens/EventDetailsScreen';
 import BetsListScreen from '../screens/BetsListScreen';
 import CreateBetScreen from '../screens/CreateBetScreen';
 import BetDetailsScreen from '../screens/BetDetailsScreen';
+import LoadResultsScreen from '../screens/LoadResultsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -110,7 +110,7 @@ const MainTabs = () => {
           ),
         }}
       />
-      <Tab.Screen name="Apuestas" component={PredictionsScreen} />
+      <Tab.Screen name="Apuestas" component={TournamentPredictionsScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -131,13 +131,13 @@ const AppStack = () => {
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="TournamentDetails" component={TournamentDetailsScreen} />
       <Stack.Screen name="TournamentSettings" component={TournamentSettingsScreen} />
-      <Stack.Screen name="TournamentPredictions" component={TournamentPredictionsScreen} />
       <Stack.Screen name="TournamentEvents" component={TournamentEventsScreen} />
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
       <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
       <Stack.Screen name="BetsList" component={BetsListScreen} />
       <Stack.Screen name="CreateBet" component={CreateBetScreen} />
       <Stack.Screen name="BetDetails" component={BetDetailsScreen} />
+      <Stack.Screen name="LoadResults" component={LoadResultsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
@@ -155,14 +155,7 @@ const LoadingScreen = () => {
   
   return (
     <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={Gradients.primary as any}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.loadingLogoGradient}
-      >
-        <Image source={require('../../assets/icon.png')} style={styles.loadingLogoImage} />
-      </LinearGradient>
+      <Image source={require('../../assets/icon.png')} style={styles.loadingLogoImage} />
       <ActivityIndicator size="large" color={colors.primary} style={styles.loadingSpinner} />
       <Text style={[styles.loadingText, { color: colors.foreground }]}>
         <Text style={{ color: colors.primary }}>BET</Text>CROWD
@@ -203,17 +196,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingLogoGradient: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
   loadingLogoImage: {
-    width: 60,
-    height: 60,
+    width: 105,
+    height: 105,
+    marginBottom: 16,
   },
   loadingSpinner: {
     marginTop: 16,

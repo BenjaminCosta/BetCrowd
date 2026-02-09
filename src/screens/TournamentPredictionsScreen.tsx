@@ -12,56 +12,107 @@ import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { getTournament } from '../services/tournamentService';
-import { getUserPicksForTournament } from '../services/betService';
-import { getEvent } from '../services/eventService';
+import { getTournament, listMyTournaments } from '../services/tournamentService';
+import { getMyPick, getBet, listBets, type Bet } from '../services/betService';
+import { listEvents } from '../services/eventService';
 
 const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const { tournamentId } = route.params || {};
+  const { tournamentId: routeTournamentId } = route?.params || {};
 
+  const [tournaments, setTournaments] = useState<any[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(routeTournamentId || null);
   const [tournament, setTournament] = useState<any>(null);
-  const [picks, setPicks] = useState<any[]>([]);
+  const [openPicks, setOpenPicks] = useState<any[]>([]);
+  const [settledPicks, setSettledPicks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
 
   useEffect(() => {
-    if (tournamentId && user) {
+    loadTournaments();
+  }, [user]);
+
+  useEffect(() => {
+    if (selectedTournamentId && user) {
       loadData();
     }
-  }, [tournamentId, user]);
+  }, [selectedTournamentId, user]);
+
+  const loadTournaments = async () => {
+    if (!user) return;
+    try {
+      const myTournaments = await listMyTournaments();
+      setTournaments(myTournaments.filter(t => t.status !== 'deleted'));
+      
+      // Auto-select first tournament if none selected
+      if (!selectedTournamentId && myTournaments.length > 0) {
+        setSelectedTournamentId(myTournaments[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading tournaments:', error);
+    }
+  };
 
   const loadData = async () => {
+    if (!user || !selectedTournamentId) return;
+    
     try {
       setLoading(true);
       
       // Load tournament
-      const tournamentData = await getTournament(tournamentId);
+      const tournamentData = await getTournament(selectedTournamentId);
       setTournament(tournamentData);
       
-      // Load user picks
-      if (user) {
-        const tournamentPicks = await getUserPicksForTournament(user.uid, tournamentId);
+      // Load picks directly from events/bets
+      const allOpenPicks: any[] = [];
+      const allSettledPicks: any[] = [];
+      
+      try {
+        const events = await listEvents(selectedTournamentId);
         
-        // Load event details for each pick
-        const picksWithEvents = await Promise.all(
-          tournamentPicks.map(async (pickData: any) => {
-            try {
-              const event = await getEvent(pickData.tournamentId, pickData.eventId);
-              return {
-                ...pickData,
-                event,
-              };
-            } catch (error) {
-              console.error('Error loading event:', error);
-              return pickData;
+        for (const event of events) {
+          try {
+            const bets = await listBets(selectedTournamentId, event.id);
+            
+            for (const bet of bets) {
+              try {
+                const pick = await getMyPick(selectedTournamentId, event.id, bet.id, user.uid);
+                
+                if (pick) {
+                  const pickData = {
+                    tournamentId: selectedTournamentId,
+                    eventId: event.id,
+                    betId: bet.id,
+                    pick,
+                    bet,
+                    event,
+                  };
+                  
+                  // Dividir en abiertas y resueltas
+                  if (bet.status === 'settled' || bet.status === 'cancelled') {
+                    allSettledPicks.push(pickData);
+                  } else {
+                    allOpenPicks.push(pickData);
+                  }
+                }
+              } catch (pickError) {
+                // Pick doesn't exist, skip
+                continue;
+              }
             }
-          })
-        );
-        
-        setPicks(picksWithEvents);
+          } catch (betError) {
+            console.error('Error loading bets:', betError);
+            continue;
+          }
+        }
+      } catch (eventError) {
+        console.error('Error loading events:', eventError);
       }
+      
+      setOpenPicks(allOpenPicks);
+      setSettledPicks(allSettledPicks);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -72,45 +123,115 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <TopBar showBackButton />
+        <TopBar />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
-            Cargando predicciones...
+            Cargando apuestas...
           </Text>
         </View>
       </View>
     );
   }
 
+  const currentPicks = activeTab === 'open' ? openPicks : settledPicks;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <TopBar showBackButton />
+      <TopBar />
       
       <ScrollView style={styles.content}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            Mis Apuestas
+          </Text>
+        </View>
+
+        {/* Tournament Selector */}
+        {tournaments.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tournamentSelector}>
+            {tournaments.map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                style={[
+                  styles.tournamentChip,
+                  { 
+                    backgroundColor: selectedTournamentId === t.id ? colors.primary : colors.card,
+                    borderColor: colors.border,
+                  }
+                ]}
+                onPress={() => setSelectedTournamentId(t.id)}
+              >
+                <Text style={[
+                  styles.tournamentChipText,
+                  { color: selectedTournamentId === t.id ? '#FFFFFF' : colors.foreground }
+                ]}>
+                  {t.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
         {tournament && (
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              Predicciones
-            </Text>
+          <View style={styles.tournamentInfo}>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               {tournament.name}
             </Text>
           </View>
         )}
 
-        {picks.length === 0 ? (
+        {/* Tabs: Abiertas / Resueltas */}
+        <View style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              activeTab === 'open' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }
+            ]}
+            onPress={() => setActiveTab('open')}
+          >
+            <Text style={[
+              styles.tabText,
+              { color: activeTab === 'open' ? colors.primary : colors.mutedForeground }
+            ]}>
+              Abiertas ({openPicks.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              activeTab === 'settled' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }
+            ]}
+            onPress={() => setActiveTab('settled')}
+          >
+            <Text style={[
+              styles.tabText,
+              { color: activeTab === 'settled' ? colors.primary : colors.mutedForeground }
+            ]}>
+              Resueltas ({settledPicks.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {currentPicks.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Ionicons name="stats-chart-outline" size={64} color={colors.mutedForeground} />
+            <Ionicons 
+              name={activeTab === 'open' ? 'hourglass-outline' : 'checkmark-done-outline'} 
+              size={64} 
+              color={colors.mutedForeground} 
+            />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              Sin apuestas en este torneo
+              {activeTab === 'open' ? 'Sin apuestas abiertas' : 'Sin apuestas resueltas'}
             </Text>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Participa en eventos para ver tus apuestas aquí
+              {activeTab === 'open' 
+                ? 'Participa en eventos para ver tus apuestas aquí'
+                : 'Las apuestas finalizadas aparecerán aquí'}
             </Text>
           </View>
         ) : (
-          picks.map((pickData: any, index: number) => {
+          currentPicks.map((pickData: any, index: number) => {
             const { bet, pick, event } = pickData;
             
             return (
@@ -127,9 +248,12 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 activeOpacity={0.7}
               >
                 {event && (
-                  <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
-                    {event.title}
-                  </Text>
+                  <View style={styles.eventHeader}>
+                    <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
+                    <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
+                      {event.title}
+                    </Text>
+                  </View>
                 )}
                 
                 <Text style={[styles.betTitle, { color: colors.mutedForeground }]} numberOfLines={2}>
@@ -146,12 +270,22 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 </View>
                 
                 <View style={styles.footer}>
-                  <Text style={[styles.amount, { color: colors.mutedForeground }]}>
+                  <Text style={[styles.amount, { color: colors.foreground }]}>
                     ${pick.amount}
                   </Text>
-                  <View style={[styles.statusBadge, { backgroundColor: bet.status === 'open' ? colors.primary + '20' : colors.mutedForeground + '20' }]}>
-                    <Text style={[styles.statusText, { color: bet.status === 'open' ? colors.primary : colors.mutedForeground }]}>
-                      {bet.status === 'open' ? 'ABIERTA' : bet.status === 'locked' ? 'CERRADA' : bet.status === 'settled' ? 'RESUELTA' : 'CANCELADA'}
+                  <View style={[styles.statusBadge, { 
+                    backgroundColor: bet.status === 'open' ? colors.primary + '20' : 
+                                   bet.status === 'settled' ? colors.success + '20' : 
+                                   colors.mutedForeground + '20' 
+                  }]}>
+                    <Text style={[styles.statusText, { 
+                      color: bet.status === 'open' ? colors.primary : 
+                            bet.status === 'settled' ? colors.success : 
+                            colors.mutedForeground 
+                    }]}>
+                      {bet.status === 'open' ? 'ABIERTA' : 
+                       bet.status === 'locked' ? 'CERRADA' : 
+                       bet.status === 'settled' ? 'RESUELTA' : 'CANCELADA'}
                     </Text>
                   </View>
                 </View>
@@ -170,19 +304,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    padding: Spacing.lg,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.md,
   },
   loadingText: {
     fontSize: 14,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: Spacing.md,
   },
   title: {
     fontSize: 28,
@@ -190,17 +324,48 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
+  },
+  tournamentSelector: {
+    marginBottom: Spacing.lg,
+  },
+  tournamentChip: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.sm,
+    borderWidth: 1,
+  },
+  tournamentChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tournamentInfo: {
+    marginBottom: Spacing.md,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    marginBottom: Spacing.lg,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyContainer: {
-    paddingVertical: 64,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: Spacing.md,
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginTop: 16,
   },
   emptyText: {
     fontSize: 14,
@@ -208,42 +373,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   pickCard: {
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
     marginBottom: Spacing.md,
     borderWidth: 1,
     gap: Spacing.sm,
   },
+  eventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: 4,
+  },
   eventTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    flex: 1,
   },
   betTitle: {
-    fontSize: 13,
+    fontSize: 15,
+    fontWeight: '600',
   },
   pickInfo: {
     gap: 4,
+    marginTop: Spacing.xs,
   },
   pickLabel: {
     fontSize: 12,
   },
   pickValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Spacing.xs,
+    marginTop: Spacing.sm,
   },
   amount: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 6,
   },
   statusText: {

@@ -1,6 +1,7 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -17,8 +18,23 @@ const firebaseConfig = {
 // Evita reinicializar con hot reload (Expo)
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// ✅ Auth with automatic persistence handling
-export const auth = getAuth(app);
+// ✅ Auth con persistencia real en RN
+let authInstance;
+try {
+  authInstance = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+  });
+} catch (error: any) {
+  // Si ya está inicializado (hot reload), obtener la instancia existente
+  if (error.code === 'auth/already-initialized') {
+    const { getAuth } = require('firebase/auth');
+    authInstance = getAuth(app);
+  } else {
+    throw error;
+  }
+}
+
+export const auth = authInstance;
 
 // evita reinicializar en hot reload
 (globalThis as any).__FIREBASE_AUTH__ = auth;

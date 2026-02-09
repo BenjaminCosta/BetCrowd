@@ -97,6 +97,7 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
       'serie': 'Serie (Bo3/Bo5)',
       'bracket': 'Eliminación Directa',
       'points': 'Puntos',
+      'otro': 'Otro',
     };
     return formatMap[formatId] || formatId;
   };
@@ -269,32 +270,20 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
 
         {/* Acciones */}
         <View style={styles.section}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('TournamentPredictions', { tournamentId })}
-          >
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.primaryActionButton}
-            >
-              <View style={styles.actionIconContainer}>
-                <Ionicons name="football" size={22} color="#FFFFFF" />
-              </View>
-              <View style={styles.actionContent}>
-                <Text style={styles.actionButtonText}>
-                  Ver Apuestas
-                </Text>
-                <Text style={[styles.actionButtonSubtext, { color: 'rgba(255, 255, 255, 0.85)' }]}>
-                  Gestiona tus pronósticos
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
-
           {isAdmin && (
             <View style={styles.adminActions}>
+              <TouchableOpacity 
+                style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
+                onPress={() => navigation.navigate('Apuestas')}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
+                  <Ionicons name="football" size={18} color={colors.primary} />
+                </View>
+                <Text style={[styles.modernSecondaryButtonText, { color: colors.foreground }]}>
+                  Ver Apuestas
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
                 onPress={() => navigation.navigate('TournamentEvents', { tournamentId })}
@@ -325,6 +314,7 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
 
               <TouchableOpacity 
                 style={[styles.modernSecondaryButton, { backgroundColor: colors.secondary }]}
+                onPress={() => navigation.navigate('LoadResults', { tournamentId })}
               >
                 <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
                   <Ionicons name="checkmark-circle" size={18} color={colors.primary} />

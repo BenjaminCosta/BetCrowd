@@ -91,14 +91,7 @@ const SignUpScreen = ({ navigation }: any) => {
 
           {/* Logo */}
           <View style={styles.logoContainer}>
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoGradient}
-            >
-              <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
-            </LinearGradient>
+            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
@@ -335,17 +328,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xxl,
   },
-  logoGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
   logoImage: {
-    width: 50,
-    height: 50,
+    width: 77,
+    height: 77,
+    marginBottom: Spacing.md,
   },
   logoText: {
     fontSize: 32,

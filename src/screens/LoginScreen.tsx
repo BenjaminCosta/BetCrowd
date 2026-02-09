@@ -64,14 +64,7 @@ const LoginScreen = ({ navigation }: any) => {
         <View style={styles.content}>
           {/* Logo */}
           <View style={styles.logoContainer}>
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoGradient}
-            >
-              <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
-            </LinearGradient>
+            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
@@ -230,21 +223,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xxl * 2,
   },
-  logoGradient: {
-    width: 90,
-    height: 90,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-  },
   logoImage: {
-    width: 60,
-    height: 60,
+    width: 99,
+    height: 99,
+    marginBottom: Spacing.lg,
   },
   logoText: {
     fontSize: 40,

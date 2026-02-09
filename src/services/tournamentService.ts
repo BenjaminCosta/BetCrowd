@@ -459,3 +459,31 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
     throw new Error(error.message || 'No se pudo eliminar el torneo');
   }
 };
+
+/**
+ * Search tournaments by name (searches all tournaments the user has access to)
+ */
+export const searchTournaments = async (searchQuery: string): Promise<Tournament[]> => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Debes iniciar sesión para buscar torneos');
+  }
+
+  try {
+    // Get all user's tournaments
+    const myTournaments = await listMyTournaments();
+    
+    // Filter by search query (case insensitive)
+    const searchLower = searchQuery.toLowerCase();
+    const filtered = myTournaments.filter(tournament => 
+      tournament.name.toLowerCase().includes(searchLower) ||
+      tournament.description?.toLowerCase().includes(searchLower) ||
+      tournament.inviteCode.toLowerCase().includes(searchLower)
+    );
+
+    return filtered;
+  } catch (error: any) {
+    throw new Error(error.message || 'No se pudo buscar torneos');
+  }
+};

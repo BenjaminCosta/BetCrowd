@@ -24,6 +24,7 @@ const formatOptions = [
   { id: 'grupos-eliminatoria', label: 'Grupos + Eliminatoria', icon: 'grid' },
   { id: 'evento-unico', label: 'Evento único', icon: 'flash' },
   { id: 'serie', label: 'Serie (Bo3/Bo5)', icon: 'layers' },
+  { id: 'otro', label: 'Otro', icon: 'ellipsis-horizontal' },
 ];
 
 const CreateTournamentScreen = ({ navigation }: any) => {
