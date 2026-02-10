@@ -56,6 +56,7 @@ const SignUpScreen = ({ navigation }: any) => {
         email: email.trim(),
         password,
         displayName: name.trim(),
+        username: username.trim(),
       });
       // Navigation is handled automatically by AppNavigator when auth state changes
     } catch (error: any) {
@@ -239,12 +240,17 @@ const SignUpScreen = ({ navigation }: any) => {
             </View>
 
             {/* SignUp Button */}
-            <PrimaryButton
-              title={isLoading ? undefined : "Crear Cuenta"}
+            <TouchableOpacity
               onPress={handleSignUp}
+              style={[styles.signUpButton, { backgroundColor: colors.primary }]}
+              disabled={isLoading}
             >
-              {isLoading && <ActivityIndicator color="#FFFFFF" />}
-            </PrimaryButton>
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.signUpButtonText}>Crear Cuenta</Text>
+              )}
+            </TouchableOpacity>
 
             {/* Divider */}
             <View style={styles.dividerContainer}>
@@ -381,6 +387,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  signUpButton: {
+    paddingVertical: 16,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+  },
+  signUpButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   dividerContainer: {
     flexDirection: 'row',

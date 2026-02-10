@@ -11,9 +11,10 @@ export interface SignUpData {
   email: string;
   password: string;
   displayName?: string;
+  username?: string;
 }
 
-export const signUp = async ({ email, password, displayName }: SignUpData) => {
+export const signUp = async ({ email, password, displayName, username }: SignUpData) => {
   try {
     // Create auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -24,11 +25,12 @@ export const signUp = async ({ email, password, displayName }: SignUpData) => {
       await updateProfile(user, { displayName });
     }
 
-    // Create Firestore user document
+    // Create Firestore user document with username
     await setDoc(doc(db, 'users', user.uid), {
       uid: user.uid,
       email: user.email,
       displayName: displayName || null,
+      username: username ? username.toLowerCase().trim() : null,
       createdAt: serverTimestamp(),
     });
 

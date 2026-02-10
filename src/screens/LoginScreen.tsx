@@ -131,13 +131,17 @@ const LoginScreen = ({ navigation }: any) => {
               </Text>
             </TouchableOpacity>
 
-            <PrimaryButton onPress={handleLogin} style={styles.loginButton}>
+            <TouchableOpacity 
+              onPress={handleLogin}
+              style={[styles.loginButton, { backgroundColor: colors.primary }]}
+              disabled={isLoading}
+            >
               {isLoading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                'Iniciar Sesión'
+                <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
               )}
-            </PrimaryButton>
+            </TouchableOpacity>
 
             <View style={styles.dividerContainer}>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -261,6 +265,15 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginTop: Spacing.sm,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   dividerContainer: {
     flexDirection: 'row',
