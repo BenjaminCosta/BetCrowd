@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { TournamentsProvider } from './src/context/TournamentsContext';
+import { SocialProvider } from './src/context/SocialContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 
 function AppContent() {
@@ -24,9 +25,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <TournamentsProvider>
-          <AppContent />
-        </TournamentsProvider>
+        <SocialProvider>
+          <TournamentsProvider>
+            <AppContent />
+          </TournamentsProvider>
+        </SocialProvider>
       </AuthProvider>
     </ThemeProvider>
   );

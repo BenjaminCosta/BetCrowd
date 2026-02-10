@@ -22,7 +22,6 @@ import HelpSupportScreen from '../screens/HelpSupportScreen';
 import TournamentDetailsScreen from '../screens/TournamentDetailsScreen';
 import TournamentEventsScreen from '../screens/TournamentEventsScreen';
 import TournamentSettingsScreen from '../screens/TournamentSettingsScreen';
-import NotificationsScreen from '../screens/NotificationsScreen';
 import JoinCodeScreen from '../screens/JoinCodeScreen';
 import NotFoundScreen from '../screens/NotFoundScreen';
 import SearchScreen from '../screens/SearchScreen';
@@ -32,6 +31,8 @@ import BetsListScreen from '../screens/BetsListScreen';
 import CreateBetScreen from '../screens/CreateBetScreen';
 import BetDetailsScreen from '../screens/BetDetailsScreen';
 import LoadResultsScreen from '../screens/LoadResultsScreen';
+import FriendsScreen from '../screens/FriendsScreen';
+import NotificationCenterScreen from '../screens/NotificationCenterScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -141,7 +142,8 @@ const AppStack = () => {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+      <Stack.Screen name="Friends" component={FriendsScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />
       <Stack.Screen name="JoinCode" component={JoinCodeScreen} />
       <Stack.Screen name="NotFound" component={NotFoundScreen} />

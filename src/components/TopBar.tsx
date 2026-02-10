@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useSocial } from '../context/SocialContext';
 import { getUserProfile } from '../services/userService';
 
 interface TopBarProps {
@@ -17,6 +18,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { unreadCount } = useSocial();
   const [photoURL, setPhotoURL] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
 
@@ -87,10 +89,17 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
             <Ionicons name="search" size={22} color={colors.foreground} />
           </TouchableOpacity>
           <TouchableOpacity 
-            style={styles.iconButton}
+            style={styles.notificationButton}
             onPress={() => handleNavigate('Notifications')}
           >
             <Ionicons name="notifications-outline" size={22} color={colors.foreground} />
+            {unreadCount > 0 && (
+              <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.badgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.iconButton}
@@ -148,6 +157,26 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: Spacing.sm,
+  },
+  notificationButton: {
+    padding: Spacing.sm,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
   avatarGradient: {
     width: 32,

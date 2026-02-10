@@ -15,12 +15,14 @@ import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useSocial } from '../context/SocialContext';
 import { getUserProfile } from '../services/userService';
 
 const ProfileScreen = ({ navigation }: any) => {
   const { theme, toggleTheme } = useTheme();
   const colors = Colors[theme];
   const { user, signOut } = useAuth();
+  const { friends, incomingRequests } = useSocial();
   const [photoURL, setPhotoURL] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
 
@@ -107,20 +109,42 @@ const ProfileScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statBox, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statValue, { color: colors.primary }]}>12</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              Victorias
-            </Text>
-          </View>
-          <View style={[styles.statBox, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statValue, { color: colors.primary }]}>68%</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              Efectividad
-            </Text>
-          </View>
+
+        {/* Friends Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Social
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.friendsCard, { backgroundColor: colors.card }]}
+            onPress={() => navigation.navigate('Friends')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.friendsRow}>
+              <View style={styles.friendsLeft}>
+                <View style={[styles.friendsIconContainer, { backgroundColor: colors.primary + '20' }]}>
+                  <Ionicons name="people" size={24} color={colors.primary} />
+                </View>
+                <View style={styles.friendsInfo}>
+                  <Text style={[styles.friendsTitle, { color: colors.foreground }]}>
+                    Amigos
+                  </Text>
+                  <Text style={[styles.friendsSubtitle, { color: colors.mutedForeground }]}>
+                    {friends.length} {friends.length === 1 ? 'amigo' : 'amigos'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.friendsRight}>
+                {incomingRequests.length > 0 && (
+                  <View style={[styles.requestsBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.requestsBadgeText}>{incomingRequests.length}</Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+              </View>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Settings */}
@@ -283,6 +307,56 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
+  },
+  friendsCard: {
+    borderRadius: 16,
+    padding: 16,
+  },
+  friendsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  friendsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  friendsIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendsInfo: {
+    gap: 2,
+  },
+  friendsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  friendsSubtitle: {
+    fontSize: 13,
+  },
+  friendsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  requestsBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  requestsBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   settingsCard: {
     borderRadius: 16,

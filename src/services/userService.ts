@@ -8,6 +8,7 @@ import {
   runTransaction 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { upsertPublicProfile } from './publicProfileService';
 
 export interface UserProfile {
   uid: string;
@@ -178,6 +179,16 @@ export const updateFullProfile = async (
 
     if (Object.keys(updateData).length > 0) {
       await updateUserProfile(uid, updateData);
+    }
+
+    // Update public profile if username exists
+    const profile = await getUserProfile(uid);
+    if (profile && profile.username) {
+      await upsertPublicProfile(uid, {
+        username: profile.username,
+        displayName: data.fullName || profile.displayName || profile.username,
+        photoURL: data.photoURL || profile.photoURL,
+      });
     }
   } catch (error) {
     console.error('Error updating full profile:', error);

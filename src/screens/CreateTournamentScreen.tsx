@@ -273,7 +273,7 @@ const CreateTournamentScreen = ({ navigation }: any) => {
           {/* Resumen */}
           <Card style={[styles.summaryCard, { backgroundColor: colors.secondary }]}>
             <View style={styles.summaryHeader}>
-              <Ionicons name="information-circle" size={24} color={colors.accent} />
+              <Ionicons name="information-circle" size={24} color={colors.primary} />
               <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
                 Resumen del torneo
               </Text>

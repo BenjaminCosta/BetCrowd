@@ -6,6 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { upsertPublicProfile } from './publicProfileService';
 
 export interface SignUpData {
   email: string;
@@ -33,6 +34,15 @@ export const signUp = async ({ email, password, displayName, username }: SignUpD
       username: username ? username.toLowerCase().trim() : null,
       createdAt: serverTimestamp(),
     });
+
+    // Create public profile if username is provided
+    if (username) {
+      await upsertPublicProfile(user.uid, {
+        username: username.toLowerCase().trim(),
+        displayName: displayName || username,
+        photoURL: user.photoURL || undefined,
+      });
+    }
 
     return user;
   } catch (error: any) {
