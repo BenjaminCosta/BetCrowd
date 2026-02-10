@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
+import { LoadingBar } from '../components/LoadingBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { getTournament, listMyTournaments } from '../services/tournamentService';
@@ -30,6 +31,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const [openPicks, setOpenPicks] = useState<any[]>([]);
   const [settledPicks, setSettledPicks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
 
@@ -39,6 +41,13 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     if (selectedTournamentId && user) {
+      // Si ya hay datos, solo mostrar loading bar (cambio de filtro)
+      if (openPicks.length > 0 || settledPicks.length > 0) {
+        setFilterLoading(true);
+      } else {
+        // Primera carga, mostrar loading completo
+        setLoading(true);
+      }
       loadData();
     }
   }, [selectedTournamentId, user]);
@@ -131,6 +140,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
       // Silent fail
     } finally {
       setLoading(false);
+      setFilterLoading(false);
     }
   };
 
@@ -159,6 +169,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar />
+      <LoadingBar isLoading={filterLoading} />
       
       <ScrollView 
         style={styles.content}

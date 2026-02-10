@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
+import { LoadingBar } from '../components/LoadingBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { listMyTournaments, getTournament, Tournament, isUserAdmin } from '../services/tournamentService';
@@ -32,6 +33,7 @@ const EventsScreen = ({ navigation, route }: any) => {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -41,6 +43,13 @@ const EventsScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     if (selectedTournamentId && user) {
+      // Si ya hay datos, solo mostrar loading bar (cambio de filtro)
+      if (events.length > 0) {
+        setFilterLoading(true);
+      } else {
+        // Primera carga, mostrar loading completo
+        setLoading(true);
+      }
       loadData();
       checkAdminStatus();
     }
@@ -92,6 +101,7 @@ const EventsScreen = ({ navigation, route }: any) => {
       // Silent fail
     } finally {
       setLoading(false);
+      setFilterLoading(false);
     }
   };
 
@@ -160,6 +170,7 @@ const EventsScreen = ({ navigation, route }: any) => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <TopBar />
+        <LoadingBar isLoading={filterLoading} />
         
         <ScrollView 
           style={styles.content}

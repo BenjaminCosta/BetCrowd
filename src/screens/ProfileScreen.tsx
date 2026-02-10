@@ -99,13 +99,11 @@ const ProfileScreen = ({ navigation }: any) => {
             {user?.email}
           </Text>
 
-          <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}
-            style={[
-              styles. editButton,
-              { backgroundColor: colors.primary },
-            ]}>
-           
-              <Text style={styles.editButtonText}>Editar Perfil</Text>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('EditProfile')}
+            style={[styles.editButton, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.editButtonText}>Editar Perfil</Text>
           </TouchableOpacity>
         </View>
 

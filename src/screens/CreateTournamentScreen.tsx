@@ -253,7 +253,7 @@ const CreateTournamentScreen = ({ navigation }: any) => {
                   keyboardType="numeric"
                   style={{ flex: 1 }}
                 />
-                <Chip label="ARS" selected style={styles.currencyChip} />
+                <Chip label="ARS" selected style={[styles.currencyChip, { backgroundColor: colors.primary, borderColor: colors.primary }]} />
               </View>
             </View>
 
@@ -283,7 +283,7 @@ const CreateTournamentScreen = ({ navigation }: any) => {
               <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
                 Aporte por persona:
               </Text>
-              <Text style={[styles.summaryValue, { color: colors.foreground }]}>
+              <Text style={[styles.summaryValue, { color: colors.primary }]}>
                 ${contribution || '0'} ARS
               </Text>
             </View>
@@ -298,10 +298,10 @@ const CreateTournamentScreen = ({ navigation }: any) => {
             </View>
 
             <View style={[styles.summaryRow, styles.summaryTotal]}>
-              <Text style={[styles.summaryLabel, { color: colors.accent }]}>
+              <Text style={[styles.summaryLabel, { color: colors.primary }]}>
                 Pozo total estimado:
               </Text>
-              <Text style={[styles.summaryValueLarge, { color: colors.accent }]}>
+              <Text style={[styles.summaryValueLarge, { color: colors.primary }]}>
                 ${calculateTotalPool().toLocaleString()} ARS
               </Text>
             </View>
@@ -314,9 +314,12 @@ const CreateTournamentScreen = ({ navigation }: any) => {
             </View>
           </Card>
 
-          <PrimaryButton onPress={handleCreate} style={styles.createButton}>
-            Crear Torneo
-          </PrimaryButton>
+          <TouchableOpacity 
+            onPress={handleCreate}
+            style={[styles.createButton, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.createButtonText}>Crear Torneo</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -540,6 +543,15 @@ const styles = StyleSheet.create({
   },
   createButton: {
     marginBottom: Spacing.xxl,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,

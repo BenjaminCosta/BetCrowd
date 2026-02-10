@@ -389,13 +389,17 @@ const EditProfileScreen = ({ navigation }: any) => {
           </TouchableOpacity>
 
           {/* Save Button */}
-          <PrimaryButton
-            title={saving ? undefined : "Guardar Cambios"}
+          <TouchableOpacity
             onPress={handleSave}
-            style={styles.saveButton}
+            style={[styles.saveButton, { backgroundColor: colors.primary }]}
+            disabled={saving}
           >
-            {saving && <ActivityIndicator color="#FFFFFF" />}
-          </PrimaryButton>
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>Guardar Cambios</Text>
+            )}
+          </TouchableOpacity>
           
           {/* Cancel Button */}
           <TouchableOpacity 
@@ -641,6 +645,15 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginBottom: Spacing.md,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   cancelButton: {
     padding: Spacing.lg,

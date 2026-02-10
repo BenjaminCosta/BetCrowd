@@ -82,7 +82,7 @@ const SearchScreen = ({ navigation }: any) => {
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Buscar torneos..."
-                style={[styles.searchInput, { borderWidth: 0 }]}
+                style={[styles.searchInput, { borderWidth: 0, backgroundColor: 'transparent' }]}
               />
             </View>
           </View>
