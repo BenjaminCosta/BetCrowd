@@ -83,7 +83,7 @@ const EventsScreen = ({ navigation, route }: any) => {
       const tournamentData = await getTournament(selectedTournamentId);
       setTournament(tournamentData);
       
-      // Load events
+      // Load events - this will update in real-time via Firestore cache
       const eventsList = await listEvents(selectedTournamentId);
       setEvents(eventsList);
     } catch (error) {
@@ -93,6 +93,18 @@ const EventsScreen = ({ navigation, route }: any) => {
       setFilterLoading(false);
     }
   };
+
+  // Periodically refresh to ensure we have latest data
+  useEffect(() => {
+    if (!selectedTournamentId || !user || !initialLoadDone) return;
+    
+    // Set up periodic refresh every 5 seconds when screen is active
+    const interval = setInterval(() => {
+      loadData();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [selectedTournamentId, user, initialLoadDone]);
 
   const checkAdminStatus = async () => {
     if (!user || !selectedTournamentId) return;

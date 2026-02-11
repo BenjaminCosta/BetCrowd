@@ -29,6 +29,7 @@ import CreateEventScreen from '../screens/CreateEventScreen';
 import EventDetailsScreen from '../screens/EventDetailsScreen';
 import BetsListScreen from '../screens/BetsListScreen';
 import CreateBetScreen from '../screens/CreateBetScreen';
+import EditBetScreen from '../screens/EditBetScreen';
 import BetDetailsScreen from '../screens/BetDetailsScreen';
 import LoadResultsScreen from '../screens/LoadResultsScreen';
 import FriendsScreen from '../screens/FriendsScreen';
@@ -137,6 +138,7 @@ const AppStack = () => {
       <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
       <Stack.Screen name="BetsList" component={BetsListScreen} />
       <Stack.Screen name="CreateBet" component={CreateBetScreen} />
+      <Stack.Screen name="EditBet" component={EditBetScreen} />
       <Stack.Screen name="BetDetails" component={BetDetailsScreen} />
       <Stack.Screen name="LoadResults" component={LoadResultsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />

@@ -14,19 +14,19 @@ import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, Input } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
-import { createBet, updateBet, getBet } from '../services/betService';
+import { updateBet, getBet } from '../services/betService';
 import { getTournament } from '../services/tournamentService';
 import { getEvent } from '../services/eventService';
 
-const CreateBetScreen = ({ navigation, route }: any) => {
+const EditBetScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { tournamentId, eventId } = route.params || {};
+  const { tournamentId, eventId, betId } = route.params || {};
 
   const [tournament, setTournament] = useState<any>(null);
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   // Form fields
   const [title, setTitle] = useState('');
@@ -43,16 +43,23 @@ const CreateBetScreen = ({ navigation, route }: any) => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [tournamentData, eventData] = await Promise.all([
+      const [tournamentData, eventData, betData] = await Promise.all([
         getTournament(tournamentId),
         getEvent(tournamentId, eventId),
+        getBet(tournamentId, eventId, betId),
       ]);
+      
       setTournament(tournamentData);
       setEvent(eventData);
       
-      // Default stake to tournament contribution
-      if (tournamentData?.contribution) {
-        setStakeAmount(tournamentData.contribution.toString());
+      // Load existing bet data into form
+      if (betData) {
+        setTitle(betData.title || '');
+        setDescription(betData.description || '');
+        setSelectedType(betData.type || 'winner');
+        setOptions(betData.options || ['']);
+        setStakeAmount(betData.stakeAmount?.toString() || '');
+        setLine(betData.line?.toString() || '');
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -100,7 +107,7 @@ const CreateBetScreen = ({ navigation, route }: any) => {
     setOptions(newOptions);
   };
 
-  const handleCreate = async () => {
+  const handleUpdate = async () => {
     if (!title.trim()) {
       Alert.alert('Error', 'El título es requerido');
       return;
@@ -119,7 +126,7 @@ const CreateBetScreen = ({ navigation, route }: any) => {
     }
 
     try {
-      setCreating(true);
+      setUpdating(true);
 
       const betData: any = {
         title: title.trim(),
@@ -134,18 +141,18 @@ const CreateBetScreen = ({ navigation, route }: any) => {
         betData.line = parseFloat(line);
       }
 
-      await createBet(tournamentId, eventId, betData);
+      await updateBet(tournamentId, eventId, betId, betData);
 
-      Alert.alert('Éxito', 'Apuesta creada', [
+      Alert.alert('Éxito', 'Apuesta actualizada', [
         { 
           text: 'OK', 
           onPress: () => navigation.goBack()
         },
       ]);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo crear la apuesta');
+      Alert.alert('Error', error.message || 'No se pudo actualizar la apuesta');
     } finally {
-      setCreating(false);
+      setUpdating(false);
     }
   };
 
@@ -168,7 +175,7 @@ const CreateBetScreen = ({ navigation, route }: any) => {
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.foreground }]}>
-              Crear Apuesta
+              Editar Apuesta
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               {event?.title || 'Evento'}
@@ -184,7 +191,7 @@ const CreateBetScreen = ({ navigation, route }: any) => {
               </Text>
             </View>
             <Text style={[styles.templateHint, { color: colors.mutedForeground }]}>
-              Usa una plantilla para crear la apuesta más rápido
+              Usa una plantilla para editar la apuesta más rápido
             </Text>
 
             <View style={styles.templatesGrid}>
@@ -349,16 +356,16 @@ const CreateBetScreen = ({ navigation, route }: any) => {
             </View>
 
             <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: colors.primary }]}
-              onPress={handleCreate}
-              disabled={creating}
+              style={[styles.updateButton, { backgroundColor: colors.primary }]}
+              onPress={handleUpdate}
+              disabled={updating}
             >
-              {creating ? (
+              {updating ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
                   <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                  <Text style={styles.createButtonText}>Crear Apuesta</Text>
+                  <Text style={styles.updateButtonText}>Actualizar Apuesta</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -483,7 +490,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  createButton: {
+  updateButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -491,11 +498,11 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderRadius: BorderRadius.md,
   },
-  createButtonText: {
+  updateButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
 });
 
-export default CreateBetScreen;
+export default EditBetScreen;

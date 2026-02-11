@@ -81,11 +81,10 @@ const BetsListScreen = ({ navigation, route }: any) => {
   };
 
   const handleEditBet = (bet: Bet) => {
-    navigation.navigate('CreateBet', {
+    navigation.navigate('EditBet', {
       tournamentId,
       eventId,
       betId: bet.id,
-      editMode: true,
     });
   };
 
@@ -281,6 +280,7 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 16,
     fontWeight: '500',
+    marginTop: 4,
   },
   subtitle: {
     fontSize: 16,

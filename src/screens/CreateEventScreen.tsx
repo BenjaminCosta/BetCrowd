@@ -95,7 +95,10 @@ const CreateEventScreen = ({ navigation, route }: any) => {
       });
 
       Alert.alert('Éxito', `Evento "${eventTitle}" creado`, [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { 
+          text: 'OK', 
+          onPress: () => navigation.goBack()
+        },
       ]);
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -129,7 +132,10 @@ const CreateEventScreen = ({ navigation, route }: any) => {
 
       await createEventsBatch(tournamentId, eventsToCreate);
       Alert.alert('Éxito', `${count} eventos creados`, [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { 
+          text: 'OK', 
+          onPress: () => navigation.goBack()
+        },
       ]);
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -161,7 +167,10 @@ const CreateEventScreen = ({ navigation, route }: any) => {
         // Update existing event
         await updateEvent(tournamentId, eventId, eventData);
         Alert.alert('Éxito', 'Evento actualizado', [
-          { text: 'OK', onPress: () => navigation.goBack() },
+          { 
+            text: 'OK', 
+            onPress: () => navigation.goBack()
+          },
         ]);
       } else {
         // Create new event

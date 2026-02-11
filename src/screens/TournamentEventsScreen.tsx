@@ -284,7 +284,7 @@ const TournamentEventsScreen = ({ navigation, route }: any) => {
                               {isAdmin && (
                                 <TouchableOpacity
                                   style={[styles.editBetButton, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-                                  onPress={() => navigation.navigate('CreateBet', { tournamentId, eventId: event.id, betId: bet.id, editMode: true })}
+                                  onPress={() => navigation.navigate('EditBet', { tournamentId, eventId: event.id, betId: bet.id })}
                                 >
                                   <Ionicons name="create-outline" size={16} color={colors.primary} />
                                   <Text style={[styles.editBetText, { color: colors.primary }]}>Editar Apuesta</Text>

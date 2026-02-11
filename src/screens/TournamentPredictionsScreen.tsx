@@ -7,15 +7,18 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
+import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { getTournament, listMyTournaments } from '../services/tournamentService';
+import { getTournament, listMyTournaments, isUserAdmin } from '../services/tournamentService';
 import { getMyPick, getBet, listBets, type Bet } from '../services/betService';
 import { listEvents } from '../services/eventService';
 
@@ -35,6 +38,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Initial loading bar - only on first mount
   useEffect(() => {
@@ -53,8 +57,19 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
         setFilterLoading(true);
       }
       loadData();
+      checkAdminStatus();
     }
   }, [selectedTournamentId, user]);
+
+  const checkAdminStatus = async () => {
+    if (!user || !selectedTournamentId) return;
+    try {
+      const admin = await isUserAdmin(selectedTournamentId, user.uid);
+      setIsAdmin(admin);
+    } catch (error) {
+      console.error('Error checking admin:', error);
+    }
+  };
 
   const loadTournaments = async () => {
     if (!user) return;
@@ -80,7 +95,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
       const tournamentData = await getTournament(selectedTournamentId);
       setTournament(tournamentData);
       
-      // Load picks directly from events/bets
+      // Load picks directly from events/bets - will auto-refresh via periodic reload
       const allOpenPicks: any[] = [];
       const allSettledPicks: any[] = [];
       
@@ -135,6 +150,18 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     }
   };
 
+  // Periodic refresh to ensure latest data (similar to EventsScreen)
+  useEffect(() => {
+    if (!selectedTournamentId || !user || !initialLoadDone) return;
+    
+    // Set up periodic refresh every 5 seconds when screen is active
+    const interval = setInterval(() => {
+      loadData();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [selectedTournamentId, user, initialLoadDone]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([loadTournaments(), loadData()]);
@@ -160,6 +187,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const currentPicks = activeTab === 'open' ? openPicks : settledPicks;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar />
       <LoadingBar isLoading={isLoading || filterLoading} />
@@ -269,8 +297,23 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
             const { bet, pick, event } = pickData;
             
             return (
-              <TouchableOpacity
+              <SwipeableRow
                 key={`${pickData.betId}-${index}`}
+                enabled={isAdmin && bet.status === 'open'}
+                actions={[
+                  {
+                    label: 'Editar',
+                    icon: 'create-outline',
+                    color: colors.primary,
+                    onPress: () => navigation.navigate('EditBet', {
+                      tournamentId: pickData.tournamentId,
+                      eventId: pickData.eventId,
+                      betId: pickData.betId,
+                    }),
+                  },
+                ]}
+              >
+              <TouchableOpacity
                 style={[styles.pickCard, { backgroundColor: colors.card }]}
                 onPress={() =>
                   navigation.navigate('BetDetails', {
@@ -332,11 +375,13 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                   </View>
                 </View>
               </TouchableOpacity>
+              </SwipeableRow>
             );
           })
         )}
       </ScrollView>
     </View>
+    </GestureHandlerRootView>
   );
 };
 

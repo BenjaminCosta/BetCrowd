@@ -112,7 +112,22 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
       Alert.alert('Éxito', myPick ? 'Apuesta actualizada' : 'Apuesta realizada');
       loadData(); // Reload to show updated pick
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo realizar la apuesta');
+      // Only show error if it's not a false permission error
+      // (upsertMyPick handles permission errors internally and verifies success)
+      if (error?.code !== 'permission-denied' && !error?.message?.includes('insufficient permissions')) {
+        Alert.alert('Error', error.message || 'No se pudo realizar la apuesta');
+      } else {
+        // Verify if pick was actually saved
+        const verifyPick = await getMyPick(tournamentId, eventId, betId, user.uid);
+        if (verifyPick) {
+          // Success despite the error
+          Alert.alert('Éxito', myPick ? 'Apuesta actualizada' : 'Apuesta realizada');
+          loadData();
+        } else {
+          // Actual failure
+          Alert.alert('Error', 'No se pudo realizar la apuesta. Por favor intenta nuevamente.');
+        }
+      }
     } finally {
       setPlacing(false);
     }
@@ -126,8 +141,12 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
         onPress: async () => {
           try {
             await lockBet(tournamentId, eventId, betId);
-            Alert.alert('Éxito', 'Apuesta cerrada');
-            loadData();
+            Alert.alert('Éxito', 'Apuesta cerrada', [
+              {
+                text: 'OK',
+                onPress: () => navigation.goBack()
+              }
+            ]);
           } catch (error: any) {
             Alert.alert('Error', error.message);
           }
@@ -145,8 +164,12 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
         onPress: async () => {
           try {
             await cancelBet(tournamentId, eventId, betId);
-            Alert.alert('Éxito', 'Apuesta cancelada');
-            navigation.goBack();
+            Alert.alert('Éxito', 'Apuesta cancelada', [
+              {
+                text: 'OK',
+                onPress: () => navigation.goBack()
+              }
+            ]);
           } catch (error: any) {
             Alert.alert('Error', error.message);
           }
@@ -178,8 +201,12 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
       // TODO: Show form to select winning option
       // For now, just settle without result
       await settleBet(tournamentId, eventId, betId, {});
-      Alert.alert('Éxito', 'Apuesta resuelta');
-      loadData();
+      Alert.alert('Éxito', 'Apuesta resuelta', [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack()
+        }
+      ]);
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }
