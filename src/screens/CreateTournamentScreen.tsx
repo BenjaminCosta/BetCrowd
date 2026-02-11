@@ -253,7 +253,7 @@ const CreateTournamentScreen = ({ navigation }: any) => {
                   keyboardType="numeric"
                   style={{ flex: 1 }}
                 />
-                <Chip label="ARS" selected style={[styles.currencyChip, { backgroundColor: colors.primary, borderColor: colors.primary }]} />
+                <Chip label="ARS" selected style={[styles.currencyChip]} />
               </View>
             </View>
 
@@ -283,7 +283,7 @@ const CreateTournamentScreen = ({ navigation }: any) => {
               <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
                 Aporte por persona:
               </Text>
-              <Text style={[styles.summaryValue, { color: colors.primary }]}>
+              <Text style={[styles.summaryValue, { color: colors.foreground }]}>
                 ${contribution || '0'} ARS
               </Text>
             </View>
@@ -298,10 +298,10 @@ const CreateTournamentScreen = ({ navigation }: any) => {
             </View>
 
             <View style={[styles.summaryRow, styles.summaryTotal]}>
-              <Text style={[styles.summaryLabel, { color: colors.primary }]}>
+              <Text style={[styles.summaryLabel, { color: colors.foreground }]}>
                 Pozo total estimado:
               </Text>
-              <Text style={[styles.summaryValueLarge, { color: colors.primary }]}>
+              <Text style={[styles.summaryValueLarge, { color: '#10B981' }]}>
                 ${calculateTotalPool().toLocaleString()} ARS
               </Text>
             </View>

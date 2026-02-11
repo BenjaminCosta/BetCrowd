@@ -240,8 +240,8 @@ const HomeScreen = ({ navigation }: any) => {
                       </View>
                     </View>
                     <View style={[styles.prizeContainer, { backgroundColor: colors.primary + '15' }]}>
-                      <Text style={[styles.prizeValue, { color: colors.primary }]}>${tournament.contribution}</Text>
-                      <Text style={[styles.prizeLabel, { color: colors.primary }]}>
+                      <Text style={[styles.prizeValue, { color: colors.foreground }]}>${tournament.contribution}</Text>
+                      <Text style={[styles.prizeLabel, { color: colors.mutedForeground }]}>
                         Aporte
                       </Text>
                     </View>

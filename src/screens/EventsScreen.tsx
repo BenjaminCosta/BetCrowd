@@ -259,7 +259,7 @@ const EventsScreen = ({ navigation, route }: any) => {
               >
                 <TouchableOpacity
                   style={[styles.eventCard, { backgroundColor: colors.card }]}
-                  onPress={() => navigation.navigate('EventDetails', { 
+                  onPress={() => navigation.navigate('BetsList', { 
                     tournamentId: selectedTournamentId, 
                     eventId: event.id 
                   })}

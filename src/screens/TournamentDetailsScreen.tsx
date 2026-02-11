@@ -118,7 +118,7 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
   // Badge logic based on dates and status
   const getBadgeInfo = () => {
     if (tournament.status === 'active') {
-      return { label: 'ACTIVO', color: '#DC2E4B' };
+      return { label: 'ACTIVO', color: '#10B981' };
     }
     
     const now = new Date();
@@ -136,7 +136,7 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
       }
     }
     
-    return { label: 'EN CURSO', color: '#DC2E4B' };
+    return { label: 'EN CURSO', color: '#10B981' };
   };
 
   const badgeInfo = getBadgeInfo();

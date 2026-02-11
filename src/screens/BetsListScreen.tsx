@@ -167,7 +167,7 @@ const BetsListScreen = ({ navigation, route }: any) => {
               Apuestas
             </Text>
             {eventTitle && (
-              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              <Text style={[styles.eventTitle, { color: colors.foreground }]}>
                 {eventTitle}
               </Text>
             )}
@@ -277,6 +277,10 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     marginBottom: 4,
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   subtitle: {
     fontSize: 16,

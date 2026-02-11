@@ -34,11 +34,11 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
       case 'open':
         return '#10B981';
       case 'locked':
-        return '#F59E0B';
+        return '#10B981';
       case 'settled':
-        return '#6B7280';
+        return '#F59E0B';
       case 'cancelled':
-        return '#6B7280';
+        return '#DC2E4B';
       default:
         return colors.mutedForeground;
     }
@@ -261,10 +261,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },  // EventCard styles
   eventCard: {
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 0,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -282,26 +282,61 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    opacity: 0.03,
   },
   eventHeader: {
+    marginBottom: Spacing.md,
+    zIndex: 1,
+  },
+  eventInfo: {
+    flex: 1,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  eventDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  eventDivider: {
+    height: 1,
+    marginBottom: Spacing.md,
+    zIndex: 1,
+  },
+  eventFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 1,
   },
-  eventInfo: {
+  eventMeta: {
     flex: 1,
-    marginRight: Spacing.sm,
+    gap: Spacing.sm,
   },
-  eventTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 2,
+  eventMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  eventTeams: {
-    fontSize: 12,
-    fontWeight: '400',
+  eventMetaIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eventMetaText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  eventExpandIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   eventRight: {
     flexDirection: 'row',
@@ -312,6 +347,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 0,
     zIndex: 1,
+  },
+  eventTeams: {
+    fontSize: 12,
+    fontWeight: '400',
   },
   // SwipeableRow styles
   swipeActions: {
@@ -361,13 +400,13 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, exp
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'upcoming':
-        return '#F59E0B';
-      case 'live':
         return '#DC2E4B';
+      case 'live':
+        return '#10B981';
       case 'finished':
-        return '#6B7280';
+        return '#F59E0B';
       case 'cancelled':
-        return '#6B7280';
+        return '#DC2E4B';
       default:
         return colors.mutedForeground;
     }
@@ -392,33 +431,60 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, exp
     >
       <View style={styles.eventCardGradientOverlay}>
         <LinearGradient
-          colors={[colors.primary + '10', 'transparent']}
+          colors={['rgba(215, 38, 61, 0.08)', 'transparent']}
           style={styles.eventGradientBackground}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         />
       </View>
+      
       <View style={styles.eventHeader}>
         <View style={styles.eventInfo}>
           <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
             {event.title}
           </Text>
-          {event.startsAt && (
-            <Text style={[styles.eventDate, { color: colors.mutedForeground }]}>
-              {formatDate(event.startsAt)}
+          {event.notes && (
+            <Text style={[styles.eventDescription, { color: colors.mutedForeground }]} numberOfLines={2}>
+              {event.notes}
             </Text>
           )}
         </View>
-        <View style={styles.eventRight}>
-          <Ionicons
-            name={getStatusIcon(event.status)}
-            size={18}
-            color={getStatusColor(event.status)}
-          />
+      </View>
+      
+      <View style={[styles.eventDivider, { backgroundColor: colors.border }]} />
+      
+      <View style={styles.eventFooter}>
+        <View style={styles.eventMeta}>
+          {event.startsAt && (
+            <View style={styles.eventMetaItem}>
+              <View style={[styles.eventMetaIconCircle, { backgroundColor: colors.secondary }]}>
+                <Ionicons name="calendar" size={14} color={colors.primary} />
+              </View>
+              <Text style={[styles.eventMetaText, { color: colors.foreground }]}>
+                {formatDate(event.startsAt)}
+              </Text>
+            </View>
+          )}
+          <View style={styles.eventMetaItem}>
+            <View style={[styles.eventMetaIconCircle, { backgroundColor: colors.secondary }]}>
+              <Ionicons
+                name={getStatusIcon(event.status)}
+                size={14}
+                color={getStatusColor(event.status)}
+              />
+            </View>
+            <Text style={[styles.eventMetaText, { color: colors.mutedForeground }]}>
+              {event.status === 'upcoming' ? 'Próximo' : 
+               event.status === 'live' ? 'En vivo' : 
+               event.status === 'finished' ? 'Finalizado' : 'Cancelado'}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.eventExpandIcon, { backgroundColor: colors.secondary }]}>
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
             size={18}
-            color={colors.mutedForeground}
+            color={colors.primary}
           />
         </View>
       </View>

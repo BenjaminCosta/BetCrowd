@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
 import { useTheme } from '../context/ThemeContext';
@@ -278,7 +279,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
             return (
               <TouchableOpacity
                 key={`${pickData.betId}-${index}`}
-                style={[styles.pickCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.pickCard, { backgroundColor: colors.card }]}
                 onPress={() =>
                   navigation.navigate('BetDetails', {
                     tournamentId: pickData.tournamentId,
@@ -288,6 +289,15 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 }
                 activeOpacity={0.7}
               >
+                <View style={styles.cardGradientOverlay}>
+                  <LinearGradient
+                    colors={[colors.primary + '10', 'transparent']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.gradientBackground}
+                  />
+                </View>
+
                 {event && (
                   <View style={styles.eventHeader}>
                     <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
@@ -315,14 +325,13 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                     ${pick.stakeAmount || 0}
                   </Text>
                   <View style={[styles.statusBadge, { 
-                    backgroundColor: bet.status === 'open' ? colors.primary + '20' : 
-                                   bet.status === 'settled' ? colors.success + '20' : 
+                    backgroundColor: bet.status === 'open' ? '#10B981':  
+                                   bet.status === 'settled' ? '#10B981': 
+                                   bet.status === 'cancelled' ? colors.destructive:
                                    colors.mutedForeground + '20' 
                   }]}>
                     <Text style={[styles.statusText, { 
-                      color: bet.status === 'open' ? colors.primary : 
-                            bet.status === 'settled' ? colors.success : 
-                            colors.mutedForeground 
+                      color:colors.foreground, 
                     }]}>
                       {bet.status === 'open' ? 'ABIERTA' : 
                        bet.status === 'locked' ? 'CERRADA' : 
@@ -417,8 +426,19 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderRadius: BorderRadius.lg,
     marginBottom: Spacing.md,
-    borderWidth: 1,
     gap: Spacing.sm,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardGradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gradientBackground: {
+    flex: 1,
   },
   eventHeader: {
     flexDirection: 'row',
@@ -459,7 +479,7 @@ const styles = StyleSheet.create({
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 6,
+    borderRadius: 10,
   },
   statusText: {
     fontSize: 10,

@@ -144,7 +144,7 @@ export const Chip: React.FC<ChipProps> = ({
     return (
       <TouchableOpacity onPress={onPress}>
         <LinearGradient
-          colors={Gradients.primary as any}
+          colors={Gradients.card as any}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.chip, style]}

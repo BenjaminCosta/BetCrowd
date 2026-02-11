@@ -10,6 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, Badge } from '../components/CommonComponents';
@@ -185,18 +186,35 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
   };
 
   const getStatusBadge = (status: string) => {
+    let backgroundColor = colors.mutedForeground;
+    let label = status.toUpperCase();
+    
     switch (status) {
       case 'open':
-        return <Badge variant="success">ABIERTA</Badge>;
+        backgroundColor = '#10B981';
+        label = 'ABIERTA';
+        break;
       case 'locked':
-        return <Badge variant="warning">CERRADA</Badge>;
+        backgroundColor = colors.mutedForeground;
+        label = 'CERRADA';
+        break;
       case 'settled':
-        return <Badge variant="default">RESUELTA</Badge>;
+        backgroundColor = '#10B981';
+        label = 'RESUELTA';
+        break;
       case 'cancelled':
-        return <Badge variant="default">CANCELADA</Badge>;
-      default:
-        return null;
+        backgroundColor = colors.destructive;
+        label = 'CANCELADA';
+        break;
     }
+    
+    return (
+      <View style={[styles.statusBadge, { backgroundColor }]}>
+        <Text style={[styles.statusBadgeText, { color: colors.foreground }]}>
+          {label}
+        </Text>
+      </View>
+    );
   };
 
   const canPlacePick = bet?.status === 'open';
@@ -234,6 +252,14 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
         <View style={styles.content}>
           {/* Bet Info */}
           <Card style={styles.betCard}>
+            <View style={styles.cardGradientOverlay}>
+              <LinearGradient
+                colors={[colors.primary + '10', 'transparent']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.gradientBackground}
+              />
+            </View>
             <View style={styles.betHeader}>
               <Text style={[styles.betTitle, { color: colors.foreground }]}>
                 {bet.title}
@@ -451,6 +477,18 @@ const styles = StyleSheet.create({
   },
   betCard: {
     marginBottom: Spacing.lg,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardGradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gradientBackground: {
+    flex: 1,
   },
   betHeader: {
     flexDirection: 'row',
@@ -463,6 +501,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
     marginRight: Spacing.md,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   betDescription: {
     fontSize: 14,
