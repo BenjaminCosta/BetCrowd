@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { LoadingBar } from '../components/LoadingBar';
-import { Card, EmptyState, SectionHeader, Button } from '../components/CommonComponents';
+import { Card, EmptyState, SectionHeader } from '../components/CommonComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { getTournament, Tournament } from '../services/tournamentService';
-import { calculateTournamentBalances, calculateDebts, UserBalance, Debt } from '../services/groupsService';
+import { calculateTournamentBalances, UserBalance } from '../services/groupsService';
 
 const TournamentGroupScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -28,15 +29,31 @@ const TournamentGroupScreen = ({ navigation, route }: any) => {
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [balances, setBalances] = useState<UserBalance[]>([]);
-  const [debts, setDebts] = useState<Debt[]>([]);
+  const [myBalance, setMyBalance] = useState<UserBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const isFirstFocus = useRef(true);
 
   useEffect(() => {
     if (tournamentId) {
       loadGroupData();
     }
   }, [tournamentId]);
+
+  // Auto-refresh when screen comes back into focus (except first time)
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocus.current) {
+        isFirstFocus.current = false;
+        return;
+      }
+      
+      if (tournamentId) {
+        setRefreshing(true);
+        loadGroupData(true);
+      }
+    }, [tournamentId])
+  );
 
   const loadGroupData = async (showLoadingBar = false) => {
     try {
@@ -52,9 +69,9 @@ const TournamentGroupScreen = ({ navigation, route }: any) => {
       setTournament(tournamentData);
       setBalances(balancesData);
       
-      // Calculate debts
-      const debtsData = calculateDebts(balancesData);
-      setDebts(debtsData);
+      // Find current user's balance
+      const userBalance = balancesData.find(b => b.uid === user?.uid) || null;
+      setMyBalance(userBalance);
     } catch (error) {
       console.error('Error loading group data:', error);
     } finally {
@@ -77,6 +94,11 @@ const TournamentGroupScreen = ({ navigation, route }: any) => {
     if (balance > 0) return colors.success;
     if (balance < 0) return colors.destructive;
     return colors.mutedForeground;
+  };
+
+  const getBalanceLabel = (balance: number): string => {
+    if (balance === 0) return 'Sin movimientos aún';
+    return balance > 0 ? 'Ganaste en total' : 'Perdiste en total';
   };
 
   const getInitials = (name: string): string => {
@@ -162,6 +184,26 @@ const TournamentGroupScreen = ({ navigation, route }: any) => {
           </View>
         </Card>
 
+        {/* My Balance Section */}
+        {myBalance && (
+          <Card style={styles.myBalanceCard}>
+            <View style={styles.myBalanceContent}>
+              <Text style={[styles.myBalanceLabel, { color: colors.mutedForeground }]}>
+                Tu balance en este torneo
+              </Text>
+              <Text style={[
+                styles.myBalanceAmount,
+                { color: getBalanceColor(myBalance.netBalance) }
+              ]}>
+                {formatBalance(myBalance.netBalance)}
+              </Text>
+              <Text style={[styles.myBalanceSubtext, { color: colors.mutedForeground }]}>
+                {getBalanceLabel(myBalance.netBalance)}
+              </Text>
+            </View>
+          </Card>
+        )}
+
         {/* Ranking Section */}
         <View style={styles.section}>
           <SectionHeader title="Ranking" />
@@ -243,81 +285,6 @@ const TournamentGroupScreen = ({ navigation, route }: any) => {
                   </Card>
                 );
               })}
-            </View>
-          )}
-        </View>
-
-        {/* Debts Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Deudas" />
-          
-          {debts.length === 0 ? (
-            <Card>
-              <EmptyState
-                iconName="checkmark-circle-outline"
-                title="Sin deudas"
-                message={balances.length === 0 
-                  ? "No hay movimientos aún" 
-                  : "Todo está saldado por el momento"
-                }
-              />
-            </Card>
-          ) : (
-            <View style={styles.debtsList}>
-              {debts.map((debt, index) => (
-                <Card key={index} style={styles.debtCard}>
-                  <View style={styles.debtContent}>
-                    {/* From User */}
-                    <View style={styles.debtUser}>
-                      {debt.from.photoURL ? (
-                        <Image source={{ uri: debt.from.photoURL }} style={styles.debtAvatar} />
-                      ) : (
-                        <View style={[styles.debtAvatarPlaceholder, { backgroundColor: colors.destructive }]}>
-                          <Text style={styles.debtAvatarText}>
-                            {getInitials(debt.from.displayName)}
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={[styles.debtUsername, { color: colors.foreground }]}>
-                        {debt.from.displayName}
-                      </Text>
-                    </View>
-
-                    {/* Arrow and Amount */}
-                    <View style={styles.debtArrow}>
-                      <View style={[styles.arrowLine, { backgroundColor: colors.border }]} />
-                      <View style={styles.amountContainer}>
-                        <Text style={[styles.debtAmount, { color: colors.primary }]}>
-                          ${debt.amount.toFixed(0)}
-                        </Text>
-                      </View>
-                      <Ionicons name="arrow-forward" size={20} color={colors.primary} />
-                    </View>
-
-                    {/* To User */}
-                    <View style={styles.debtUser}>
-                      {debt.to.photoURL ? (
-                        <Image source={{ uri: debt.to.photoURL }} style={styles.debtAvatar} />
-                      ) : (
-                        <View style={[styles.debtAvatarPlaceholder, { backgroundColor: colors.success }]}>
-                          <Text style={styles.debtAvatarText}>
-                            {getInitials(debt.to.displayName)}
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={[styles.debtUsername, { color: colors.foreground }]}>
-                        {debt.to.displayName}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <View style={[styles.debtSummary, { backgroundColor: colors.secondary }]}>
-                    <Text style={[styles.debtSummaryText, { color: colors.mutedForeground }]}>
-                      {debt.from.displayName} le debe ${debt.amount.toFixed(0)} a {debt.to.displayName}
-                    </Text>
-                  </View>
-                </Card>
-              ))}
             </View>
           )}
         </View>
@@ -501,73 +468,29 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  debtsList: {
-    gap: 12,
-  },
-  debtCard: {
-    padding: 16,
-  },
-  debtContent: {
-    flexDirection: 'row',
+  myBalanceCard: {
+    marginBottom: 24,
+    padding: 24,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
   },
-  debtUser: {
+  myBalanceContent: {
     alignItems: 'center',
     gap: 8,
-    width: 80,
   },
-  debtAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  debtAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  debtAvatarText: {
+  myBalanceLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  debtUsername: {
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  debtArrow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-  },
-  arrowLine: {
-    flex: 1,
-    height: 1,
-  },
-  amountContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  debtAmount: {
-    fontSize: 16,
+  myBalanceAmount: {
+    fontSize: 48,
     fontWeight: '700',
+    marginVertical: 8,
   },
-  debtSummary: {
-    padding: 12,
-    borderRadius: 8,
-  },
-  debtSummaryText: {
-    fontSize: 13,
+  myBalanceSubtext: {
+    fontSize: 15,
     fontWeight: '500',
-    textAlign: 'center',
   },
   detailsButton: {
     height: 52,
