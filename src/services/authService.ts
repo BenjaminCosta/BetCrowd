@@ -40,6 +40,7 @@ export const signUp = async ({ email, password, displayName, username }: SignUpD
       await upsertPublicProfile(user.uid, {
         username: username.toLowerCase().trim(),
         displayName: displayName || username,
+        email: user.email || email,
         photoURL: user.photoURL || undefined,
       });
     }

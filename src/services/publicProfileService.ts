@@ -12,6 +12,7 @@ export interface PublicProfile {
   username: string;
   usernameLower: string;
   displayName: string;
+  email: string;
   photoURL?: string;
   createdAt: any;
   updatedAt: any;
@@ -29,6 +30,7 @@ export const upsertPublicProfile = async (
   data: {
     username: string;
     displayName: string;
+    email: string;
     photoURL?: string;
   }
 ): Promise<void> => {
@@ -41,6 +43,7 @@ export const upsertPublicProfile = async (
       username: data.username,
       usernameLower: data.username.toLowerCase(),
       displayName: data.displayName,
+      email: data.email,
       photoURL: data.photoURL || '',
       updatedAt: serverTimestamp(),
     };
@@ -70,6 +73,7 @@ export const upsertPublicProfileFromUser = async (
   await upsertPublicProfile(userProfile.uid, {
     username: userProfile.username,
     displayName: userProfile.displayName || userProfile.fullName || userProfile.username,
+    email: userProfile.email,
     photoURL: userProfile.photoURL,
   });
 };

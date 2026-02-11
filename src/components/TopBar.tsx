@@ -52,7 +52,19 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
 
   const handleNavigate = (screen: string) => {
     try {
-      navigation.navigate(screen);
+      if (screen === 'Inicio') {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        });
+      } else if (screen === 'Perfil') {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main', params: { screen: 'Perfil' } }],
+        });
+      } else {
+        navigation.navigate(screen);
+      }
     } catch (error) {
       console.log('Navigation error:', error);
     }

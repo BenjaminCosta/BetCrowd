@@ -145,6 +145,31 @@ const ProfileScreen = ({ navigation }: any) => {
               </View>
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.friendsCard, { backgroundColor: colors.card, marginTop: 12 }]}
+            onPress={() => navigation.navigate('SocialGroups')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.friendsRow}>
+              <View style={styles.friendsLeft}>
+                <View style={[styles.friendsIconContainer, { backgroundColor: colors.primary + '20' }]}>
+                  <Ionicons name="people-circle" size={24} color={colors.primary} />
+                </View>
+                <View style={styles.friendsInfo}>
+                  <Text style={[styles.friendsTitle, { color: colors.foreground }]}>
+                    Grupos
+                  </Text>
+                  <Text style={[styles.friendsSubtitle, { color: colors.mutedForeground }]}>
+                    Ver grupos de torneos
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.friendsRight}>
+                <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+              </View>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Settings */}

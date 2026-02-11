@@ -34,6 +34,8 @@ import BetDetailsScreen from '../screens/BetDetailsScreen';
 import LoadResultsScreen from '../screens/LoadResultsScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import NotificationCenterScreen from '../screens/NotificationCenterScreen';
+import SocialGroupsScreen from '../screens/SocialGroupsScreen';
+import TournamentGroupScreen from '../screens/TournamentGroupScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -131,6 +133,8 @@ const AppStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
+      <Stack.Screen name="SocialGroups" component={SocialGroupsScreen} />
+      <Stack.Screen name="TournamentGroup" component={TournamentGroupScreen} />
       <Stack.Screen name="TournamentDetails" component={TournamentDetailsScreen} />
       <Stack.Screen name="TournamentSettings" component={TournamentSettingsScreen} />
       <Stack.Screen name="TournamentEvents" component={TournamentEventsScreen} />

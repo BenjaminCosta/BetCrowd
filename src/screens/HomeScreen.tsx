@@ -213,7 +213,7 @@ const HomeScreen = ({ navigation }: any) => {
                   >
                     <TouchableOpacity
                       style={[styles.tournamentCard, { backgroundColor: colors.card }]}
-                      onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
+                      onPress={() => navigation.navigate('TournamentGroup', { tournamentId: tournament.id })}
                       activeOpacity={0.7}
                     >
                   <View style={styles.cardGradientOverlay}>

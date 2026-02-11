@@ -78,7 +78,7 @@ const LoginScreen = ({ navigation }: any) => {
           <View style={styles.form}>
             <View style={styles.inputContainer}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>
-                Email o Usuario
+                Email
               </Text>
               <TextInput
                 style={[styles.input, { 
@@ -86,7 +86,7 @@ const LoginScreen = ({ navigation }: any) => {
                   color: colors.foreground,
                   borderColor: colors.border,
                 }]}
-                placeholder="Ingresa tu email"
+                placeholder="tu@email.com"
                 placeholderTextColor={colors.mutedForeground}
                 value={email}
                 onChangeText={setEmail}

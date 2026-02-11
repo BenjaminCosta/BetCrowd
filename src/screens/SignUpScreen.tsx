@@ -261,26 +261,18 @@ const SignUpScreen = ({ navigation }: any) => {
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
             </View>
 
-            {/* Social Login Buttons */}
-            <View style={styles.socialButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.socialButton, { 
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                }]}
-              >
-                <Ionicons name="logo-google" size={24} color={colors.foreground} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.socialButton, { 
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                }]}
-              >
-                <Ionicons name="logo-apple" size={24} color={colors.foreground} />
-              </TouchableOpacity>
-            </View>
+            {/* Social Login Button */}
+            <TouchableOpacity
+              style={[styles.socialButtonFull, { 
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              }]}
+            >
+              <Ionicons name="logo-google" size={20} color={colors.foreground} />
+              <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
+                Google
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Login Link */}
@@ -413,18 +405,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginHorizontal: Spacing.md,
   },
-  socialButtonsContainer: {
+  socialButtonFull: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.lg,
-  },
-  socialButton: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.md,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
+  },
+  socialButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   loginContainer: {
     flexDirection: 'row',

@@ -187,6 +187,7 @@ export const updateFullProfile = async (
       await upsertPublicProfile(uid, {
         username: profile.username,
         displayName: data.fullName || profile.displayName || profile.username,
+        email: profile.email,
         photoURL: data.photoURL || profile.photoURL,
       });
     }
