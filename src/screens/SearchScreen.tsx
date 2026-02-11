@@ -250,6 +250,8 @@ const SearchScreen = ({ navigation }: any) => {
       'grupos-eliminatoria': 'Grupos + Eliminatoria',
       'evento-unico': 'Evento único',
       'serie': 'Serie (Bo3/Bo5)',
+      'bracket': 'Eliminación Directa',
+      'points': 'Puntos',
       'otro': 'Otro',
     };
     return formatMap[formatId] || formatId;
@@ -262,6 +264,8 @@ const SearchScreen = ({ navigation }: any) => {
       'grupos-eliminatoria': 'grid',
       'evento-unico': 'flag',
       'serie': 'list',
+      'bracket': 'git-branch',
+      'points': 'analytics',
       'otro': 'ellipsis-horizontal',
     };
     return iconMap[formatId] || 'trophy';
@@ -384,8 +388,8 @@ const SearchScreen = ({ navigation }: any) => {
                             </View>
                           </View>
                           <View style={[styles.prizeContainer, { backgroundColor: colors.primary + '15' }]}>
-                            <Text style={[styles.prizeValue, { color: colors.primary }]}>${tournament.contribution || 0}</Text>
-                            <Text style={[styles.prizeLabel, { color: colors.primary }]}>
+                            <Text style={[styles.prizeValue, { color: colors.foreground }]}>${tournament.contribution}</Text>
+                            <Text style={[styles.prizeLabel, { color: colors.mutedForeground }]}>
                               Aporte
                             </Text>
                           </View>

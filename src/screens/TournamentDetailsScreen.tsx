@@ -111,6 +111,7 @@ const TournamentDetailsScreen = ({ navigation, route }: any) => {
       'serie': 'list',
       'bracket': 'git-branch',
       'points': 'analytics',
+      'otro': 'ellipsis-horizontal',
     };
     return iconMap[formatId] || 'trophy';
   };

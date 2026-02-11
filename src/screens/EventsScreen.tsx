@@ -9,7 +9,6 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -32,10 +31,17 @@ const EventsScreen = ({ navigation, route }: any) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(routeTournamentId || null);
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // Initial loading bar - only on first mount
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     loadTournaments();
@@ -43,26 +49,14 @@ const EventsScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     if (selectedTournamentId && user) {
-      // Si ya hay datos, solo mostrar loading bar (cambio de filtro)
-      if (events.length > 0) {
+      // Show filter loading bar when switching tournaments (after initial load)
+      if (initialLoadDone) {
         setFilterLoading(true);
-      } else {
-        // Primera carga, mostrar loading completo
-        setLoading(true);
       }
       loadData();
       checkAdminStatus();
     }
   }, [selectedTournamentId, user]);
-
-  // Refresh when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      if (selectedTournamentId && user) {
-        loadData();
-      }
-    }, [selectedTournamentId, user])
-  );
 
   const loadTournaments = async () => {
     if (!user) return;
@@ -84,11 +78,6 @@ const EventsScreen = ({ navigation, route }: any) => {
   const loadData = async () => {
     if (!user || !selectedTournamentId) return;
     
-    // Only show loading on first load
-    if (events.length === 0) {
-      setLoading(true);
-    }
-    
     try {
       // Load tournament
       const tournamentData = await getTournament(selectedTournamentId);
@@ -100,7 +89,7 @@ const EventsScreen = ({ navigation, route }: any) => {
     } catch (error) {
       // Silent fail
     } finally {
-      setLoading(false);
+      setInitialLoadDone(true);
       setFilterLoading(false);
     }
   };
@@ -152,10 +141,12 @@ const EventsScreen = ({ navigation, route }: any) => {
     );
   };
 
-  if (loading) {
+  // Show full loading screen on first real load
+  if (!initialLoadDone) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <TopBar />
+        <LoadingBar isLoading={isLoading} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
@@ -170,7 +161,7 @@ const EventsScreen = ({ navigation, route }: any) => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <TopBar />
-        <LoadingBar isLoading={filterLoading} />
+        <LoadingBar isLoading={isLoading || filterLoading} />
         
         <ScrollView 
           style={styles.content}

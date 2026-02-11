@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
@@ -31,10 +30,17 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const [tournament, setTournament] = useState<any>(null);
   const [openPicks, setOpenPicks] = useState<any[]>([]);
   const [settledPicks, setSettledPicks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
+
+  // Initial loading bar - only on first mount
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     loadTournaments();
@@ -42,35 +48,24 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     if (selectedTournamentId && user) {
-      // Si ya hay datos, solo mostrar loading bar (cambio de filtro)
-      if (openPicks.length > 0 || settledPicks.length > 0) {
+      // Show filter loading bar when switching tournaments (after initial load)
+      if (initialLoadDone) {
         setFilterLoading(true);
-      } else {
-        // Primera carga, mostrar loading completo
-        setLoading(true);
       }
       loadData();
     }
   }, [selectedTournamentId, user]);
 
-  // Refresh when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      if (selectedTournamentId && user) {
-        loadData();
-      }
-    }, [selectedTournamentId, user])
-  );
-
   const loadTournaments = async () => {
     if (!user) return;
     try {
       const myTournaments = await listMyTournaments();
-      setTournaments(myTournaments.filter(t => t.status !== 'deleted'));
+      const filtered = myTournaments.filter(t => t.status !== 'deleted');
+      setTournaments(filtered);
       
       // Auto-select first tournament if none selected
-      if (!selectedTournamentId && myTournaments.length > 0) {
-        setSelectedTournamentId(myTournaments[0].id);
+      if (!selectedTournamentId && filtered.length > 0) {
+        setSelectedTournamentId(filtered[0].id);
       }
     } catch (error) {
       // Silent fail
@@ -79,11 +74,6 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
   const loadData = async () => {
     if (!user || !selectedTournamentId) return;
-    
-    // Only show loading on first load
-    if (openPicks.length === 0 && settledPicks.length === 0) {
-      setLoading(true);
-    }
     
     try {
       // Load tournament
@@ -140,7 +130,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     } catch (error) {
       // Silent fail
     } finally {
-      setLoading(false);
+      setInitialLoadDone(true);
       setFilterLoading(false);
     }
   };
@@ -151,10 +141,12 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     setRefreshing(false);
   };
 
-  if (loading) {
+  // Show full loading screen on first real load
+  if (!initialLoadDone) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <TopBar />
+        <LoadingBar isLoading={isLoading} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
@@ -170,7 +162,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar />
-      <LoadingBar isLoading={filterLoading} />
+      <LoadingBar isLoading={isLoading || filterLoading} />
       
       <ScrollView 
         style={styles.content}

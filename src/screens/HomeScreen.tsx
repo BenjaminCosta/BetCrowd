@@ -30,6 +30,7 @@ const getFormatLabel = (formatId: string) => {
     'serie': 'Serie (Bo3/Bo5)',
     'bracket': 'Eliminación Directa',
     'points': 'Puntos',
+    'otro': 'Otro',
   };
   return formatMap[formatId] || formatId;
 };
@@ -43,6 +44,7 @@ const getFormatIcon = (formatId: string) => {
     'serie': 'list',
     'bracket': 'git-branch',
     'points': 'analytics',
+    'otro': 'ellipsis-horizontal',
   };
   return iconMap[formatId] || 'trophy';
 };

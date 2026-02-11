@@ -354,9 +354,9 @@ export const listenMyTournamentRefs = (
         status: doc.data().status || 'active',
       }));
 
-      // Check if any refs are missing denormalized data and fix them
+      // Check if any refs are missing denormalized data or have mismatched status and fix them
       refs.forEach(async (ref) => {
-        if (!ref.name) {
+        if (!ref.name || !ref.status) {
           try {
             const tournamentDoc = await getDoc(doc(db, 'tournaments', ref.tournamentId));
             if (tournamentDoc.exists()) {
@@ -581,6 +581,7 @@ export const archiveTournament = async (tournamentId: string): Promise<void> => 
 
 /**
  * Soft delete a tournament (status=deleted)
+ * Also syncs status to all members
  */
 export const deleteTournamentSoft = async (tournamentId: string): Promise<void> => {
   const user = auth.currentUser;
@@ -601,6 +602,9 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
       },
       { merge: true }
     );
+
+    // Sync status to all members' tournamentRefs
+    await syncDenormalizedData(tournamentId, { status: 'deleted' });
   } catch (error: any) {
     throw new Error(error.message || 'No se pudo eliminar el torneo');
   }
@@ -608,6 +612,7 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
 
 /**
  * Search tournaments by name (searches all tournaments the user has access to)
+ * Excludes deleted tournaments
  */
 export const searchTournaments = async (searchQuery: string): Promise<Tournament[]> => {
   const user = auth.currentUser;
@@ -620,16 +625,56 @@ export const searchTournaments = async (searchQuery: string): Promise<Tournament
     // Get all user's tournaments
     const myTournaments = await listMyTournaments();
     
-    // Filter by search query (case insensitive)
+    // Filter by search query (case insensitive) and exclude deleted tournaments
     const searchLower = searchQuery.toLowerCase();
     const filtered = myTournaments.filter(tournament => 
-      tournament.name.toLowerCase().includes(searchLower) ||
+      tournament.status !== 'deleted' &&
+      (tournament.name.toLowerCase().includes(searchLower) ||
       tournament.description?.toLowerCase().includes(searchLower) ||
-      tournament.inviteCode.toLowerCase().includes(searchLower)
+      tournament.inviteCode.toLowerCase().includes(searchLower))
     );
 
     return filtered;
   } catch (error: any) {
     throw new Error(error.message || 'No se pudo buscar torneos');
+  }
+};
+
+/**
+ * Utility function to fix desynchronized tournament refs
+ * Syncs tournament status from main document to all members' refs
+ * Useful after database updates or migrations
+ */
+export const syncTournamentRefsFromMain = async (tournamentId: string): Promise<void> => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Debes iniciar sesión');
+  }
+
+  try {
+    // Get main tournament document
+    const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
+    
+    if (!tournamentDoc.exists()) {
+      throw new Error('Torneo no encontrado');
+    }
+
+    const tournamentData = tournamentDoc.data() as Tournament;
+
+    // Sync all denormalized fields to members
+    await syncDenormalizedData(tournamentId, {
+      name: tournamentData.name,
+      format: tournamentData.format,
+      contribution: tournamentData.contribution,
+      participantsEstimated: tournamentData.participantsEstimated,
+      inviteCode: tournamentData.inviteCode,
+      status: tournamentData.status,
+    });
+
+    console.log(`✅ Synced tournament ${tournamentId} refs successfully`);
+  } catch (error: any) {
+    console.error('Error syncing tournament refs:', error);
+    throw error;
   }
 };
