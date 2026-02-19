@@ -53,7 +53,7 @@ const MainTabs = () => {
 
           if (route.name === 'Inicio') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Eventos') {
+          } else if (route.name === 'Torneos') {
             iconName = focused ? 'trophy' : 'trophy-outline';
           } else if (route.name === 'Apuestas') {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
@@ -79,41 +79,7 @@ const MainTabs = () => {
       })}
     >
       <Tab.Screen name="Inicio" component={HomeScreen} />
-      <Tab.Screen name="Eventos" component={EventsScreen} />
-      <Tab.Screen
-        name="Crear"
-        component={CreateTournamentScreen}
-        options={{
-          tabBarIcon: () => null,
-          tabBarLabel: () => null,
-          tabBarButton: (props) => (
-            <View style={styles.createButtonContainer}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (props.onPress) {
-                    props.onPress({
-                      nativeEvent: {},
-                      currentTarget: {},
-                      target: {},
-                      preventDefault: () => {},
-                      stopPropagation: () => {},
-                    } as any);
-                  }
-                }}
-              >
-                <LinearGradient
-                  colors={Gradients.primary as any}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.createButtonGradient}
-                >
-                  <Ionicons name="add" size={32} color="#FFFFFF" />
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          ),
-        }}
-      />
+      <Tab.Screen name="Torneos" component={EventsScreen} />
       <Tab.Screen name="Apuestas" component={TournamentPredictionsScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
@@ -133,6 +99,7 @@ const AppStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
+      <Stack.Screen name="CreateTournament" component={CreateTournamentScreen} />
       <Stack.Screen name="SocialGroups" component={SocialGroupsScreen} />
       <Stack.Screen name="TournamentGroup" component={TournamentGroupScreen} />
       <Stack.Screen name="TournamentDetails" component={TournamentDetailsScreen} />
@@ -183,22 +150,6 @@ export const AppNavigator = () => {
 };
 
 const styles = StyleSheet.create({
-  createButtonContainer: {
-    top: -5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  createButtonGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
