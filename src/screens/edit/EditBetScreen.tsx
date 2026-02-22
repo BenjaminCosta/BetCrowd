@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,13 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius } from '../theme/colors';
-import { TopBar } from '../components/TopBar';
-import { Card, Input } from '../components/CommonComponents';
-import { useTheme } from '../context/ThemeContext';
-import { updateBet, getBet } from '../services/betService';
-import { getTournament } from '../services/tournamentService';
-import { getEvent } from '../services/eventService';
+import { Colors, Spacing, BorderRadius } from '../../theme/colors';
+import { TopBar } from '../../components/TopBar';
+import { Card, Input } from '../../components/CommonComponents';
+import { useTheme } from '../../context/ThemeContext';
+import { updateBet, getBet } from '../../services/betService';
+import { getTournament } from '../../services/tournamentService';
+import { getEvent } from '../../services/eventService';
 
 const EditBetScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -35,12 +35,9 @@ const EditBetScreen = ({ navigation, route }: any) => {
   const [options, setOptions] = useState<string[]>(['']);
   const [stakeAmount, setStakeAmount] = useState('');
   const [line, setLine] = useState(''); // for over_under
+  const [stakeType, setStakeType] = useState<string>('fixed');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [tournamentData, eventData, betData] = await Promise.all([
@@ -60,6 +57,7 @@ const EditBetScreen = ({ navigation, route }: any) => {
         setOptions(betData.options || ['']);
         setStakeAmount(betData.stakeAmount?.toString() || '');
         setLine(betData.line?.toString() || '');
+        setStakeType(betData.stakeType || 'fixed');
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -67,7 +65,11 @@ const EditBetScreen = ({ navigation, route }: any) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tournamentId, eventId, betId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const applyWinnerTemplate = () => {
     setSelectedType('winner');
@@ -133,7 +135,7 @@ const EditBetScreen = ({ navigation, route }: any) => {
         description: description.trim(),
         type: selectedType,
         options: cleanOptions,
-        stakeType: 'fixed' as const,
+        stakeType: stakeType || 'fixed',
         stakeAmount: stake,
       };
 

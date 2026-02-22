@@ -12,15 +12,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
-import { TopBar } from '../components/TopBar';
-import { LoadingBar } from '../components/LoadingBar';
-import { SwipeableRow } from '../components/BetanoComponents';
-import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
-import { getTournament, listMyTournaments, isUserAdmin } from '../services/tournamentService';
-import { getMyPick, getBet, listBets, type Bet } from '../services/betService';
-import { listEvents } from '../services/eventService';
+import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
+import { TopBar } from '../../components/TopBar';
+import { LoadingBar } from '../../components/LoadingBar';
+import { SwipeableRow } from '../../components/BetanoComponents';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { getTournament, listMyTournaments, isUserAdmin } from '../../services/tournamentService';
+import { getMyPick, getBet, listBets, type Bet } from '../../services/betService';
+import { listEvents } from '../../services/eventService';
 
 const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -42,7 +42,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
   // Initial loading bar - only on first mount
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1500);
+    const timer = setTimeout(() => setIsLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -101,41 +101,40 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
       
       try {
         const events = await listEvents(selectedTournamentId);
-        
-        for (const event of events) {
-          try {
-            const bets = await listBets(selectedTournamentId, event.id);
-            
-            for (const bet of bets) {
-              try {
-                const pick = await getMyPick(selectedTournamentId, event.id, bet.id, user.uid);
-                
-                if (pick) {
-                  const pickData = {
-                    tournamentId: selectedTournamentId,
-                    eventId: event.id,
-                    betId: bet.id,
-                    pick,
-                    bet,
-                    event,
-                  };
-                  
-                  // Dividir en abiertas y resueltas
-                  if (bet.status === 'settled' || bet.status === 'cancelled') {
-                    allSettledPicks.push(pickData);
-                  } else {
-                    allOpenPicks.push(pickData);
+
+        await Promise.allSettled(
+          events.map(async (event) => {
+            try {
+              const bets = await listBets(selectedTournamentId, event.id);
+              await Promise.allSettled(
+                bets.map(async (bet) => {
+                  try {
+                    const pick = await getMyPick(selectedTournamentId, event.id, bet.id, user.uid);
+                    if (pick) {
+                      const pickData = {
+                        tournamentId: selectedTournamentId,
+                        eventId: event.id,
+                        betId: bet.id,
+                        pick,
+                        bet,
+                        event,
+                      };
+                      if (bet.status === 'settled' || bet.status === 'cancelled') {
+                        allSettledPicks.push(pickData);
+                      } else {
+                        allOpenPicks.push(pickData);
+                      }
+                    }
+                  } catch {
+                    // pick doesn't exist, skip
                   }
-                }
-              } catch (pickError) {
-                // Pick doesn't exist, skip
-                continue;
-              }
+                })
+              );
+            } catch {
+              // no bets for event, skip
             }
-          } catch (betError) {
-            continue;
-          }
-        }
+          })
+        );
       } catch (eventError) {
         // Silent fail
       }
@@ -154,10 +153,10 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   useEffect(() => {
     if (!selectedTournamentId || !user || !initialLoadDone) return;
     
-    // Set up periodic refresh every 5 seconds when screen is active
+    // Set up periodic refresh every 30 seconds when screen is active
     const interval = setInterval(() => {
       loadData();
-    }, 5000);
+    }, 30000);
     
     return () => clearInterval(interval);
   }, [selectedTournamentId, user, initialLoadDone]);
@@ -361,7 +360,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                   </Text>
                   <View style={[styles.statusBadge, { 
                     backgroundColor: bet.status === 'open' ? '#10B981':  
-                                   bet.status === 'settled' ? '#10B981': 
+                                   bet.status === 'settled' ? '#6366F1': 
                                    bet.status === 'cancelled' ? colors.destructive:
                                    colors.mutedForeground + '20' 
                   }]}>

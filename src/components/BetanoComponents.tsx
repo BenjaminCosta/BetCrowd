@@ -331,26 +331,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  eventExpandIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eventRight: {
+  // New EventCard styles
+  eventTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  eventDate: {
-    fontSize: 11,
-    marginTop: 0,
+    gap: 8,
+    marginBottom: Spacing.sm,
     zIndex: 1,
   },
-  eventTeams: {
+  eventStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  eventLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  eventStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  eventPickBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  eventPickText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  eventDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+    zIndex: 1,
+  },
+  eventDate: {
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '500',
+    zIndex: 1,
   },
   // SwipeableRow styles
   swipeActions: {
@@ -377,43 +406,33 @@ interface EventCardProps {
   theme: 'light' | 'dark';
   onPress: () => void;
   expanded?: boolean;
+  userHasPick?: boolean;
 }
 
-export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, expanded }) => {
+export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, userHasPick = false }) => {
   const colors = Colors[theme];
 
-  const getStatusIcon = (status: string) => {
+  const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'upcoming':
-        return 'time-outline';
-      case 'live':
-        return 'radio-button-on';
-      case 'finished':
-        return 'checkmark-circle';
-      case 'cancelled':
-        return 'close-circle';
-      default:
-        return 'calendar-outline';
+      case 'upcoming': return 'Próximo';
+      case 'live': return 'En vivo';
+      case 'finished': return 'Finalizado';
+      case 'cancelled': return 'Cancelado';
+      default: return status;
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'upcoming':
-        return '#DC2E4B';
-      case 'live':
-        return '#10B981';
-      case 'finished':
-        return '#F59E0B';
-      case 'cancelled':
-        return '#DC2E4B';
-      default:
-        return colors.mutedForeground;
+      case 'live': return '#10B981';
+      case 'upcoming': return '#DC2E4B';
+      case 'finished': return '#F59E0B';
+      default: return colors.mutedForeground;
     }
   };
 
   const formatDate = (timestamp: any) => {
-    if (!timestamp) return 'Sin fecha';
+    if (!timestamp) return null;
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleDateString('es-AR', {
       day: 'numeric',
@@ -422,6 +441,18 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, exp
       minute: '2-digit',
     });
   };
+
+  // Primary display: "Home vs Away" if teams exist, otherwise title
+  const primaryTitle =
+    event.homeTeam && event.awayTeam
+      ? `${event.homeTeam} vs ${event.awayTeam}`
+      : event.title;
+  // Secondary line: show title as subtitle only when teams are shown
+  const subtitle =
+    event.homeTeam && event.awayTeam ? event.title : event.notes ?? null;
+
+  const dateStr = event.startsAt ? formatDate(event.startsAt) : null;
+  const statusColor = getStatusColor(event.status);
 
   return (
     <TouchableOpacity
@@ -437,57 +468,44 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, exp
           end={{ x: 1, y: 1 }}
         />
       </View>
-      
+
+      {/* Top row: status badge + "ya apostaste" */}
+      <View style={styles.eventTopRow}>
+        <View style={[styles.eventStatusBadge, { backgroundColor: statusColor + '20' }]}>
+          {event.status === 'live' && (
+            <View style={[styles.eventLiveDot, { backgroundColor: statusColor }]} />
+          )}
+          <Text style={[styles.eventStatusText, { color: statusColor }]}>
+            {getStatusLabel(event.status).toUpperCase()}
+          </Text>
+        </View>
+        {userHasPick && (
+          <View style={[styles.eventPickBadge, { backgroundColor: colors.success + '20' }]}>
+            <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+            <Text style={[styles.eventPickText, { color: colors.success }]}>Ya apostaste</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.eventHeader}>
         <View style={styles.eventInfo}>
-          <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
-            {event.title}
+          <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={2}>
+            {primaryTitle}
           </Text>
-          {event.notes && (
-            <Text style={[styles.eventDescription, { color: colors.mutedForeground }]} numberOfLines={2}>
-              {event.notes}
+          {subtitle ? (
+            <Text style={[styles.eventDescription, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {subtitle}
             </Text>
-          )}
+          ) : null}
         </View>
       </View>
-      
-      <View style={[styles.eventDivider, { backgroundColor: colors.border }]} />
-      
-      <View style={styles.eventFooter}>
-        <View style={styles.eventMeta}>
-          {event.startsAt && (
-            <View style={styles.eventMetaItem}>
-              <View style={[styles.eventMetaIconCircle, { backgroundColor: colors.secondary }]}>
-                <Ionicons name="calendar" size={14} color={colors.primary} />
-              </View>
-              <Text style={[styles.eventMetaText, { color: colors.foreground }]}>
-                {formatDate(event.startsAt)}
-              </Text>
-            </View>
-          )}
-          <View style={styles.eventMetaItem}>
-            <View style={[styles.eventMetaIconCircle, { backgroundColor: colors.secondary }]}>
-              <Ionicons
-                name={getStatusIcon(event.status)}
-                size={14}
-                color={getStatusColor(event.status)}
-              />
-            </View>
-            <Text style={[styles.eventMetaText, { color: colors.mutedForeground }]}>
-              {event.status === 'upcoming' ? 'Próximo' : 
-               event.status === 'live' ? 'En vivo' : 
-               event.status === 'finished' ? 'Finalizado' : 'Cancelado'}
-            </Text>
-          </View>
+
+      {dateStr ? (
+        <View style={styles.eventDateRow}>
+          <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
+          <Text style={[styles.eventDate, { color: colors.mutedForeground }]}>{dateStr}</Text>
         </View>
-        <View style={[styles.eventExpandIcon, { backgroundColor: colors.secondary }]}>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color={colors.primary}
-          />
-        </View>
-      </View>
+      ) : null}
     </TouchableOpacity>
   );
 };

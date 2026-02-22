@@ -342,17 +342,35 @@ export const upsertMyPick = async (
     // Also update picks index for PredictionsScreen
     await updatePicksIndex(tournamentId, eventId, betId, uid);
   } catch (error: any) {
-    // Handle permission errors that occur even when transaction succeeds
-    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
-      // Verify if the pick was actually created despite the error
-      const pickDoc = await getDoc(pickRef);
-      if (pickDoc.exists()) {
-        // Operation succeeded, just update the index and return silently
-        await updatePicksIndex(tournamentId, eventId, betId, uid);
+    const isPermissionError =
+      error?.code === 'permission-denied' ||
+      error?.message?.includes('insufficient permissions') ||
+      error?.message?.includes('Missing or insufficient permissions');
+
+    if (isPermissionError) {
+      // Transaction failed because the user lacks write access to the bet document.
+      // Check if the pick was somehow saved anyway (rare).
+      const existingDoc = await getDoc(pickRef);
+      if (existingDoc.exists()) {
+        try { await updatePicksIndex(tournamentId, eventId, betId, uid); } catch { /* ignore */ }
         return;
       }
+      // Fallback: write the pick directly — users always have write access to their own pick.
+      await setDoc(
+        pickRef,
+        {
+          uid,
+          selection,
+          stakeAmount: stakeAmount || 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      try { await updatePicksIndex(tournamentId, eventId, betId, uid); } catch { /* ignore */ }
+      return;
     }
-    // Re-throw if it's an actual failure
+    // Re-throw any other error
     throw error;
   }
 };

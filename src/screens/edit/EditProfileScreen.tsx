@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,15 +16,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { useTheme } from '../context/ThemeContext';
-import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
-import { TopBar } from '../components/TopBar';
-import { PrimaryButton } from '../components/CommonComponents';
-import { useAuth } from '../context/AuthContext';
-import { auth } from '../lib/firebase';
-import { getUserProfile, updateFullProfile, UpdateProfileData } from '../services/userService';
-import { uploadAvatar } from '../services/storageService';
-import { changePassword, validatePasswordChange, getPasswordErrorMessage } from '../services/passwordService';
+import { useTheme } from '../../context/ThemeContext';
+import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
+import { TopBar } from '../../components/TopBar';
+import { PrimaryButton } from '../../components/CommonComponents';
+import { useAuth } from '../../context/AuthContext';
+import { auth } from '../../lib/firebase';
+import { updateProfile } from 'firebase/auth';
+import { getUserProfile, updateFullProfile, UpdateProfileData } from '../../services/userService';
+import { uploadAvatar } from '../../services/storageService';
+import { changePassword, validatePasswordChange, getPasswordErrorMessage } from '../../services/passwordService';
 
 const EditProfileScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
@@ -55,11 +56,7 @@ const EditProfileScreen = ({ navigation }: any) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Load user profile
-  useEffect(() => {
-    loadUserProfile();
-  }, []);
-
-  const loadUserProfile = async () => {
+  const loadUserProfile = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -85,7 +82,11 @@ const EditProfileScreen = ({ navigation }: any) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -124,7 +125,6 @@ const EditProfileScreen = ({ navigation }: any) => {
       
       // Update displayName in Firebase Auth
       if (auth.currentUser && fullName.trim() !== auth.currentUser.displayName) {
-        const { updateProfile } = await import('firebase/auth');
         await updateProfile(auth.currentUser, {
           displayName: fullName.trim(),
         });

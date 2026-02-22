@@ -160,7 +160,7 @@ const SocialGroupsScreen = ({ navigation }: any) => {
             {groups.map((group) => (
               <TouchableOpacity
                 key={group.tournamentId}
-                onPress={() => navigation.navigate('TournamentGroup', { tournamentId: group.tournamentId })}
+                onPress={() => navigation.navigate('Tournament', { tournamentId: group.tournamentId })}
                 activeOpacity={0.7}
               >
                 <Card style={styles.groupCard}>

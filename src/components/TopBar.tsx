@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { SheetModal } from './SheetModal';
+import SearchPanel from './forms/SearchPanel';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -21,6 +23,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
   const { unreadCount } = useSocial();
   const [photoURL, setPhotoURL] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -71,6 +74,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
   };
 
   return (
+    <>
     <View style={[styles.container, { backgroundColor: colors.background, borderBottomColor: theme === 'dark' ? '#2A2A2A' : '#E0E0E0' }]}>
       <View style={styles.content}>
         {showBackButton ? (
@@ -96,7 +100,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
         <View style={styles.rightIcons}>
           <TouchableOpacity 
             style={styles.iconButton}
-            onPress={() => handleNavigate('Search')}
+            onPress={() => setShowSearch(true)}
           >
             <Ionicons name="search" size={22} color={colors.foreground} />
           </TouchableOpacity>
@@ -133,6 +137,12 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
         </View>
       </View>
     </View>
+
+      {/* Search sheet */}
+      <SheetModal visible={showSearch} onClose={() => setShowSearch(false)}>
+        <SearchPanel onClose={() => setShowSearch(false)} />
+      </SheetModal>
+    </>
   );
 };
 

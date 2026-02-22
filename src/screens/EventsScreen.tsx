@@ -39,7 +39,7 @@ const EventsScreen = ({ navigation, route }: any) => {
 
   // Initial loading bar - only on first mount
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1500);
+    const timer = setTimeout(() => setIsLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -101,7 +101,7 @@ const EventsScreen = ({ navigation, route }: any) => {
     // Set up periodic refresh every 5 seconds when screen is active
     const interval = setInterval(() => {
       loadData();
-    }, 5000);
+    }, 30000);
     
     return () => clearInterval(interval);
   }, [selectedTournamentId, user, initialLoadDone]);

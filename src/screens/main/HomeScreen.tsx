@@ -15,17 +15,19 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Colors, Gradients } from '../theme/colors';
-import { TopBar } from '../components/TopBar';
-import { LoadingBar } from '../components/LoadingBar';
-import { SwipeableRow } from '../components/BetanoComponents';
-import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
-import { useTournaments } from '../context/TournamentsContext';
-import { getUserProfile } from '../services/userService';
-import { getTournamentMemberCount } from '../services/tournamentService';
-import { Event, listenEvents } from '../services/eventService';
-import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds } from '../services/betService';
+import { Colors, Gradients } from '../../theme/colors';
+import { TopBar } from '../../components/TopBar';
+import { LoadingBar } from '../../components/LoadingBar';
+import { SwipeableRow } from '../../components/BetanoComponents';
+import { SheetModal } from '../../components/SheetModal';
+import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { useTournaments } from '../../context/TournamentsContext';
+import { getUserProfile } from '../../services/userService';
+import { getTournamentMemberCount } from '../../services/tournamentService';
+import { Event, listenEvents } from '../../services/eventService';
+import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds } from '../../services/betService';
 
 // Format label mapping
 const getFormatLabel = (formatId: string) => {
@@ -67,6 +69,7 @@ interface EventWithTournament extends Event {
 // User bet info
 interface UserBetInfo {
   eventId: string;
+  betId: string;
   eventTitle: string;
   tournamentName: string;
   status: string;
@@ -98,6 +101,7 @@ const HomeScreen = ({ navigation }: any) => {
   const [confirmingBet, setConfirmingBet] = useState(false);
   const [betFeedback, setBetFeedback] = useState<string>('');
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
+  const [showCreateTournamentSheet, setShowCreateTournamentSheet] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
@@ -165,7 +169,7 @@ const HomeScreen = ({ navigation }: any) => {
       await Promise.all(
         tournamentsToCheck.map(async (tournament) => {
           try {
-            const eventsRef = await import('../services/eventService');
+            const eventsRef = await import('../../services/eventService');
             const events = await eventsRef.listEvents(tournament.id);
             
             events.forEach((event) => {
@@ -196,20 +200,20 @@ const HomeScreen = ({ navigation }: any) => {
       });
 
       // For each event, find the primary bet (open first, then locked)
-      await Promise.all(
-        allEvents.map(async (event, idx) => {
+      const eventsWithBets = await Promise.all(
+        allEvents.map(async (event) => {
           try {
             const bets = await listBets(event.tournamentId, event.id);
             const openBet = bets.find((b) => b.status === 'open');
             const lockedBet = bets.find((b) => b.status === 'locked');
-            allEvents[idx] = { ...event, primaryBet: openBet || lockedBet || undefined };
+            return { ...event, primaryBet: openBet || lockedBet || undefined };
           } catch {
-            // no bets for this event
+            return event;
           }
         })
       );
 
-      setTodayEvents(allEvents.slice(0, 5));
+      setTodayEvents(eventsWithBets.slice(0, 5));
     } catch (error) {
       console.error('Error loading today events:', error);
     } finally {
@@ -228,12 +232,12 @@ const HomeScreen = ({ navigation }: any) => {
       
       for (const tournament of tournamentsToCheck) {
         try {
-          const eventsRef = await import('../services/eventService');
+          const eventsRef = await import('../../services/eventService');
           const events = await eventsRef.listEvents(tournament.id);
           
           for (const event of events.slice(0, 3)) { // Check first 3 events per tournament
             try {
-              const betServiceRef = await import('../services/betService');
+              const betServiceRef = await import('../../services/betService');
               const bets = await betServiceRef.listBets(tournament.id, event.id);
               
               for (const bet of bets) {
@@ -243,6 +247,7 @@ const HomeScreen = ({ navigation }: any) => {
                     if (pick) {
                       allUserBets.push({
                         eventId: event.id,
+                        betId: bet.id,
                         eventTitle: event.title,
                         tournamentName: tournament.name,
                         status: bet.status,
@@ -333,6 +338,12 @@ const HomeScreen = ({ navigation }: any) => {
     const memberCount = participantCounts[item.tournamentId] || 1;
     const pozoTotal = (item.tournamentContribution ?? 0) * memberCount;
 
+    // Find the user's existing pick for this event's primary bet
+    const existingUserBet = userBets.find(
+      (b) => b.eventId === item.id && b.betId === primaryBet?.id
+    );
+    const userSelection = existingUserBet?.pickSelection;
+
     return (
       <View style={[styles.eventCard, { backgroundColor: colors.card }]}>
         <View style={styles.eventCardGradient}>
@@ -405,19 +416,25 @@ const HomeScreen = ({ navigation }: any) => {
             <View style={styles.oddsRow}>
               {options.map((option) => {
                 const oddVal = realOdds[option] ?? '—';
-                const isDisabled = oddVal === '—';
+                const isSelected = userSelection === option;
+                const canPress = primaryBet?.status === 'open';
                 return (
                   <TouchableOpacity
                     key={option}
-                    style={[styles.oddsChip, { backgroundColor: colors.muted }]}
-                    onPress={() => !isDisabled && handleOddPress(item, option, primaryBet!.id, oddVal)}
-                    activeOpacity={isDisabled ? 1 : 0.7}
-                    disabled={isDisabled}
+                    style={[styles.oddsChip, { backgroundColor: isSelected ? colors.primary : colors.muted }]}
+                    onPress={() => canPress && handleOddPress(item, option, primaryBet!.id, oddVal)}
+                    activeOpacity={canPress ? 0.7 : 1}
+                    disabled={!canPress}
                   >
-                    <Text style={[styles.oddsLabel, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    <Text
+                      style={[styles.oddsLabel, { color: isSelected ? '#FFFFFF' : colors.mutedForeground }]}
+                      numberOfLines={1}
+                    >
                       {option}
                     </Text>
-                    <Text style={[styles.oddsValue, { color: isDisabled ? colors.mutedForeground : colors.primary }]}>
+                    <Text
+                      style={[styles.oddsValue, { color: isSelected ? '#FFFFFF' : oddVal === '—' ? colors.mutedForeground : colors.primary }]}
+                    >
                       {oddVal}
                     </Text>
                   </TouchableOpacity>
@@ -579,12 +596,11 @@ const HomeScreen = ({ navigation }: any) => {
             <View style={styles.sectionActions}>
               <TouchableOpacity
                 style={[styles.createButton, { backgroundColor: colors.primary }]}
-                onPress={() => navigation.navigate('CreateTournament')}
+                onPress={() => setShowCreateTournamentSheet(true)}
               >
                 <Ionicons name="add" size={18} color="#FFFFFF" />
-                <Text style={styles.createButtonLabel}>Crear</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.viewAll}
                 onPress={() => navigation.navigate('Torneos')}
               >
@@ -615,7 +631,7 @@ const HomeScreen = ({ navigation }: any) => {
               </Text>
               <TouchableOpacity
                 style={[styles.emptyCreateButton, { backgroundColor: colors.primary }]}
-                onPress={() => navigation.navigate('CreateTournament')}
+                onPress={() => setShowCreateTournamentSheet(true)}
               >
                 <Text style={styles.createButtonText}>Crear Torneo</Text>
               </TouchableOpacity>
@@ -642,7 +658,7 @@ const HomeScreen = ({ navigation }: any) => {
                   >
                     <TouchableOpacity
                       style={[styles.tournamentCard, { backgroundColor: colors.card }]}
-                      onPress={() => navigation.navigate('TournamentGroup', { tournamentId: tournament.id })}
+                      onPress={() => navigation.navigate('Tournament', { tournamentId: tournament.id })}
                       activeOpacity={0.7}
                     >
                   <View style={styles.cardGradientOverlay}>
@@ -874,6 +890,12 @@ const HomeScreen = ({ navigation }: any) => {
           </View>
         </View>
       </Modal>
+      {/* Create Tournament Sheet */}
+      <SheetModal visible={showCreateTournamentSheet} onClose={() => setShowCreateTournamentSheet(false)}>
+        <CreateTournamentForm
+          onSuccess={() => { setShowCreateTournamentSheet(false); refresh(); }}
+        />
+      </SheetModal>
       </View>
     </GestureHandlerRootView>
   );

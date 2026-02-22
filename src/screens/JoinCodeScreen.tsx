@@ -17,8 +17,11 @@ const JoinCodeScreen = ({ navigation }: any) => {
   const colors = Colors[theme];
 
   const handleJoin = () => {
+    if (!code.trim()) {
+      return;
+    }
     // Lógica para unirse al torneo
-    navigation.navigate('TournamentDetails');
+    navigation.navigate('Tournament', { inviteCode: code.trim() });
   };
 
   return (

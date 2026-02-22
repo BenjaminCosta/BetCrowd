@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
-import { PrimaryButton } from '../components/CommonComponents';
-import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
-import { getFirebaseErrorMessage } from '../services/authService';
+import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
+import { PrimaryButton } from '../../components/CommonComponents';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { getFirebaseErrorMessage } from '../../services/authService';
 
 const SignUpScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
@@ -35,7 +35,7 @@ const SignUpScreen = ({ navigation }: any) => {
 
   const handleSignUp = async () => {
     // Basic validation
-    if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
+    if (!name.trim() || !email.trim() || !username.trim() || !password.trim() || !confirmPassword.trim()) {
       Alert.alert('Error', 'Por favor completa todos los campos');
       return;
     }
@@ -45,8 +45,8 @@ const SignUpScreen = ({ navigation }: any) => {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
+    if (password.length < 8) {
+      Alert.alert('Error', 'La contraseña debe tener al menos 8 caracteres');
       return;
     }
 
@@ -92,7 +92,7 @@ const SignUpScreen = ({ navigation }: any) => {
 
           {/* Logo */}
           <View style={styles.logoContainer}>
-            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
+            <Image source={require('../../../assets/icon.png')} style={styles.logoImage} />
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>

@@ -10,12 +10,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients } from '../theme/colors';
-import { TopBar } from '../components/TopBar';
-import { LoadingBar } from '../components/LoadingBar';
-import { Card, Input, PrimaryButton, SectionHeader } from '../components/CommonComponents';
-import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
+import { Colors, Gradients } from '../../theme/colors';
+import { TopBar } from '../../components/TopBar';
+import { LoadingBar } from '../../components/LoadingBar';
+import { Card, Input, PrimaryButton, SectionHeader } from '../../components/CommonComponents';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   getTournament,
   updateTournamentBasic,
@@ -23,7 +23,7 @@ import {
   archiveTournament,
   deleteTournamentSoft,
   Tournament,
-} from '../services/tournamentService';
+} from '../../services/tournamentService';
 
 const TournamentSettingsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -136,8 +136,7 @@ const TournamentSettingsScreen = ({ navigation, route }: any) => {
           onPress: async () => {
             try {
               setSaving(true);
-              await archiveTournament(tournamentId);
-              Alert.alert('Éxito', 'Torneo archivado', [
+              await archiveTournament(tournamentId);              setSaving(false);              Alert.alert('Éxito', 'Torneo archivado', [
                 { text: 'OK', onPress: () => navigation.goBack() },
               ]);
             } catch (error: any) {
@@ -162,8 +161,7 @@ const TournamentSettingsScreen = ({ navigation, route }: any) => {
           onPress: async () => {
             try {
               setSaving(true);
-              await deleteTournamentSoft(tournamentId);
-              Alert.alert('Éxito', 'Torneo eliminado', [
+              await deleteTournamentSoft(tournamentId);              setSaving(false);              Alert.alert('Éxito', 'Torneo eliminado', [
                 { text: 'OK', onPress: () => navigation.navigate('Main') },
               ]);
             } catch (error: any) {

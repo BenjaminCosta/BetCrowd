@@ -1,0 +1,508 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useFocusEffect } from '@react-navigation/native';
+import { Colors, Spacing } from '../../theme/colors';
+import { TopBar } from '../../components/TopBar';
+import { LoadingBar } from '../../components/LoadingBar';
+import { EmptyState } from '../../components/CommonComponents';
+import { SwipeableRow } from '../../components/BetanoComponents';
+import { FloatingActionButton } from '../../components/FloatingActionButton';
+import { SheetModal } from '../../components/SheetModal';
+import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import {
+  listMyTournaments,
+  getTournamentMemberCount,
+  deleteTournamentSoft,
+  Tournament,
+} from '../../services/tournamentService';
+import { LinearGradient } from 'expo-linear-gradient';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type TorneoFilter = 'active' | 'finished';
+
+const FILTER_LABELS: { key: TorneoFilter; label: string }[] = [
+  { key: 'active', label: 'Activos' },
+  { key: 'finished', label: 'Finalizados' },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const FORMAT_LABELS: Record<string, string> = {
+  liga: 'Liga',
+  eliminatoria: 'Eliminatoria',
+  'grupos-eliminatoria': 'Grupos + Eliminatoria',
+  'evento-unico': 'Evento único',
+  serie: 'Serie (Bo3/Bo5)',
+  bracket: 'Eliminación Directa',
+  points: 'Puntos',
+  otro: 'Otro',
+};
+
+const getFormatLabel = (formatId: string) => FORMAT_LABELS[formatId] || formatId;
+
+const getFormatIcon = (formatId: string): string => {
+  const icons: Record<string, string> = {
+    liga: 'trophy',
+    eliminatoria: 'git-branch',
+    'grupos-eliminatoria': 'grid',
+    'evento-unico': 'flag',
+    serie: 'list',
+    bracket: 'git-branch',
+    points: 'analytics',
+    otro: 'ellipsis-horizontal',
+  };
+  return icons[formatId] || 'trophy';
+};
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+
+const TorneosScreen = ({ navigation }: any) => {
+  const { theme } = useTheme();
+  const colors = Colors[theme];
+  const { user } = useAuth();
+
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<TorneoFilter>('active');
+  const isFirstFocusRef = useRef(true);
+  const [showCreateSheet, setShowCreateSheet] = useState(false);
+
+  // ── Initial load ──────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!user) return;
+    loadTournaments();
+  }, [user]);
+
+  // ── Reload on focus (skip first mount, same pattern as EventsScreen) ──────
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      loadTournaments(false, true); // silent reload
+    }, [])
+  );
+
+  // ── Data loader ───────────────────────────────────────────────────────────
+
+  const loadTournaments = async (isRefreshing = false, silent = false) => {
+    if (isRefreshing) setRefreshing(true);
+    else if (!silent) setLoading(true);
+
+    try {
+      const data = await listMyTournaments();
+      const filtered = data.filter((t) => t.status !== 'deleted');
+      setTournaments(filtered);
+
+      // Load all member counts in parallel
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        filtered.map(async (t) => {
+          counts[t.id] = await getTournamentMemberCount(t.id);
+        })
+      );
+      setMemberCounts(counts);
+    } catch (e) {
+      console.error('TorneosScreen loadTournaments:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => loadTournaments(true);
+
+  // ── Filtered list ─────────────────────────────────────────────────────────
+
+  const filteredTournaments = tournaments.filter((t) => {
+    if (filter === 'active') return t.status === 'active' || t.status === 'locked';
+    if (filter === 'finished') return t.status === 'archived';
+    return false;
+  });
+
+  // ── Swipe actions ─────────────────────────────────────────────────────────
+
+  const handleEdit = (t: Tournament) => {
+    navigation.navigate('TournamentSettings', { tournamentId: t.id });
+  };
+
+  const handleDelete = (t: Tournament) => {
+    Alert.alert(
+      'Eliminar torneo',
+      `¿Estás seguro que deseas eliminar "${t.name}"? Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTournamentSoft(t.id);
+              setTournaments((prev) => prev.filter((x) => x.id !== t.id));
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'No se pudo eliminar el torneo');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RENDER HELPERS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const renderSegmentedControl = () => (
+    <View
+      style={[
+        styles.segmentedControl,
+        { backgroundColor: colors.secondary, borderColor: colors.border },
+      ]}
+    >
+      {FILTER_LABELS.map(({ key, label }) => {
+        const isActive = filter === key;
+        if (isActive) {
+          return (
+            <View
+              key={key}
+              style={[styles.segmentItem, { backgroundColor: colors.primary }]}
+            >
+              <TouchableOpacity
+                onPress={() => setFilter(key)}
+                style={styles.segmentTouchable}
+              >
+                <Text style={styles.segmentLabelActive}>{label}</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
+        return (
+          <TouchableOpacity
+            key={key}
+            onPress={() => setFilter(key)}
+            style={styles.segmentItem}
+          >
+            <Text style={[styles.segmentLabel, { color: colors.mutedForeground }]}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
+  const renderTournamentCard = ({ item: t }: { item: Tournament }) => {
+    const isOwner = t.ownerId === user?.uid;
+    const count = memberCounts[t.id] ?? 0;
+    const max = Math.max(t.participantsEstimated || 1, 1);
+
+    return (
+      <SwipeableRow
+        enabled={isOwner}
+        actions={[
+          {
+            label: 'Editar',
+            icon: 'create-outline',
+            color: colors.primary,
+            onPress: () => handleEdit(t),
+          },
+          {
+            label: 'Eliminar',
+            icon: 'trash-outline',
+            color: colors.destructive,
+            onPress: () => handleDelete(t),
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.card, { backgroundColor: colors.card }]}
+          onPress={() => navigation.navigate('Tournament', { tournamentId: t.id })}
+          activeOpacity={0.7}
+        >
+          {/* Gradient overlay */}
+          <LinearGradient
+            colors={[colors.primary + '10', 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+
+          {/* Header: name + format badge + contribution box */}
+          <View style={styles.cardHeader}>
+            <View style={styles.cardInfo}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={2}>
+                {t.name}
+              </Text>
+              <View style={styles.cardFormatRow}>
+                <Ionicons name={getFormatIcon(t.format) as any} size={12} color={colors.primary} />
+                <Text style={[styles.cardFormat, { color: colors.mutedForeground }]}>
+                  {getFormatLabel(t.format)}
+                </Text>
+              </View>
+            </View>
+            {t.contribution > 0 && (
+              <View style={[styles.cardContributionBadge, { backgroundColor: colors.primary + '15' }]}>
+                <Text style={[styles.cardContributionValue, { color: colors.foreground }]}>
+                  ${t.contribution.toLocaleString('es-AR')}
+                </Text>
+                <Text style={[styles.cardContributionLabel, { color: colors.mutedForeground }]}>
+                  Aporte
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.cardDivider, { backgroundColor: colors.border }]} />
+
+          {/* Footer: participants + arrow button */}
+          <View style={styles.cardFooter}>
+            <View style={styles.cardMeta}>
+              <View style={styles.cardMetaItem}>
+                <View style={[styles.cardMetaIconCircle, { backgroundColor: colors.secondary }]}>
+                  <Ionicons name="people" size={14} color={colors.primary} />
+                </View>
+                <Text style={[styles.cardMetaText, { color: colors.foreground }]}>
+                  {count}/{max} participantes
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.cardArrowButton, { backgroundColor: colors.primary }]}>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </SwipeableRow>
+    );
+  };
+
+  const renderEmpty = () => (
+    <View style={styles.emptyWrapper}>
+      <EmptyState
+        iconName="trophy-outline"
+        title={filter === 'active' ? 'Sin torneos activos' : 'Sin torneos finalizados'}
+        message={
+          filter === 'active'
+            ? 'Crea un torneo o únete a uno con un código de invitación'
+            : 'Los torneos archivados aparecerán aquí'
+        }
+      />
+      {filter === 'active' && (
+        <TouchableOpacity
+          style={[styles.ctaButton, { backgroundColor: colors.primary }]}
+          onPress={() => setShowCreateSheet(true)}
+        >
+          <Text style={styles.ctaButtonText}>Crear torneo</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // MAIN RENDER
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar />
+        <LoadingBar isLoading />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+            Cargando torneos...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar />
+        <LoadingBar isLoading={refreshing} />
+
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Torneos</Text>
+        </View>
+
+        {renderSegmentedControl()}
+
+        <FlatList
+          data={filteredTournaments}
+          keyExtractor={(item) => item.id}
+          renderItem={renderTournamentCard}
+          contentContainerStyle={[
+            styles.listContent,
+            filteredTournaments.length === 0 && styles.listContentEmpty,
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          ListEmptyComponent={renderEmpty}
+          showsVerticalScrollIndicator={false}
+        />
+
+        {/* FAB — Crear torneo */}
+        <FloatingActionButton onPress={() => setShowCreateSheet(true)} />
+      </View>
+
+      {/* Create Tournament Sheet */}
+      <SheetModal
+        visible={showCreateSheet}
+        onClose={() => { setShowCreateSheet(false); loadTournaments(false, true); }}
+      >
+        <CreateTournamentForm
+          onSuccess={() => { setShowCreateSheet(false); loadTournaments(false, true); }}
+        />
+      </SheetModal>
+    </GestureHandlerRootView>
+  );
+};
+
+export default TorneosScreen;
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+
+  // Loading
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  loadingText: { fontSize: 14 },
+
+  // Header
+  header: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  title: { fontSize: 28, fontWeight: '700' },
+
+  // Segmented control (same as TournamentScreen)
+  segmentedControl: {
+    flexDirection: 'row',
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    height: 44,
+  },
+  segmentItem: { flex: 1 },
+  segmentTouchable: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  segmentLabel: { fontSize: 14, fontWeight: '600', textAlign: 'center', lineHeight: 44 },
+  segmentLabelActive: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+
+  // FlatList
+  listContent: { padding: Spacing.lg, paddingBottom: 100 },
+  listContentEmpty: { flex: 1 },
+
+  // Empty state
+  emptyWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xxl,
+  },
+  ctaButton: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 12,
+  },
+  ctaButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+
+  // Tournament card
+  card: {
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: Spacing.md,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardTitle: { flex: 1, fontSize: 17, fontWeight: '700' },
+  cardFormat: { fontSize: 13, fontWeight: '500' },
+  cardDivider: { height: 1, marginBottom: 16 },
+
+  // Card layout
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  cardInfo: { flex: 1, marginRight: 12, gap: 6 },
+  cardFormatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  cardContributionBadge: {
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 80,
+  },
+  cardContributionValue: { fontSize: 17, fontWeight: '700' },
+  cardContributionLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardMeta: { flex: 1, gap: 8 },
+  cardMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardMetaIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardMetaText: { fontSize: 13, fontWeight: '500' },
+  cardArrowButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+});

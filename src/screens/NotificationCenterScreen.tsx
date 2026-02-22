@@ -79,7 +79,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
         break;
       case 'tournament_invite':
         if (notification.tournamentId) {
-          navigation.navigate('TournamentDetails', { tournamentId: notification.tournamentId });
+          navigation.navigate('Tournament', { tournamentId: notification.tournamentId });
         }
         break;
     }

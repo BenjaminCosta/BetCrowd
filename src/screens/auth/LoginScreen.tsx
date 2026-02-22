@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
-import { PrimaryButton } from '../components/CommonComponents';
-import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
-import { getFirebaseErrorMessage } from '../services/authService';
+import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
+import { PrimaryButton } from '../../components/CommonComponents';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { getFirebaseErrorMessage } from '../../services/authService';
 
 const LoginScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
@@ -64,7 +64,7 @@ const LoginScreen = ({ navigation }: any) => {
         <View style={styles.content}>
           {/* Logo */}
           <View style={styles.logoContainer}>
-            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
+            <Image source={require('../../../assets/icon.png')} style={styles.logoImage} />
             <Text style={[styles.logoText, { color: colors.foreground }]}>
               <Text style={{ color: colors.primary }}>BET</Text>
               <Text>CROWD</Text>
@@ -125,7 +125,10 @@ const LoginScreen = ({ navigation }: any) => {
               </View>
             </View>
 
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => Alert.alert('Restablecer contraseña', 'Esta función estará disponible próximamente')}
+              accessibilityRole="button"
+            >
               <Text style={[styles.forgotPassword, { color: colors.primary }]}>
                 ¿Olvidaste tu contraseña?
               </Text>
@@ -156,6 +159,8 @@ const LoginScreen = ({ navigation }: any) => {
                 backgroundColor: colors.secondary,
                 borderColor: colors.border,
               }]}
+              onPress={() => Alert.alert('Próximamente', 'El inicio de sesión con Google estará disponible pronto')}
+              accessibilityRole="button"
             >
               <Ionicons name="logo-google" size={20} color={colors.foreground} />
               <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
