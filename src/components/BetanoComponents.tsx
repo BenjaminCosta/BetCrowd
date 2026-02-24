@@ -217,14 +217,13 @@ const styles = StyleSheet.create({
   },
   optionsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     padding: Spacing.sm,
     gap: Spacing.sm,
   },
   optionButton: {
     flex: 1,
-    minWidth: '47%',
-    maxWidth: '100%',
+    minWidth: 0,
     padding: Spacing.md,
     borderRadius: BorderRadius.sm,
     borderWidth: 2,

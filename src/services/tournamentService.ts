@@ -7,6 +7,7 @@ import {
   serverTimestamp,
   runTransaction,
   query,
+  where,
   orderBy,
   limit,
   onSnapshot,
@@ -168,62 +169,74 @@ export const createTournament = async (input: CreateTournamentInput): Promise<{ 
  */
 export const joinTournamentByInviteCode = async (code: string): Promise<string> => {
   const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión para unirte a un torneo');
 
-  if (!user) {
-    throw new Error('Debes iniciar sesión para unirte a un torneo');
+  const upperCode = code.toUpperCase();
+
+  // ── Step 1: Resolve tournamentId from inviteCodes index ──────────────────
+  // Rules allow: `allow get: if isSignedIn()` on /inviteCodes/{code}
+  const inviteCodeDoc = await getDoc(doc(db, 'inviteCodes', upperCode));
+  if (!inviteCodeDoc.exists()) {
+    throw new Error('Código de invitación inválido');
+  }
+  const tournamentId: string = inviteCodeDoc.data().tournamentId;
+
+  // ── Step 2: Check if already joined via user's own tournamentRefs ─────────
+  // Rules allow: `allow read: if isMe(userId)` on /users/{uid}/tournamentRefs/*
+  // This avoids reading /tournaments/{id}/members/{uid} which requires membership.
+  const userRefDoc = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
+  const existingRef = await getDoc(userRefDoc);
+  if (existingRef.exists()) {
+    // Already a member — navigate directly without re-joining
+    return tournamentId;
   }
 
+  // ── Step 3: Write member entry ────────────────────────────────────────────
+  // Rules allow: user creating their own member doc with role == 'member'
+  // `allow create: if isSignedIn() && request.auth.uid == uid && role == 'member'`
+  const memberRef = doc(db, 'tournaments', tournamentId, 'members', user.uid);
+  await setDoc(memberRef, {
+    role: 'member',
+    joinedAt: serverTimestamp(),
+  });
+
+  // ── Step 4: Now as a member, read tournament for denormalization ──────────
+  // Rules allow: `allow get: if isTournamentMember(tournamentId)` — we just joined
+  const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
+  if (!tournamentDoc.exists()) throw new Error('El torneo no existe');
+  const tournamentData = tournamentDoc.data();
+
+  // ── Step 5: Write user tournamentRef with denormalized data ───────────────
+  // Rules allow: `allow create, update: if isMe(userId) && keys hasAll ['role','joinedAt']`
+  await setDoc(userRefDoc, {
+    role: 'member',
+    joinedAt: serverTimestamp(),
+    name: tournamentData.name,
+    format: tournamentData.format,
+    contribution: tournamentData.contribution,
+    participantsEstimated: tournamentData.participantsEstimated,
+    inviteCode: tournamentData.inviteCode,
+    status: tournamentData.status,
+  });
+
+  return tournamentId;
+};
+
+/**
+ * Return a map of tournamentId -> role for the current user.
+ * Reads the lightweight tournamentRefs subcollection (no N+1 reads).
+ */
+export const getMyRolesMap = async (): Promise<Record<string, string>> => {
+  const user = auth.currentUser;
+  if (!user) return {};
   try {
-    // Read invite code index
-    const inviteCodeRef = doc(db, 'inviteCodes', code.toUpperCase());
-    const inviteCodeDoc = await getDoc(inviteCodeRef);
-
-    if (!inviteCodeDoc.exists()) {
-      throw new Error('Código de invitación inválido');
-    }
-
-    const { tournamentId } = inviteCodeDoc.data();
-
-    // Check if user is already a member
-    const memberRef = doc(db, 'tournaments', tournamentId, 'members', user.uid);
-    const memberDoc = await getDoc(memberRef);
-
-    if (memberDoc.exists()) {
-      throw new Error('Ya eres miembro de este torneo');
-    }
-
-    // Get tournament data for denormalization
-    const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-    if (!tournamentDoc.exists()) {
-      throw new Error('El torneo no existe');
-    }
-
-    const tournamentData = tournamentDoc.data();
-
-    // Create member entry
-    await setDoc(memberRef, {
-      role: 'member',
-      joinedAt: serverTimestamp(),
-    });
-
-    // Create user tournament reference with denormalized data
-    const userTournamentRef = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
-    await setDoc(userTournamentRef, {
-      role: 'member',
-      joinedAt: serverTimestamp(),
-      // Denormalized fields for fast loading
-      name: tournamentData.name,
-      format: tournamentData.format,
-      contribution: tournamentData.contribution,
-      participantsEstimated: tournamentData.participantsEstimated,
-      inviteCode: tournamentData.inviteCode,
-      status: tournamentData.status,
-    });
-
-    return tournamentId;
-  } catch (error: any) {
-    console.error('Error joining tournament:', error);
-    throw error;
+    const refsRef = collection(db, 'users', user.uid, 'tournamentRefs');
+    const snap = await getDocs(refsRef);
+    const map: Record<string, string> = {};
+    snap.docs.forEach((d) => { map[d.id] = d.data().role || 'member'; });
+    return map;
+  } catch {
+    return {};
   }
 };
 

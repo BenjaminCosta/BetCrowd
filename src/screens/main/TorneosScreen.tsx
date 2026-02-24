@@ -20,12 +20,14 @@ import { SwipeableRow } from '../../components/BetanoComponents';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SheetModal } from '../../components/SheetModal';
 import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
+import JoinCodeForm from '../../components/forms/JoinCodeForm';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   listMyTournaments,
   getTournamentMemberCount,
   deleteTournamentSoft,
+  getMyRolesMap,
   Tournament,
 } from '../../services/tournamentService';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -77,11 +79,13 @@ const TorneosScreen = ({ navigation }: any) => {
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
+  const [myRoles, setMyRoles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<TorneoFilter>('active');
   const isFirstFocusRef = useRef(true);
   const [showCreateSheet, setShowCreateSheet] = useState(false);
+  const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
 
   // ── Initial load ──────────────────────────────────────────────────────────
 
@@ -109,9 +113,13 @@ const TorneosScreen = ({ navigation }: any) => {
     else if (!silent) setLoading(true);
 
     try {
-      const data = await listMyTournaments();
+      const [data, roles] = await Promise.all([
+        listMyTournaments(),
+        getMyRolesMap(),
+      ]);
       const filtered = data.filter((t) => t.status !== 'deleted');
       setTournaments(filtered);
+      setMyRoles(roles);
 
       // Load all member counts in parallel
       const counts: Record<string, number> = {};
@@ -210,10 +218,21 @@ const TorneosScreen = ({ navigation }: any) => {
     </View>
   );
 
+  const getRoleInfo = (tournamentId: string, ownerId: string) => {
+    const role = myRoles[tournamentId] || (ownerId === user?.uid ? 'owner' : 'member');
+    switch (role) {
+      case 'owner':  return { label: 'Propietario', icon: 'ribbon-outline' as const,          color: colors.primary };
+      case 'admin':  return { label: 'Admin',        icon: 'shield-checkmark-outline' as const, color: colors.primary };
+      default:       return { label: 'Miembro',      icon: 'person-outline' as const,    color: colors.mutedForeground };
+    }
+  };
+
   const renderTournamentCard = ({ item: t }: { item: Tournament }) => {
-    const isOwner = t.ownerId === user?.uid;
+    const isOwner = t.ownerId === user?.uid ||
+      (myRoles[t.id] === 'owner');
     const count = memberCounts[t.id] ?? 0;
     const max = Math.max(t.participantsEstimated || 1, 1);
+    const roleInfo = getRoleInfo(t.id, t.ownerId);
 
     return (
       <SwipeableRow
@@ -284,6 +303,14 @@ const TorneosScreen = ({ navigation }: any) => {
                   {count}/{max} participantes
                 </Text>
               </View>
+              <View style={styles.cardMetaItem}>
+                <View style={[styles.cardMetaIconCircle, { backgroundColor: roleInfo.color + '20' }]}>
+                  <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
+                </View>
+                <Text style={[styles.cardMetaText, { color: roleInfo.color, fontWeight: '600' }]}>
+                  {roleInfo.label}
+                </Text>
+              </View>
             </View>
             <View style={[styles.cardArrowButton, { backgroundColor: colors.primary }]}>
               <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
@@ -343,6 +370,14 @@ const TorneosScreen = ({ navigation }: any) => {
 
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>Torneos</Text>
+          <TouchableOpacity
+            style={[styles.joinBtn, { backgroundColor: colors.primary }]}
+            onPress={() => setShowJoinCodeSheet(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="key-outline" size={14} color="#FFFFFF" />
+            <Text style={styles.joinBtnText}>Unirse con código</Text>
+          </TouchableOpacity>
         </View>
 
         {renderSegmentedControl()}
@@ -380,6 +415,18 @@ const TorneosScreen = ({ navigation }: any) => {
           onSuccess={() => { setShowCreateSheet(false); loadTournaments(false, true); }}
         />
       </SheetModal>
+      {/* Join Code Sheet */}
+      <SheetModal
+        visible={showJoinCodeSheet}
+        onClose={() => setShowJoinCodeSheet(false)}
+      >
+        <JoinCodeForm
+          onJoined={(tournamentId) => {
+            setShowJoinCodeSheet(false);
+            navigation.navigate('Tournament', { tournamentId });
+          }}
+        />
+      </SheetModal>
     </GestureHandlerRootView>
   );
 };
@@ -405,8 +452,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  title: { fontSize: 28, fontWeight: '700' },
+  title: { fontSize: 28, fontWeight: '700', marginBottom: Spacing.sm },
+  joinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  joinBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
   // Segmented control (same as TournamentScreen)
   segmentedControl: {

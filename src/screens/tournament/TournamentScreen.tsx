@@ -42,6 +42,7 @@ import EventsTab, { EventFilter } from './tabs/EventsTab';
 import RankingTab from './tabs/RankingTab';
 import InfoTab from './tabs/InfoTab';
 import EventBottomSheet from './components/EventBottomSheet';
+import ParticipantSheet from './components/ParticipantSheet';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,11 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingRefreshing, setRankingRefreshing] = useState(false);
   const [rankingLastFetched, setRankingLastFetched] = useState(0);
+
+  // ── Participant sheet state ──────────────────────────────────────────────────
+  const [showParticipantSheet, setShowParticipantSheet] = useState(false);
+  const [selectedParticipant, setSelectedParticipant] = useState<UserBalance | null>(null);
+  const [selectedParticipantIndex, setSelectedParticipantIndex] = useState(0);
 
   // ── Info tab state ───────────────────────────────────────────────────────────
   const [savingInfo, setSavingInfo] = useState(false);
@@ -373,6 +379,11 @@ const TournamentScreen = ({ navigation, route }: any) => {
             rankingRefreshing={rankingRefreshing}
             currentUserId={user?.uid ?? ''}
             onRefresh={() => loadRanking(true)}
+            onParticipantPress={(balance, index) => {
+              setSelectedParticipant(balance);
+              setSelectedParticipantIndex(index);
+              setShowParticipantSheet(true);
+            }}
           />
         )}
 
@@ -421,6 +432,18 @@ const TournamentScreen = ({ navigation, route }: any) => {
             onSuccess={() => setShowCreateEventSheet(false)}
           />
         </SheetModal>
+
+        {/* Participant detail sheet */}
+        <ParticipantSheet
+          visible={showParticipantSheet}
+          onClose={() => {
+            setShowParticipantSheet(false);
+            setSelectedParticipant(null);
+          }}
+          participant={selectedParticipant}
+          position={selectedParticipantIndex + 1}
+          tournamentId={tournamentId}
+        />
 
       </View>
     </GestureHandlerRootView>

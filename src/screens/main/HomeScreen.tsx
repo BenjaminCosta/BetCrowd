@@ -21,6 +21,7 @@ import { LoadingBar } from '../../components/LoadingBar';
 import { SwipeableRow } from '../../components/BetanoComponents';
 import { SheetModal } from '../../components/SheetModal';
 import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
+import JoinCodeForm from '../../components/forms/JoinCodeForm';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTournaments } from '../../context/TournamentsContext';
@@ -102,6 +103,7 @@ const HomeScreen = ({ navigation }: any) => {
   const [betFeedback, setBetFeedback] = useState<string>('');
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
   const [showCreateTournamentSheet, setShowCreateTournamentSheet] = useState(false);
+  const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
@@ -601,13 +603,11 @@ const HomeScreen = ({ navigation }: any) => {
                 <Ionicons name="add" size={18} color="#FFFFFF" />
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.viewAll}
-                onPress={() => navigation.navigate('Torneos')}
+                onPress={() => setShowJoinCodeSheet(true)}
               >
                 <Text style={[styles.viewAllText, { color: colors.primary }]}>
-                  Ver todos
+                  Unirse
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -718,6 +718,17 @@ const HomeScreen = ({ navigation }: any) => {
             );
           })}
             </View>
+          )}
+
+          {/* Ver todos torneos */}
+          {!loadingTournaments && (
+            <TouchableOpacity
+              style={styles.viewAllBottom}
+              onPress={() => navigation.navigate('Torneos')}
+            >
+              <Text style={[styles.viewAllText, { color: colors.primary }]}>Ver todos</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            </TouchableOpacity>
           )}
         </View>
       </ScrollView>
@@ -896,6 +907,15 @@ const HomeScreen = ({ navigation }: any) => {
           onSuccess={() => { setShowCreateTournamentSheet(false); refresh(); }}
         />
       </SheetModal>
+      {/* Join Code Sheet */}
+      <SheetModal visible={showJoinCodeSheet} onClose={() => setShowJoinCodeSheet(false)}>
+        <JoinCodeForm
+          onJoined={(tournamentId) => {
+            setShowJoinCodeSheet(false);
+            navigation.navigate('Tournament', { tournamentId });
+          }}
+        />
+      </SheetModal>
       </View>
     </GestureHandlerRootView>
   );
@@ -974,6 +994,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  viewAllBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
   viewAllText: {
     fontSize: 14,
