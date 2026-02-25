@@ -40,7 +40,7 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
     if (!tournamentId) return;
     loadTournament();
     const unsub = listenEvents(tournamentId, (updatedEvents) => {
-      setEvents(updatedEvents.filter((e) => e.status === 'finished'));
+      setEvents(updatedEvents.filter((e) => e.status === 'finished' || e.status === 'locked'));
       setLoading(false);
     });
     return () => unsub();
@@ -123,9 +123,9 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
       {events.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="checkmark-done-circle-outline" size={56} color={colors.mutedForeground} />
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Sin eventos finalizados</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No hay resultados para cargar</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Los eventos finalizados aparecerán aquí para cargar sus resultados
+            Los eventos cerrados o finalizados con apuestas pendientes aparecerán aquí
           </Text>
         </View>
       ) : (

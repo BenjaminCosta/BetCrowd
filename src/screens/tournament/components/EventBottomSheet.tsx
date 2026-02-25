@@ -64,6 +64,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
   const [betAmount, setBetAmount] = useState('');
   const [confirmingBet, setConfirmingBet] = useState(false);
   const [betFeedback, setBetFeedback] = useState('');
+  const [modalCurrentPick, setModalCurrentPick] = useState<string | null>(null);
   const betFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -121,6 +122,15 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
     setModalOdd(odds[option] ?? '—');
     setBetAmount('');
     setBetFeedback('');
+    // Store current pick selection so BetModal can detect re-selection
+    const existingPick = userPicks[bet.id];
+    setModalCurrentPick(
+      existingPick
+        ? typeof existingPick.selection === 'string'
+          ? existingPick.selection
+          : JSON.stringify(existingPick.selection)
+        : null,
+    );
     setShowBetModal(true);
   };
 
@@ -360,6 +370,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
           betFeedback={betFeedback}
           onClose={() => setShowBetModal(false)}
           onConfirm={handleConfirmBet}
+          currentPick={modalCurrentPick}
         />
       </GestureHandlerRootView>
     </Modal>

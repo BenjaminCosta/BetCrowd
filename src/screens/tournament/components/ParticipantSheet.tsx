@@ -17,6 +17,8 @@ import { useTheme } from '../../../context/ThemeContext';
 import { Card } from '../../../components/CommonComponents';
 import { UserBalance, getUserPickHistory, UserPickHistory } from '../../../services/groupsService';
 import { getMyTournamentRole } from '../../../services/tournamentService';
+import { listEvents } from '../../../services/eventService';
+import { listBets, getMyPick, Bet } from '../../../services/betService';
 import { getInitials, formatBalance } from '../../../utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,6 +67,8 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
   const [historyError, setHistoryError] = useState(false);
   const [memberRole, setMemberRole] = useState<string | null>(null);
   const [roleLoading, setRoleLoading] = useState(false);
+  const [activeBets, setActiveBets] = useState<Array<{ bet: Bet; eventTitle: string }>>([]);
+  const [activeBetsLoading, setActiveBetsLoading] = useState(false);
 
   // ── Reset when sheet closes / participant changes ────────────────────────────────────────────
   useEffect(() => {
@@ -74,6 +78,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
       setHistoryFilter('won');
       setMemberRole(null);
       setHistoryError(false);
+      setActiveBets([]);
     }
   }, [visible]);
 
@@ -94,6 +99,55 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
         setHistoryError(true);
       })
       .finally(() => setHistoryLoading(false));
+
+    // Load active bets for this participant (parallel fetching)
+    setActiveBetsLoading(true);
+    (async () => {
+      try {
+        const events = await listEvents(tournamentId);
+        const relevantEvents = events.filter(
+          (e) => e.status === 'upcoming' || e.status === 'live',
+        );
+
+        // Fetch bets for all relevant events in parallel
+        const eventBetResults = await Promise.allSettled(
+          relevantEvents.map(async (event) => {
+            const bets = await listBets(tournamentId, event.id);
+            return {
+              event,
+              bets: bets.filter((b) => b.status === 'open' || b.status === 'locked'),
+            };
+          }),
+        );
+
+        // Flatten into pick-check tasks and run them all in parallel
+        const pickTasks = eventBetResults
+          .filter(
+            (r): r is PromiseFulfilledResult<{ event: (typeof relevantEvents)[number]; bets: Bet[] }> =>
+              r.status === 'fulfilled',
+          )
+          .flatMap(({ value: { event, bets } }) =>
+            bets.map(async (bet) => {
+              const pick = await getMyPick(tournamentId, event.id, bet.id, participant.uid);
+              return pick ? { bet, eventTitle: event.title } : null;
+            }),
+          );
+
+        const pickResults = await Promise.allSettled(pickTasks);
+        const found: Array<{ bet: Bet; eventTitle: string }> = pickResults
+          .filter(
+            (r): r is PromiseFulfilledResult<{ bet: Bet; eventTitle: string }> =>
+              r.status === 'fulfilled' && r.value !== null,
+          )
+          .map((r) => r.value);
+
+        setActiveBets(found);
+      } catch {
+        // silent fail
+      } finally {
+        setActiveBetsLoading(false);
+      }
+    })();
   }, [visible, participant?.uid, tournamentId]);
 
   const handleViewHistory = (filter: HistoryFilter) => {
@@ -266,35 +320,62 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                   </Card>
                 )}
 
-                {/* W/L grid */}
-                <View style={styles.wlGrid}>
+                {/* W/L compact rows */}
+                <Card style={styles.wlRowCard}>
                   <TouchableOpacity
-                    style={styles.wlCardWrapper}
+                    style={styles.wlRow}
                     onPress={() => handleViewHistory('won')}
                     activeOpacity={0.7}
                   >
-                    <Card style={[styles.wlCard, { borderWidth: 1, borderColor: colors.success + '35' }]}>
-                      <View style={[styles.wlIcon, { backgroundColor: colors.success + '18' }]}>
-                        <Ionicons name="trophy-outline" size={22} color={colors.success} />
-                      </View>
-                      <Text style={[styles.wlBigCount, { color: colors.foreground }]}>{wonCount}</Text>
-                      <Text style={[styles.wlCardLabel, { color: colors.mutedForeground }]}>Ganadas</Text>
-                    </Card>
+                    <View style={[styles.wlRowDot, { backgroundColor: colors.success + '22' }]}>
+                      <Ionicons name="trophy-outline" size={14} color={colors.success} />
+                    </View>
+                    <Text style={[styles.wlRowLabel, { color: colors.mutedForeground }]}>Ganadas</Text>
+                    <Text style={[styles.wlRowCount, { color: colors.success }]}>{wonCount}</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.mutedForeground} />
                   </TouchableOpacity>
+                  <View style={[styles.wlRowSep, { backgroundColor: colors.border }]} />
                   <TouchableOpacity
-                    style={styles.wlCardWrapper}
+                    style={styles.wlRow}
                     onPress={() => handleViewHistory('lost')}
                     activeOpacity={0.7}
                   >
-                    <Card style={[styles.wlCard, { borderWidth: 1, borderColor: colors.destructive + '35' }]}>
-                      <View style={[styles.wlIcon, { backgroundColor: colors.destructive + '18' }]}>
-                        <Ionicons name="close-circle-outline" size={22} color={colors.destructive} />
-                      </View>
-                      <Text style={[styles.wlBigCount, { color: colors.foreground }]}>{lostCount}</Text>
-                      <Text style={[styles.wlCardLabel, { color: colors.mutedForeground }]}>Perdidas</Text>
-                    </Card>
+                    <View style={[styles.wlRowDot, { backgroundColor: colors.destructive + '22' }]}>
+                      <Ionicons name="close-circle-outline" size={14} color={colors.destructive} />
+                    </View>
+                    <Text style={[styles.wlRowLabel, { color: colors.mutedForeground }]}>Perdidas</Text>
+                    <Text style={[styles.wlRowCount, { color: colors.destructive }]}>{lostCount}</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.mutedForeground} />
                   </TouchableOpacity>
-                </View>
+                </Card>
+
+                {/* Active bets section */}
+                <Card style={styles.activeBetsCard}>
+                  <View style={styles.activeBetsHeader}>
+                    <Ionicons name="hourglass-outline" size={14} color={colors.primary} />
+                    <Text style={[styles.activeBetsTitle, { color: colors.foreground }]}>Apuestas activas</Text>
+                    {activeBetsLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 'auto' }} />}
+                  </View>
+                  {!activeBetsLoading && activeBets.length === 0 && (
+                    <Text style={[styles.activeBetsEmpty, { color: colors.mutedForeground }]}>Sin apuestas abiertas</Text>
+                  )}
+                  {activeBets.map(({ bet, eventTitle }, i) => (
+                    <View key={`${bet.id}-${i}`} style={[
+                      styles.activeBetRow,
+                      { borderTopColor: colors.border, borderTopWidth: i === 0 ? 0 : 1 },
+                    ]}>
+                      <View style={styles.activeBetLeft}>
+                        <Text style={[styles.activeBetEvent, { color: colors.mutedForeground }]} numberOfLines={1}>{eventTitle}</Text>
+                        <Text style={[styles.activeBetTitle, { color: colors.foreground }]} numberOfLines={1}>{bet.title}</Text>
+                      </View>
+                      <View style={[styles.activeBetBadge, { backgroundColor: bet.status === 'open' ? colors.success + '20' : colors.warning + '20' }]}>
+                        <Text style={[styles.activeBetStatus, { color: bet.status === 'open' ? colors.success : colors.warning }]}>
+                          {bet.status === 'open' ? 'ABIERTA' : 'CERRADA'}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </Card>
               </ScrollView>
             )}
 
@@ -486,16 +567,25 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 20, fontWeight: '800' },
   statLabel: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase' as const, letterSpacing: 0.4 },
 
-  // W/L grid
-  wlGrid: { flexDirection: 'row', gap: Spacing.sm },
-  wlCardWrapper: { flex: 1 },
-  wlCard: { alignItems: 'center' as const, gap: Spacing.xs, paddingVertical: Spacing.lg },
-  wlIcon: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.xs,
-  },
-  wlBigCount: { fontSize: 28, fontWeight: '800' },
-  wlCardLabel: { fontSize: 12, fontWeight: '500' },
+  // W/L compact rows
+  wlRowCard: { gap: 0 },
+  wlRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 10 },
+  wlRowDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  wlRowLabel: { flex: 1, fontSize: 14, fontWeight: '500' },
+  wlRowCount: { fontSize: 15, fontWeight: '700', marginRight: 4 },
+  wlRowSep: { height: 1 },
+
+  // Active bets
+  activeBetsCard: { gap: 0 },
+  activeBetsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  activeBetsTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  activeBetsEmpty: { fontSize: 13 },
+  activeBetRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: Spacing.sm },
+  activeBetLeft: { flex: 1, gap: 2 },
+  activeBetEvent: { fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.3 },
+  activeBetTitle: { fontSize: 13, fontWeight: '600' },
+  activeBetBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  activeBetStatus: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
 
   // History
   segControl: {

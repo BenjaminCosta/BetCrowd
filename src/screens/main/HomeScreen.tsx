@@ -73,15 +73,16 @@ interface UserBetInfo {
   betId: string;
   eventTitle: string;
   tournamentName: string;
+  tournamentId: string;
   status: string;
   pickSelection?: string;
 }
 
 // Carousel layout constants
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_GAP = 12;
-const PEEK = 28; // píxeles de la siguiente card visibles
-const CARD_WIDTH = SCREEN_WIDTH - 16 - CARD_GAP - PEEK;
+const CARD_GAP = 10;
+const PEEK = 14; // píxeles de la siguiente card visibles
+const CARD_WIDTH = SCREEN_WIDTH - 14 - CARD_GAP - PEEK;
 
 const HomeScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
@@ -101,6 +102,7 @@ const HomeScreen = ({ navigation }: any) => {
   const [betAmount, setBetAmount] = useState<string>('');
   const [confirmingBet, setConfirmingBet] = useState(false);
   const [betFeedback, setBetFeedback] = useState<string>('');
+  const [selectedCurrentPick, setSelectedCurrentPick] = useState<string | null>(null);
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
   const [showCreateTournamentSheet, setShowCreateTournamentSheet] = useState(false);
   const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
@@ -225,57 +227,73 @@ const HomeScreen = ({ navigation }: any) => {
 
   const loadUserBets = async () => {
     if (!user || tournaments.length === 0) return;
-    
+
     try {
-      const allUserBets: UserBetInfo[] = [];
-      
-      // Check first 3 tournaments
+      const { listEvents } = await import('../../services/eventService');
+      const { listBets, getMyPick } = await import('../../services/betService');
+      const uid = user.uid;
+
+      // Fetch all events for the first 3 tournaments in parallel
       const tournamentsToCheck = tournaments.slice(0, 3);
-      
-      for (const tournament of tournamentsToCheck) {
-        try {
-          const eventsRef = await import('../../services/eventService');
-          const events = await eventsRef.listEvents(tournament.id);
-          
-          for (const event of events.slice(0, 3)) { // Check first 3 events per tournament
-            try {
-              const betServiceRef = await import('../../services/betService');
-              const bets = await betServiceRef.listBets(tournament.id, event.id);
-              
-              for (const bet of bets) {
-                if (bet.status === 'open' || bet.status === 'locked') {
-                  try {
-                    const pick = await betServiceRef.getMyPick(tournament.id, event.id, bet.id, user.uid);
-                    if (pick) {
-                      allUserBets.push({
-                        eventId: event.id,
-                        betId: bet.id,
-                        eventTitle: event.title,
-                        tournamentName: tournament.name,
-                        status: bet.status,
-                        pickSelection: typeof pick.selection === 'string' ? pick.selection : JSON.stringify(pick.selection),
-                      });
-                      
-                      if (allUserBets.length >= 3) break;
-                    }
-                  } catch (error) {
-                    // No pick for this bet
-                  }
-                }
-                if (allUserBets.length >= 3) break;
-              }
-            } catch (error) {
-              console.error(`Error loading bets for event ${event.id}:`, error);
-            }
-            if (allUserBets.length >= 3) break;
-          }
-        } catch (error) {
-          console.error(`Error loading events for tournament ${tournament.id}:`, error);
-        }
-        if (allUserBets.length >= 3) break;
-      }
-      
-      setUserBets(allUserBets.slice(0, 3));
+      const eventsByTournament = await Promise.allSettled(
+        tournamentsToCheck.map(async (tournament) => ({
+          tournament,
+          events: await listEvents(tournament.id),
+        }))
+      );
+
+      // Fetch bets for first 3 events of each tournament in parallel
+      const betTasks = eventsByTournament
+        .filter(
+          (r): r is PromiseFulfilledResult<{ tournament: any; events: any[] }> =>
+            r.status === 'fulfilled'
+        )
+        .flatMap(({ value: { tournament, events } }) =>
+          events.slice(0, 3).map(async (event) => ({
+            tournament,
+            event,
+            bets: await listBets(tournament.id, event.id),
+          }))
+        );
+
+      const betResults = await Promise.allSettled(betTasks);
+
+      // Fetch picks for all open/locked bets in parallel
+      const pickTasks = betResults
+        .filter(
+          (r): r is PromiseFulfilledResult<{ tournament: any; event: any; bets: any[] }> =>
+            r.status === 'fulfilled'
+        )
+        .flatMap(({ value: { tournament, event, bets } }) =>
+          bets
+            .filter((b) => b.status === 'open' || b.status === 'locked')
+            .map(async (bet) => {
+              const pick = await getMyPick(tournament.id, event.id, bet.id, uid);
+              if (!pick) return null;
+              return {
+                eventId: event.id,
+                betId: bet.id,
+                eventTitle: event.title,
+                tournamentName: tournament.name,
+                tournamentId: tournament.id,
+                status: bet.status,
+                pickSelection:
+                  typeof pick.selection === 'string'
+                    ? pick.selection
+                    : JSON.stringify(pick.selection),
+              } as UserBetInfo;
+            })
+        );
+
+      const pickResults = await Promise.allSettled(pickTasks);
+      const found = pickResults
+        .filter(
+          (r): r is PromiseFulfilledResult<UserBetInfo> =>
+            r.status === 'fulfilled' && r.value !== null
+        )
+        .map((r) => r.value);
+
+      setUserBets(found.slice(0, 3));
     } catch (error) {
       console.error('Error loading user bets:', error);
     }
@@ -288,6 +306,8 @@ const HomeScreen = ({ navigation }: any) => {
     setSelectedOdd(oddValue);
     setBetFeedback('');
     setBetAmount('');
+    const existingBet = userBets.find((b) => b.eventId === event.id && b.betId === betId);
+    setSelectedCurrentPick(existingBet?.pickSelection ?? null);
     setShowQuickBetModal(true);
   };
 
@@ -435,7 +455,7 @@ const HomeScreen = ({ navigation }: any) => {
                       {option}
                     </Text>
                     <Text
-                      style={[styles.oddsValue, { color: isSelected ? '#FFFFFF' : oddVal === '—' ? colors.mutedForeground : colors.primary }]}
+                      style={[styles.oddsValue, { color: isSelected ? '#FFFFFF' : oddVal === '—' ? colors.mutedForeground : colors.foreground }]}
                     >
                       {oddVal}
                     </Text>
@@ -546,9 +566,16 @@ const HomeScreen = ({ navigation }: any) => {
 
               <View style={styles.betsList}>
                 {userBets.map((bet, index) => (
-                  <View
+                  <TouchableOpacity
                     key={`${bet.eventId}-${index}`}
                     style={[styles.betCard, { backgroundColor: colors.card }]}
+                    onPress={() =>
+                      navigation.navigate('Tournament', {
+                        tournamentId: bet.tournamentId,
+                        openEventId: bet.eventId,
+                      })
+                    }
+                    activeOpacity={0.8}
                   >
                     <View style={styles.betCardGradient}>
                       <LinearGradient
@@ -581,14 +608,14 @@ const HomeScreen = ({ navigation }: any) => {
                         </Text>
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </>
           )}
 
           {/* BLOQUE 3: TORNEOS ACTIVOS */}
-          <View style={[styles.sectionHeader, { marginTop: 32 }]}>
+          <View style={[styles.sectionHeader, { marginTop: 24 }]}>
             <View style={styles.sectionTitleContainer}>
               <Ionicons name="trophy" size={20} color={colors.primary} />
               <Text style={[styles.sectionTitleCaps, { color: colors.foreground }]}>
@@ -766,6 +793,7 @@ const HomeScreen = ({ navigation }: any) => {
               const isOverMax = pozoTotal > 0 && amountNum > pozoTotal;
               const estimatedGain = amountNum * (parseFloat(selectedOdd) || 0);
               const isFreeStake = selectedEvent.primaryBet?.stakeType !== 'fixed';
+              const alreadySelected = !!selectedCurrentPick && selectedCurrentPick === selectedOption;
 
               return (
                 <>
@@ -884,13 +912,15 @@ const HomeScreen = ({ navigation }: any) => {
 
                   {/* Botón rojo primary */}
                   <TouchableOpacity
-                    style={[styles.modalConfirmButton, { backgroundColor: colors.primary, opacity: (confirmingBet || isOverMax) ? 0.6 : 1 }]}
+                    style={[styles.modalConfirmButton, { backgroundColor: colors.primary, opacity: (confirmingBet || isOverMax || alreadySelected) ? 0.45 : 1 }]}
                     onPress={handleConfirmBet}
                     activeOpacity={0.8}
-                    disabled={confirmingBet || isOverMax}
+                    disabled={confirmingBet || isOverMax || alreadySelected}
                   >
                     {confirmingBet ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : alreadySelected ? (
+                      <Text style={styles.modalConfirmText}>Ya apostaste esta opción</Text>
                     ) : (
                       <Text style={styles.modalConfirmText}>Apostar ahora</Text>
                     )}
@@ -929,7 +959,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 14,
     paddingBottom: 32,
   },
   header: {
@@ -1019,7 +1049,7 @@ const styles = StyleSheet.create({
   },
   eventCard: {
     width: CARD_WIDTH,
-    minHeight: 220,
+    minHeight: 198,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -1036,7 +1066,9 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   eventCardContent: {
-    padding: 22, // Más padding para mayor espacio
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   eventTime: {
     fontSize: 11,
@@ -1070,7 +1102,7 @@ const styles = StyleSheet.create({
   betType: {
     fontSize: 12,
     fontWeight: '500',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   statusBadge: {
     position: 'absolute',
@@ -1106,10 +1138,10 @@ const styles = StyleSheet.create({
   oddsChip: {
     flex: 1,
     paddingHorizontal: 12,
-    paddingVertical: 14, // Más altura
+    paddingVertical: 10,
     borderRadius: 10,
     alignItems: 'center',
-    gap: 4, // Espacio entre label y valor
+    gap: 4,
   },
   oddsLabel: {
     fontSize: 13,
@@ -1164,18 +1196,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
-    padding: 16,
+    padding: 13,
   },
   betInfo: {
     flex: 1,
-    gap: 6,
+    gap: 4,
   },
   betEventTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   betTournament: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   betSelection: {
@@ -1184,8 +1216,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   betStatusBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999, // Rounded full
   },
   betStatusText: {
@@ -1198,9 +1230,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   tournamentCard: {
-    padding: 18,
+    padding: 14,
     borderRadius: 16,
-    marginBottom: 14,
+    marginBottom: 10,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1222,7 +1254,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tournamentInfo: {
     flex: 1,
@@ -1245,7 +1277,7 @@ const styles = StyleSheet.create({
   prizeContainer: {
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 12,
     minWidth: 80,
   },
@@ -1260,7 +1292,7 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     height: 1,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tournamentFooter: {
     flexDirection: 'row',

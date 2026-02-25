@@ -20,7 +20,7 @@ export interface Event {
   title: string;
   type: 'match' | 'round' | 'custom';
   startsAt: Timestamp | null;
-  status: 'upcoming' | 'live' | 'finished' | 'cancelled';
+  status: 'upcoming' | 'live' | 'finished' | 'cancelled' | 'locked';
   order: number;
   createdBy: string;
   createdAt: Timestamp;

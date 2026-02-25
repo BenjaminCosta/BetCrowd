@@ -28,6 +28,7 @@ interface BetModalProps {
   betFeedback: string;
   onClose: () => void;
   onConfirm: () => void;
+  currentPick?: string | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -44,6 +45,7 @@ const BetModal: React.FC<BetModalProps> = ({
   betFeedback,
   onClose,
   onConfirm,
+  currentPick,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -53,6 +55,7 @@ const BetModal: React.FC<BetModalProps> = ({
   const isFreeStake = bet.stakeType !== 'fixed';
   const amountNum = parseFloat(betAmount) || 0;
   const estimatedGain = amountNum * (parseFloat(odd) || 0);
+  const alreadySelected = !!currentPick && currentPick === option;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -154,13 +157,15 @@ const BetModal: React.FC<BetModalProps> = ({
           <TouchableOpacity
             style={[
               styles.modalConfirmButton,
-              { backgroundColor: colors.primary, opacity: confirmingBet ? 0.6 : 1 },
+              { backgroundColor: colors.primary, opacity: confirmingBet || alreadySelected ? 0.45 : 1 },
             ]}
             onPress={onConfirm}
-            disabled={confirmingBet}
+            disabled={confirmingBet || alreadySelected}
           >
             {confirmingBet ? (
               <ActivityIndicator size="small" color="#FFF" />
+            ) : alreadySelected ? (
+              <Text style={styles.modalConfirmText}>Ya apostaste esta opción</Text>
             ) : (
               <Text style={styles.modalConfirmText}>Apostar ahora</Text>
             )}

@@ -17,6 +17,7 @@ import { Badge } from '../../components/CommonComponents';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SheetModal } from '../../components/SheetModal';
 import CreateEventForm from '../../components/forms/CreateEventForm';
+import LoadResultsForm from '../../components/forms/LoadResultsForm';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -28,10 +29,12 @@ import {
   deleteTournamentSoft,
   Tournament,
 } from '../../services/tournamentService';
-import { listenEvents, deleteEvent, Event } from '../../services/eventService';
+import { listenEvents, deleteEvent, updateEvent, Event } from '../../services/eventService';
 import {
   listenBets,
+  listBets,
   getMyPick,
+  lockBet,
   Bet,
   Pick,
 } from '../../services/betService';
@@ -82,7 +85,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const { tournamentId } = route.params ?? {};
+  const { tournamentId, openEventId } = route.params ?? {};
 
   // ── Shared state ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('events');
@@ -98,6 +101,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const [eventFilter, setEventFilter] = useState<EventFilter>('open');
   const isFirstFocusRef = useRef(true);
   const eventsUnsubRef = useRef<(() => void) | null>(null);
+  const autoOpenDoneRef = useRef(false);
 
   // ── Bottom sheet state ───────────────────────────────────────────────────────
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -112,7 +116,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const [showCreateEventSheet, setShowCreateEventSheet] = useState(false);
   const [createEventEditMode, setCreateEventEditMode] = useState(false);
   const [createEventId, setCreateEventId] = useState<string | undefined>(undefined);
-
+  const [showLoadResultsSheet, setShowLoadResultsSheet] = useState(false);
   // ── Ranking tab state ────────────────────────────────────────────────────────
   const [balances, setBalances] = useState<UserBalance[]>([]);
   const [rankingLoading, setRankingLoading] = useState(false);
@@ -179,13 +183,13 @@ const TournamentScreen = ({ navigation, route }: any) => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const filteredEvents = events.filter((e) => {
-    if (eventFilter === 'open') return e.status === 'live' || e.status === 'upcoming';
+    if (eventFilter === 'open') return e.status === 'live' || e.status === 'upcoming' || e.status === 'locked';
     if (eventFilter === 'upcoming') return e.status === 'upcoming';
     if (eventFilter === 'finished') return e.status === 'finished' || e.status === 'cancelled';
     return true;
   });
 
-  const handleEventPress = async (event: Event) => {
+  const handleEventPress = useCallback(async (event: Event) => {
     setSelectedEvent(event);
     setShowEventSheet(true);
     setSheetBetsLoading(true);
@@ -207,7 +211,18 @@ const TournamentScreen = ({ navigation, route }: any) => {
       setEventPicks((prev) => ({ ...prev, [event.id]: hasPick }));
     });
     sheetBetsUnsubRef.current = unsub;
-  };
+  }, [tournamentId, user]);
+
+  // Auto-open event sheet when navigated from TournamentPredictionsScreen
+  useEffect(() => {
+    if (!openEventId || events.length === 0 || showEventSheet || autoOpenDoneRef.current) return;
+    const ev = events.find((e) => e.id === openEventId);
+    if (ev) {
+      autoOpenDoneRef.current = true;
+      setActiveTab('events');
+      handleEventPress(ev);
+    }
+  }, [events, openEventId, handleEventPress]);
 
   const closeSheet = () => {
     sheetBetsUnsubRef.current?.();
@@ -233,6 +248,39 @@ const TournamentScreen = ({ navigation, route }: any) => {
     setCreateEventId(event.id);
     setCreateEventEditMode(true);
     setShowCreateEventSheet(true);
+  };
+
+  const handleCloseEvent = (event: Event) => {
+    Alert.alert(
+      'Cerrar apuestas',
+      `¿Estás seguro de cerrar las apuestas de "${event.title}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar apuestas',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Lock individual bets first — if this fails, the event status
+              // won't be changed, preventing a partially-locked state.
+              const bets = await listBets(tournamentId, event.id);
+              await Promise.all(
+                bets
+                  .filter((b) => b.status === 'open')
+                  .map((b) => lockBet(tournamentId, event.id, b.id)),
+              );
+              await updateEvent(tournamentId, event.id, { status: 'locked' });
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'No se pudo cerrar el evento');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleLoadResults = (_event: Event) => {
+    setShowLoadResultsSheet(true);
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -369,6 +417,8 @@ const TournamentScreen = ({ navigation, route }: any) => {
             onDeleteEvent={handleDeleteEvent}
             onFilterChange={setEventFilter}
             onRefresh={() => { setEventsRefreshing(true); subscribeEvents(); }}
+            onCloseEvent={handleCloseEvent}
+            onLoadResults={handleLoadResults}
           />
         )}
 
@@ -431,6 +481,11 @@ const TournamentScreen = ({ navigation, route }: any) => {
             editMode={createEventEditMode}
             onSuccess={() => setShowCreateEventSheet(false)}
           />
+        </SheetModal>
+
+        {/* Load Results Sheet */}
+        <SheetModal visible={showLoadResultsSheet} onClose={() => setShowLoadResultsSheet(false)}>
+          <LoadResultsForm tournamentId={tournamentId} />
         </SheetModal>
 
         {/* Participant detail sheet */}

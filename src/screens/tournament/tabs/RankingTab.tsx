@@ -80,15 +80,19 @@ const RankingTab: React.FC<RankingTabProps> = ({
               activeOpacity={0.75}
               onPress={() => onParticipantPress(balance, index)}
             >
-              <Card style={styles.rankingCard}>
+              <Card
+                style={[
+                  styles.rankingCard,
+                  index < 3 && {
+                    backgroundColor: colors.muted,
+                  },
+                ]}
+              >
                 <View style={styles.rankingRow}>
                   <Text
                     style={[
                       styles.rankNumber,
-                      {
-                        color: index === 0 ? colors.foreground : colors.mutedForeground,
-                        fontWeight: index === 0 ? '800' : '600',
-                      },
+                      { color: colors.mutedForeground },
                     ]}
                   >
                     {index + 1}
@@ -159,19 +163,19 @@ const styles = StyleSheet.create({
   tabScroll: { flex: 1 },
   tabContent: { padding: Spacing.lg, paddingBottom: 100 },
   centeredLoader: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
-  rankingCard: { marginBottom: Spacing.sm, paddingVertical: Spacing.sm },
+  rankingCard: { marginBottom: Spacing.xs, paddingVertical: Spacing.xs },
   rankingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  rankNumber: { fontSize: 15, width: 24, textAlign: 'center' },
+  rankNumber: { fontSize: 14, width: 22, textAlign: 'center', fontWeight: '600' },
   rankAvatarWrapper: { position: 'relative' },
-  rankAvatar: { width: 48, height: 48, borderRadius: 24 },
+  rankAvatar: { width: 40, height: 40, borderRadius: 20 },
   rankAvatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rankAvatarText: { fontSize: 17, fontWeight: '600', color: '#FFF' },
+  rankAvatarText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
   rankUserInfo: { flex: 1, gap: 3 },
   rankUsernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rankUsername: { fontSize: 15, fontWeight: '600' },
@@ -181,5 +185,5 @@ const styles = StyleSheet.create({
   wlWins: { fontSize: 12, fontWeight: '700' },
   wlSep: { fontSize: 12 },
   wlLoss: { fontSize: 12, fontWeight: '700' },
-  rankBalance: { fontSize: 18, fontWeight: '700' },
+  rankBalance: { fontSize: 16, fontWeight: '700' },
 });

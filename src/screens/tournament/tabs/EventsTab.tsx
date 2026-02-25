@@ -5,7 +5,10 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
+  Text,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { Chip, EmptyState } from '../../../components/CommonComponents';
@@ -36,6 +39,8 @@ interface EventsTabProps {
   onDeleteEvent: (event: Event) => void;
   onFilterChange: (filter: EventFilter) => void;
   onRefresh: () => void;
+  onCloseEvent: (event: Event) => void;
+  onLoadResults: (event: Event) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -52,6 +57,8 @@ const EventsTab: React.FC<EventsTabProps> = ({
   onDeleteEvent,
   onFilterChange,
   onRefresh,
+  onCloseEvent,
+  onLoadResults,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -122,6 +129,34 @@ const EventsTab: React.FC<EventsTabProps> = ({
               onPress={() => onEventPress(event)}
               expanded={false}
               userHasPick={eventPicks[event.id] ?? false}
+              adminActionBar={
+                isAdmin ? (
+                  <>
+                    {(event.status === 'upcoming' || event.status === 'live') && (
+                      <TouchableOpacity
+                        style={[styles.adminActionBtn, { borderColor: colors.border }]}
+                        onPress={() => onCloseEvent(event)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="lock-closed-outline" size={11} color={colors.mutedForeground} />
+                        <Text style={[styles.adminActionText, { color: colors.mutedForeground }]}>
+                          Cerrar apuestas
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.adminActionBtn, { borderColor: colors.border }]}
+                      onPress={() => onLoadResults(event)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={11} color={colors.mutedForeground} />
+                      <Text style={[styles.adminActionText, { color: colors.mutedForeground }]}>
+                        Cargar resultado
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : undefined
+              }
             />
           </SwipeableRow>
         ))
@@ -140,4 +175,14 @@ const styles = StyleSheet.create({
   chipRow: { marginBottom: Spacing.lg },
   filterChip: { marginRight: Spacing.sm },
   centeredLoader: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
+  adminActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  adminActionText: { fontSize: 11, fontWeight: '600' },
 });

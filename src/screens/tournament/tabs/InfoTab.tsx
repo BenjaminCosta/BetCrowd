@@ -14,7 +14,6 @@ import { useTheme } from '../../../context/ThemeContext';
 import { SectionHeader } from '../../../components/CommonComponents';
 import { SheetModal } from '../../../components/SheetModal';
 import TournamentSettingsForm from '../../../components/forms/TournamentSettingsForm';
-import LoadResultsForm from '../../../components/forms/LoadResultsForm';
 import { Tournament } from '../../../services/tournamentService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,7 +73,6 @@ const InfoTab: React.FC<InfoTabProps> = ({
   const colors = Colors[theme];
 
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
-  const [showLoadResultsSheet, setShowLoadResultsSheet] = useState(false);
 
   const handleFormArchived = () => setShowSettingsSheet(false);
   const handleFormDeleted = () => setShowSettingsSheet(false);
@@ -190,17 +188,6 @@ const InfoTab: React.FC<InfoTabProps> = ({
 
           <TouchableOpacity
             style={[styles.adminRow, { backgroundColor: colors.secondary }]}
-            onPress={() => setShowLoadResultsSheet(true)}
-          >
-            <View style={[styles.adminIconCircle, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
-            </View>
-            <Text style={[styles.adminRowText, { color: colors.foreground }]}>Cargar resultados</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.adminRow, { backgroundColor: colors.secondary }]}
             onPress={onArchive}
             disabled={savingInfo}
           >
@@ -232,11 +219,6 @@ const InfoTab: React.FC<InfoTabProps> = ({
           onArchived={handleFormArchived}
           onDeleted={handleFormDeleted}
         />
-      </SheetModal>
-
-      {/* Load results sheet */}
-      <SheetModal visible={showLoadResultsSheet} onClose={() => setShowLoadResultsSheet(false)}>
-        <LoadResultsForm tournamentId={tournamentId} />
       </SheetModal>
     </ScrollView>
   );

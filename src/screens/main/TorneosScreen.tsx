@@ -179,44 +179,40 @@ const TorneosScreen = ({ navigation }: any) => {
   // RENDER HELPERS
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const renderSegmentedControl = () => (
-    <View
-      style={[
-        styles.segmentedControl,
-        { backgroundColor: colors.secondary, borderColor: colors.border },
-      ]}
-    >
-      {FILTER_LABELS.map(({ key, label }) => {
-        const isActive = filter === key;
-        if (isActive) {
+  const renderTabsControl = () => {
+    const activeCount = tournaments.filter(
+      (t) => t.status === 'active' || t.status === 'locked',
+    ).length;
+    const finishedCount = tournaments.filter((t) => t.status === 'archived').length;
+    const counts: Record<TorneoFilter, number> = { active: activeCount, finished: finishedCount };
+
+    return (
+      <View style={[styles.tabsBar, { borderBottomColor: colors.border }]}>
+        {FILTER_LABELS.map(({ key, label }) => {
+          const isActive = filter === key;
           return (
-            <View
+            <TouchableOpacity
               key={key}
-              style={[styles.segmentItem, { backgroundColor: colors.primary }]}
+              style={[
+                styles.tabItem,
+                isActive && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+              ]}
+              onPress={() => setFilter(key)}
             >
-              <TouchableOpacity
-                onPress={() => setFilter(key)}
-                style={styles.segmentTouchable}
+              <Text
+                style={[
+                  styles.tabItemText,
+                  { color: isActive ? colors.primary : colors.mutedForeground },
+                ]}
               >
-                <Text style={styles.segmentLabelActive}>{label}</Text>
-              </TouchableOpacity>
-            </View>
+                {label} ({counts[key]})
+              </Text>
+            </TouchableOpacity>
           );
-        }
-        return (
-          <TouchableOpacity
-            key={key}
-            onPress={() => setFilter(key)}
-            style={styles.segmentItem}
-          >
-            <Text style={[styles.segmentLabel, { color: colors.mutedForeground }]}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
+        })}
+      </View>
+    );
+  };
 
   const getRoleInfo = (tournamentId: string, ownerId: string) => {
     const role = myRoles[tournamentId] || (ownerId === user?.uid ? 'owner' : 'member');
@@ -312,9 +308,6 @@ const TorneosScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
-            <View style={[styles.cardArrowButton, { backgroundColor: colors.primary }]}>
-              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-            </View>
           </View>
         </TouchableOpacity>
       </SwipeableRow>
@@ -380,7 +373,7 @@ const TorneosScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
 
-        {renderSegmentedControl()}
+        {renderTabsControl()}
 
         <FlatList
           data={filteredTournaments}
@@ -449,7 +442,7 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: 14,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.sm,
     flexDirection: 'row',
@@ -467,23 +460,25 @@ const styles = StyleSheet.create({
   },
   joinBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
-  // Segmented control (same as TournamentScreen)
-  segmentedControl: {
+  // Tabs underline (same style as TournamentPredictionsScreen)
+  tabsBar: {
     flexDirection: 'row',
-    marginHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+    marginHorizontal: 14,
     marginBottom: Spacing.md,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    height: 44,
   },
-  segmentItem: { flex: 1 },
-  segmentTouchable: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  segmentLabel: { fontSize: 14, fontWeight: '600', textAlign: 'center', lineHeight: 44 },
-  segmentLabelActive: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  tabItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
   // FlatList
-  listContent: { padding: Spacing.lg, paddingBottom: 100 },
+  listContent: { padding: 14, paddingBottom: 100 },
   listContentEmpty: { flex: 1 },
 
   // Empty state
@@ -504,7 +499,7 @@ const styles = StyleSheet.create({
   // Tournament card
   card: {
     borderRadius: 16,
-    padding: 18,
+    padding: 12,
     marginBottom: Spacing.md,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -515,21 +510,21 @@ const styles = StyleSheet.create({
   },
   cardTitle: { flex: 1, fontSize: 17, fontWeight: '700' },
   cardFormat: { fontSize: 13, fontWeight: '500' },
-  cardDivider: { height: 1, marginBottom: 16 },
+  cardDivider: { height: 1, marginBottom: 10 },
 
   // Card layout
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 10,
   },
-  cardInfo: { flex: 1, marginRight: 12, gap: 6 },
+  cardInfo: { flex: 1, marginRight: 12, gap: 4 },
   cardFormatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   cardContributionBadge: {
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 12,
     minWidth: 80,
   },
@@ -541,7 +536,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  cardMeta: { flex: 1, gap: 8 },
+  cardMeta: { flex: 1, gap: 6 },
   cardMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardMetaIconCircle: {
     width: 26,
@@ -551,17 +546,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardMetaText: { fontSize: 13, fontWeight: '500' },
-  cardArrowButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
 
 });

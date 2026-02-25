@@ -54,22 +54,18 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
   };
 
   const handleNavigate = (screen: string) => {
+    // navigate() is used intentionally (not reset()) to preserve tab-internal
+    // history and avoid remounting the entire navigator on tab switches.
     try {
       if (screen === 'Inicio') {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Main' }],
-        });
+        navigation.navigate('Main', { screen: 'Inicio' } as any);
       } else if (screen === 'Perfil') {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Main', params: { screen: 'Perfil' } }],
-        });
+        navigation.navigate('Main', { screen: 'Perfil' } as any);
       } else {
         navigation.navigate(screen);
       }
     } catch (error) {
-      console.log('Navigation error:', error);
+      console.error('Navigation error:', error);
     }
   };
 

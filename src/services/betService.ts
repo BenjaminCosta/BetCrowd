@@ -426,6 +426,61 @@ export const hasUserPicked = async (
 };
 
 /**
+ * Delete user's pick and update bet totals
+ */
+export const deleteMyPick = async (
+  tournamentId: string,
+  eventId: string,
+  betId: string,
+  uid: string
+): Promise<void> => {
+  const pickRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks', uid);
+  const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
+  const indexRef = doc(db, 'users', uid, 'picksIndex', `${tournamentId}_${eventId}_${betId}`);
+
+  await runTransaction(db, async (transaction) => {
+    const betDoc = await transaction.get(betRef);
+    const pickDoc = await transaction.get(pickRef);
+
+    if (!pickDoc.exists()) return; // Nothing to delete
+
+    if (!betDoc.exists()) throw new Error('Bet not found');
+
+    const bet = betDoc.data() as Bet;
+    const previousPick = pickDoc.data() as Pick;
+
+    const selectionKey =
+      typeof previousPick.selection === 'object'
+        ? JSON.stringify(previousPick.selection)
+        : String(previousPick.selection);
+
+    const newTotalPot = Math.max(0, (bet.totalPot || 0) - previousPick.stakeAmount);
+    const newTotalPicks = Math.max(0, (bet.totalPicks || 0) - 1);
+    const newOptionTotals = { ...(bet.optionTotals || {}) };
+    newOptionTotals[selectionKey] = Math.max(
+      0,
+      (newOptionTotals[selectionKey] || 0) - previousPick.stakeAmount,
+    );
+
+    transaction.update(betRef, {
+      totalPot: newTotalPot,
+      totalPicks: newTotalPicks,
+      optionTotals: newOptionTotals,
+      updatedAt: serverTimestamp(),
+    });
+
+    transaction.delete(pickRef);
+  });
+
+  // Clean up picks index (best effort)
+  try {
+    await deleteDoc(indexRef);
+  } catch {
+    // Ignore index cleanup errors
+  }
+};
+
+/**
  * Calculate odds for each option in a bet
  * Returns a map of option -> odds (e.g., "1.85")
  */

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,23 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
-import { SwipeableRow } from '../../components/BetanoComponents';
+import { BetCardCompact } from '../../components/BetanoComponents';
+import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { getTournament, listMyTournaments, isUserAdmin } from '../../services/tournamentService';
-import { getMyPick, getBet, listBets, type Bet } from '../../services/betService';
+import { listMyTournaments } from '../../services/tournamentService';
+import {
+  getMyPick,
+  listBets,
+  upsertMyPick,
+  deleteMyPick,
+  calculateOdds,
+  type Bet,
+} from '../../services/betService';
 import { listEvents } from '../../services/eventService';
 
 const TournamentPredictionsScreen = ({ navigation, route }: any) => {
@@ -28,146 +35,196 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const { user } = useAuth();
   const { tournamentId: routeTournamentId } = route?.params || {};
 
-  const [tournaments, setTournaments] = useState<any[]>([]);
-  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(routeTournamentId || null);
-  const [tournament, setTournament] = useState<any>(null);
+  // ── Pick lists ────────────────────────────────────────────────────────────
   const [openPicks, setOpenPicks] = useState<any[]>([]);
   const [settledPicks, setSettledPicks] = useState<any[]>([]);
+
+  // ── Loading ───────────────────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
-  const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
-  const [isAdmin, setIsAdmin] = useState(false);
 
-  // Initial loading bar - only on first mount
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
+
+  // ── BetModal ──────────────────────────────────────────────────────────────
+  const [showBetModal, setShowBetModal] = useState(false);
+  const [modalBet, setModalBet] = useState<Bet | null>(null);
+  const [modalEvent, setModalEvent] = useState<any>(null);
+  const [modalTournamentId, setModalTournamentId] = useState('');
+  const [modalOption, setModalOption] = useState('');
+  const [modalOdd, setModalOdd] = useState('—');
+  const [betAmount, setBetAmount] = useState('');
+  const [confirmingBet, setConfirmingBet] = useState(false);
+  const [betFeedback, setBetFeedback] = useState('');
+  const [modalCurrentPick, setModalCurrentPick] = useState<string | null>(null);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    loadTournaments();
+    if (user) loadData();
   }, [user]);
 
-  useEffect(() => {
-    if (selectedTournamentId && user) {
-      // Show filter loading bar when switching tournaments (after initial load)
-      if (initialLoadDone) {
-        setFilterLoading(true);
-      }
-      loadData();
-      checkAdminStatus();
-    }
-  }, [selectedTournamentId, user]);
-
-  const checkAdminStatus = async () => {
-    if (!user || !selectedTournamentId) return;
-    try {
-      const admin = await isUserAdmin(selectedTournamentId, user.uid);
-      setIsAdmin(admin);
-    } catch (error) {
-      console.error('Error checking admin:', error);
-    }
-  };
-
-  const loadTournaments = async () => {
+  // ── Data loading ──────────────────────────────────────────────────────────
+  const loadData = async () => {
     if (!user) return;
     try {
-      const myTournaments = await listMyTournaments();
-      const filtered = myTournaments.filter(t => t.status !== 'deleted');
-      setTournaments(filtered);
-      
-      // Auto-select first tournament if none selected
-      if (!selectedTournamentId && filtered.length > 0) {
-        setSelectedTournamentId(filtered[0].id);
-      }
-    } catch (error) {
-      // Silent fail
-    }
-  };
-
-  const loadData = async () => {
-    if (!user || !selectedTournamentId) return;
-    
-    try {
-      // Load tournament
-      const tournamentData = await getTournament(selectedTournamentId);
-      setTournament(tournamentData);
-      
-      // Load picks directly from events/bets - will auto-refresh via periodic reload
       const allOpenPicks: any[] = [];
       const allSettledPicks: any[] = [];
-      
-      try {
-        const events = await listEvents(selectedTournamentId);
 
-        await Promise.allSettled(
-          events.map(async (event) => {
-            try {
-              const bets = await listBets(selectedTournamentId, event.id);
-              await Promise.allSettled(
-                bets.map(async (bet) => {
-                  try {
-                    const pick = await getMyPick(selectedTournamentId, event.id, bet.id, user.uid);
-                    if (pick) {
-                      const pickData = {
-                        tournamentId: selectedTournamentId,
-                        eventId: event.id,
-                        betId: bet.id,
-                        pick,
-                        bet,
-                        event,
-                      };
-                      if (bet.status === 'settled' || bet.status === 'cancelled') {
-                        allSettledPicks.push(pickData);
-                      } else {
-                        allOpenPicks.push(pickData);
+      const allTournaments = await listMyTournaments();
+      const tournamentsToLoad = allTournaments.filter(
+        (t) => t.status !== 'deleted' && (!routeTournamentId || t.id === routeTournamentId),
+      );
+
+      await Promise.allSettled(
+        tournamentsToLoad.map(async (t) => {
+          try {
+            const events = await listEvents(t.id);
+            await Promise.allSettled(
+              events.map(async (event) => {
+                try {
+                  const bets = await listBets(t.id, event.id);
+                  await Promise.allSettled(
+                    bets.map(async (bet) => {
+                      try {
+                        const pick = await getMyPick(t.id, event.id, bet.id, user.uid);
+                        if (pick) {
+                          const pickData = {
+                            tournamentId: t.id,
+                            tournamentName: t.name,
+                            eventId: event.id,
+                            betId: bet.id,
+                            pick,
+                            bet,
+                            event,
+                          };
+                          if (bet.status === 'settled' || bet.status === 'cancelled') {
+                            allSettledPicks.push(pickData);
+                          } else {
+                            allOpenPicks.push(pickData);
+                          }
+                        }
+                      } catch {
+                        // pick doesn't exist, skip
                       }
-                    }
-                  } catch {
-                    // pick doesn't exist, skip
-                  }
-                })
-              );
-            } catch {
-              // no bets for event, skip
-            }
-          })
-        );
-      } catch (eventError) {
-        // Silent fail
-      }
-      
+                    }),
+                  );
+                } catch {
+                  // no bets, skip
+                }
+              }),
+            );
+          } catch {
+            // no events, skip
+          }
+        }),
+      );
+
       setOpenPicks(allOpenPicks);
       setSettledPicks(allSettledPicks);
-    } catch (error) {
-      // Silent fail
+    } catch (err) {
+      console.warn('TournamentPredictions loadData:', err);
     } finally {
       setInitialLoadDone(true);
-      setFilterLoading(false);
     }
   };
-
-  // Periodic refresh to ensure latest data (similar to EventsScreen)
-  useEffect(() => {
-    if (!selectedTournamentId || !user || !initialLoadDone) return;
-    
-    // Set up periodic refresh every 30 seconds when screen is active
-    const interval = setInterval(() => {
-      loadData();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [selectedTournamentId, user, initialLoadDone]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadTournaments(), loadData()]);
+    await loadData();
     setRefreshing(false);
   };
 
-  // Show full loading screen on first real load
+  // ── BetModal handlers ─────────────────────────────────────────────────────
+  const openBetModal = (bet: Bet, event: any, tournamentId: string, option: string, currentSelection?: string | null) => {
+    const odds = calculateOdds(bet);
+    setModalBet(bet);
+    setModalEvent(event);
+    setModalTournamentId(tournamentId);
+    setModalOption(option);
+    setModalOdd(odds[option] ?? '—');
+    setBetAmount('');
+    setBetFeedback('');
+    setModalCurrentPick(currentSelection ?? null);
+    setShowBetModal(true);
+  };
+
+  const handleConfirmBet = async () => {
+    if (!user || !modalBet || !modalEvent) return;
+    setConfirmingBet(true);
+    setBetFeedback('');
+    try {
+      const stake =
+        modalBet.stakeType === 'fixed'
+          ? (modalBet.stakeAmount ?? 0)
+          : parseFloat(betAmount) || 0;
+      await upsertMyPick(modalTournamentId, modalEvent.id, modalBet.id, user.uid, modalOption, stake);
+      setBetFeedback('¡Apuesta actualizada!');
+      setTimeout(() => {
+        setShowBetModal(false);
+        loadData();
+      }, 1200);
+    } catch {
+      setBetFeedback('Error al guardar. Intenta de nuevo.');
+    } finally {
+      setConfirmingBet(false);
+    }
+  };
+
+  // ── Cancel pick ───────────────────────────────────────────────────────────
+  const confirmCancel = (pickData: any) => {
+    // Capture uid synchronously so the async callback is safe even if auth
+    // state changes before it runs.
+    const uid = user?.uid;
+    Alert.alert(
+      'Cancelar apuesta',
+      '¿Estás seguro de que quieres cancelar esta apuesta?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí, cancelar',
+          style: 'destructive',
+          onPress: async () => {
+            if (!uid) {
+              Alert.alert('Error', 'Sesión expirada. Vuelve a iniciar sesión.');
+              return;
+            }
+            try {
+              await deleteMyPick(
+                pickData.tournamentId,
+                pickData.eventId,
+                pickData.betId,
+                uid,
+              );
+              loadData();
+            } catch {
+              Alert.alert('Error', 'No se pudo cancelar la apuesta.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Must be declared before any early returns to satisfy Rules of Hooks
+  const currentPicks = activeTab === 'open' ? openPicks : settledPicks;
+
+  // Group picks by event so the event header shows only once per event
+  const groupedPicks = useMemo(() => {
+    const groupMap: Record<string, any[]> = {};
+    currentPicks.forEach((p: any) => {
+      if (!groupMap[p.eventId]) groupMap[p.eventId] = [];
+      groupMap[p.eventId].push(p);
+    });
+    return Object.values(groupMap);
+  }, [currentPicks]);
+
+  // ── Loading screen ────────────────────────────────────────────────────────
   if (!initialLoadDone) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -183,344 +240,217 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     );
   }
 
-  const currentPicks = activeTab === 'open' ? openPicks : settledPicks;
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <TopBar />
-      <LoadingBar isLoading={isLoading || filterLoading} />
-      
-      <ScrollView 
-        style={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      >
-        {/* Header */}
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar />
+        <LoadingBar isLoading={isLoading || refreshing} />
+
+        {/* Static header */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            Mis Apuestas
-          </Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>Mis Apuestas</Text>
         </View>
 
-        {/* Tournament Selector */}
-        {tournaments.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tournamentSelector}>
-            {tournaments.map((t) => (
-              <TouchableOpacity
-                key={t.id}
-                style={[
-                  styles.tournamentChip,
-                  { 
-                    backgroundColor: selectedTournamentId === t.id ? colors.primary : colors.card,
-                    borderColor: colors.border,
-                  }
-                ]}
-                onPress={() => setSelectedTournamentId(t.id)}
-              >
-                <Text style={[
-                  styles.tournamentChipText,
-                  { color: selectedTournamentId === t.id ? '#FFFFFF' : colors.foreground }
-                ]}>
-                  {t.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        {tournament && (
-          <View style={styles.tournamentInfo}>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {tournament.name}
-            </Text>
-          </View>
-        )}
-
-        {/* Tabs: Abiertas / Resueltas */}
+        {/* Static tabs */}
         <View style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
           <TouchableOpacity
             style={[
               styles.tab,
-              activeTab === 'open' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }
+              activeTab === 'open' && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
             ]}
             onPress={() => setActiveTab('open')}
           >
-            <Text style={[
-              styles.tabText,
-              { color: activeTab === 'open' ? colors.primary : colors.mutedForeground }
-            ]}>
-              Abiertas ({openPicks.length})
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === 'open' ? colors.primary : colors.mutedForeground },
+              ]}
+            >
+              Activas ({openPicks.length})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.tab,
-              activeTab === 'settled' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }
+              activeTab === 'settled' && {
+                borderBottomColor: colors.primary,
+                borderBottomWidth: 2,
+              },
             ]}
             onPress={() => setActiveTab('settled')}
           >
-            <Text style={[
-              styles.tabText,
-              { color: activeTab === 'settled' ? colors.primary : colors.mutedForeground }
-            ]}>
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === 'settled' ? colors.primary : colors.mutedForeground },
+              ]}
+            >
               Resueltas ({settledPicks.length})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {currentPicks.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons 
-              name={activeTab === 'open' ? 'hourglass-outline' : 'checkmark-done-outline'} 
-              size={64} 
-              color={colors.mutedForeground} 
+        <ScrollView
+          style={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
             />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              {activeTab === 'open' ? 'Sin apuestas abiertas' : 'Sin apuestas resueltas'}
-            </Text>
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              {activeTab === 'open' 
-                ? 'Participa en eventos para ver tus apuestas aquí'
-                : 'Las apuestas finalizadas aparecerán aquí'}
-            </Text>
-          </View>
-        ) : (
-          currentPicks.map((pickData: any, index: number) => {
-            const { bet, pick, event } = pickData;
-            
-            return (
-              <SwipeableRow
-                key={`${pickData.betId}-${index}`}
-                enabled={isAdmin && bet.status === 'open'}
-                actions={[
-                  {
-                    label: 'Editar',
-                    icon: 'create-outline',
-                    color: colors.primary,
-                    onPress: () => navigation.navigate('EditBet', {
-                      tournamentId: pickData.tournamentId,
-                      eventId: pickData.eventId,
-                      betId: pickData.betId,
-                    }),
-                  },
-                ]}
-              >
-              <TouchableOpacity
-                style={[styles.pickCard, { backgroundColor: colors.card }]}
-                onPress={() =>
-                  navigation.navigate('BetDetails', {
-                    tournamentId: pickData.tournamentId,
-                    eventId: pickData.eventId,
-                    betId: pickData.betId,
-                  })
-                }
-                activeOpacity={0.7}
-              >
-                <View style={styles.cardGradientOverlay}>
-                  <LinearGradient
-                    colors={[colors.primary + '10', 'transparent']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.gradientBackground}
-                  />
-                </View>
+          }
+        >
 
-                {event && (
-                  <View style={styles.eventHeader}>
-                    <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
-                    <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>
-                      {event.title}
-                    </Text>
+          {/* Pick list */}
+          {currentPicks.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name={activeTab === 'open' ? 'hourglass-outline' : 'checkmark-done-outline'}
+                size={64}
+                color={colors.mutedForeground}
+              />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                {activeTab === 'open' ? 'Sin apuestas activas' : 'Sin apuestas resueltas'}
+              </Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                {activeTab === 'open'
+                  ? 'Participa en eventos para ver tus apuestas aquí'
+                  : 'Las apuestas finalizadas aparecerán aquí'}
+              </Text>
+            </View>
+          ) : (
+            groupedPicks.map((group: any[]) => {
+                const firstPick = group[0];
+                const { event: groupEvent } = firstPick;
+                return (
+                  <View key={firstPick.eventId} style={styles.eventGroup}>
+                    {/* Event header — shown once per event */}
+                    <TouchableOpacity
+                      style={styles.eventRow}
+                      onPress={() =>
+                        navigation.navigate('Tournament', {
+                          tournamentId: firstPick.tournamentId,
+                          openEventId: firstPick.eventId,
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
+                      <Text
+                        style={[styles.eventLabel, { color: colors.mutedForeground }]}
+                        numberOfLines={1}
+                      >
+                        {groupEvent?.title ?? ''}
+                        {firstPick.tournamentName ? `  ·  ${firstPick.tournamentName}` : ''}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={13} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+
+                    {/* All bets for this event */}
+                    {group.map((pickData: any, idx: number) => {
+                      const { bet, pick, event } = pickData;
+                      const displaySelection =
+                        typeof pick.selection === 'object'
+                          ? `${pick.selection.home ?? 0} - ${pick.selection.away ?? 0}`
+                          : pick.selection;
+                      return (
+                        <View
+                          key={`${pickData.tournamentId}-${pickData.betId}-${idx}`}
+                          style={styles.pickWrapper}
+                        >
+                          <BetCardCompact
+                            bet={bet}
+                            theme={theme}
+                            onOptionPress={(option: string) => {
+                              if (bet.status === 'open') {
+                                openBetModal(bet, event, pickData.tournamentId, option, displaySelection);
+                              }
+                            }}
+                            userSelection={displaySelection}
+                            disabled={bet.status !== 'open'}
+                            showOdds
+                            onCancel={bet.status === 'open' ? () => confirmCancel(pickData) : undefined}
+                          />
+                        </View>
+                      );
+                    })}
                   </View>
-                )}
-                
-                <Text style={[styles.betTitle, { color: colors.mutedForeground }]} numberOfLines={2}>
-                  {bet.title}
-                </Text>
-                
-                <View style={styles.pickInfo}>
-                  <Text style={[styles.pickLabel, { color: colors.mutedForeground }]}>
-                    Tu predicción:
-                  </Text>
-                  <Text style={[styles.pickValue, { color: colors.primary }]}>
-                    {typeof pick.selection === 'object' ? `${pick.selection.home || 0} - ${pick.selection.away || 0}` : pick.selection}
-                  </Text>
-                </View>
-                
-                <View style={styles.footer}>
-                  <Text style={[styles.amount, { color: colors.foreground }]}>
-                    ${pick.stakeAmount || 0}
-                  </Text>
-                  <View style={[styles.statusBadge, { 
-                    backgroundColor: bet.status === 'open' ? '#10B981':  
-                                   bet.status === 'settled' ? '#6366F1': 
-                                   bet.status === 'cancelled' ? colors.destructive:
-                                   colors.mutedForeground + '20' 
-                  }]}>
-                    <Text style={[styles.statusText, { 
-                      color:colors.foreground, 
-                    }]}>
-                      {bet.status === 'open' ? 'ABIERTA' : 
-                       bet.status === 'locked' ? 'CERRADA' : 
-                       bet.status === 'settled' ? 'RESUELTA' : 'CANCELADA'}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-              </SwipeableRow>
-            );
-          })
-        )}
-      </ScrollView>
-    </View>
+                );
+            })
+          )}
+        </ScrollView>
+
+        {/* Bet confirmation modal */}
+        <BetModal
+          visible={showBetModal}
+          bet={modalBet}
+          event={modalEvent}
+          option={modalOption}
+          odd={modalOdd}
+          betAmount={betAmount}
+          setBetAmount={setBetAmount}
+          confirmingBet={confirmingBet}
+          betFeedback={betFeedback}
+          onClose={() => setShowBetModal(false)}
+          onConfirm={handleConfirmBet}
+          currentPick={modalCurrentPick}
+        />
+      </View>
     </GestureHandlerRootView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    padding: Spacing.lg,
-  },
+  container: { flex: 1 },
+  content: { flex: 1, padding: 14 },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: Spacing.md,
   },
-  loadingText: {
-    fontSize: 14,
-  },
-  header: {
-    marginBottom: Spacing.md,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-  },
-  tournamentSelector: {
-    marginBottom: Spacing.lg,
-  },
-  tournamentChip: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.sm,
-    borderWidth: 1,
-  },
-  tournamentChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  tournamentInfo: {
-    marginBottom: Spacing.md,
-  },
+  loadingText: { fontSize: 14 },
+  header: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 },
+  title: { fontSize: 28, fontWeight: '700', marginBottom: 4 },
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    marginBottom: Spacing.lg,
   },
   tab: {
     flex: 1,
-    paddingVertical: Spacing.md,
+    paddingVertical: 8,
     alignItems: 'center',
   },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  tabText: { fontSize: 14, fontWeight: '600' },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 48,
     gap: Spacing.md,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-  },
-  pickCard: {
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  cardGradientOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  gradientBackground: {
-    flex: 1,
-  },
-  eventHeader: {
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
+  pickWrapper: { marginBottom: 4 },
+  eventGroup: { marginBottom: 14 },
+  eventRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    marginBottom: 4,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: 2,
+    marginBottom: 6,
   },
-  eventTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
-  betTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  pickInfo: {
-    gap: 4,
-    marginTop: Spacing.xs,
-  },
-  pickLabel: {
-    fontSize: 12,
-  },
-  pickValue: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  footer: {
+  eventLabel: { flex: 1, fontSize: 13, fontWeight: '500' },
+  cancelRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Spacing.sm,
+    alignSelf: 'flex-end',
+    gap: 6,
+    paddingTop: 3,
+    paddingHorizontal: 4,
   },
-  amount: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
+  cancelText: { fontSize: 12, fontWeight: '500' },
 });
 
 export default TournamentPredictionsScreen;

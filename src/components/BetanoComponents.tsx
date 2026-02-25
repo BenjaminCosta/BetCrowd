@@ -9,6 +9,10 @@ import { Event } from '../services/eventService';
 
 const { width } = Dimensions.get('window');
 
+// Strip 'de ' from over/under labels: 'Más de 2.5' → 'Más 2.5'
+const formatOptionLabel = (option: string) =>
+  option.replace(/Más de /g, 'Más ').replace(/Menos de /g, 'Menos ');
+
 interface BetCardCompactProps {
   bet: Bet;
   theme: 'light' | 'dark';
@@ -16,6 +20,7 @@ interface BetCardCompactProps {
   userSelection?: string | null;
   disabled?: boolean;
   showOdds?: boolean;
+  onCancel?: () => void;
 }
 
 export const BetCardCompact: React.FC<BetCardCompactProps> = ({
@@ -25,6 +30,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
   userSelection,
   disabled = false,
   showOdds = true,
+  onCancel,
 }) => {
   const colors = Colors[theme];
   const odds = showOdds ? calculateOdds(bet) : {};
@@ -34,7 +40,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
       case 'open':
         return '#10B981';
       case 'locked':
-        return '#10B981';
+        return '#F59E0B';
       case 'settled':
         return '#F59E0B';
       case 'cancelled':
@@ -43,6 +49,33 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
         return colors.mutedForeground;
     }
   };
+
+  const userWon = (() => {
+    if (bet.status !== 'settled' || !userSelection) return false;
+    if (bet.type === 'score') {
+      const score = bet.result?.score;
+      if (!score) return false;
+      const parts = userSelection.split(' - ');
+      const home = parseInt(parts[0], 10);
+      const away = parseInt(parts[1], 10);
+      return !isNaN(home) && !isNaN(away) && home === score.home && away === score.away;
+    }
+    return !!bet.result?.winner && bet.result.winner === userSelection;
+  })();
+  const userLost = (() => {
+    if (bet.status !== 'settled' || !userSelection) return false;
+    if (bet.type === 'score') {
+      const score = bet.result?.score;
+      if (!score) return false;
+      const parts = userSelection.split(' - ');
+      const home = parseInt(parts[0], 10);
+      const away = parseInt(parts[1], 10);
+      if (isNaN(home) || isNaN(away)) return false;
+      return !(home === score.home && away === score.away);
+    }
+    return !!bet.result?.winner && bet.result.winner !== userSelection;
+  })();
+  const badgeColor = userWon ? '#10B981' : userLost ? '#DC2E4B' : getStatusColor(bet.status);
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -79,24 +112,37 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
               </Text>
             )}
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(bet.status) }]}>
+          <View style={[styles.statusBadge, { backgroundColor: badgeColor }]}>
+            {userWon && <Ionicons name="checkmark" size={10} color="#FFF" />}
+            {userLost && <Ionicons name="close" size={10} color="#FFF" />}
             <Text style={styles.statusText}>{getStatusLabel(bet.status)}</Text>
           </View>
         </View>
 
-        {/* Pot info */}
-        <View style={styles.potInfo}>
-          <Ionicons name="cash-outline" size={14} color={colors.primary} />
-          <Text style={[styles.potText, { color: colors.mutedForeground }]}>
-            Pozo: ${(bet.totalPot || 0).toLocaleString()}
-          </Text>
-          {(bet.totalPicks || 0) > 0 && (
-            <>
-              <Text style={[styles.potSeparator, { color: colors.mutedForeground }]}>•</Text>
-              <Text style={[styles.potText, { color: colors.mutedForeground }]}>
-                {bet.totalPicks} {bet.totalPicks === 1 ? 'apuesta' : 'apuestas'}
-              </Text>
-            </>
+        {/* Pot info + optional cancel icon */}
+        <View style={styles.potInfoRow}>
+          <View style={styles.potInfo}>
+            <Ionicons name="cash-outline" size={14} color={colors.primary} />
+            <Text style={[styles.potText, { color: colors.mutedForeground }]}>
+              Pozo: ${(bet.totalPot || 0).toLocaleString()}
+            </Text>
+            {(bet.totalPicks || 0) > 0 && (
+              <>
+                <Text style={[styles.potSeparator, { color: colors.mutedForeground }]}>•</Text>
+                <Text style={[styles.potText, { color: colors.mutedForeground }]}>
+                  {bet.totalPicks} {bet.totalPicks === 1 ? 'apuesta' : 'apuestas'}
+                </Text>
+              </>
+            )}
+          </View>
+          {onCancel && bet.status === 'open' && (
+            <TouchableOpacity
+              onPress={onCancel}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.cancelIconBtn}
+            >
+              <Ionicons name="trash-outline" size={15} color={colors.mutedForeground} />
+            </TouchableOpacity>
           )}
         </View>
       </LinearGradient>
@@ -106,17 +152,22 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
         {bet.options.map((option, index) => {
           const isSelected = userSelection === option;
           const optionOdds = odds[option];
-          
+          const isWinner = bet.status === 'settled' && bet.result?.winner === option;
+
           return (
             <TouchableOpacity
               key={index}
               style={[
                 styles.optionButton,
                 {
-                  backgroundColor: isSelected ? colors.primary + '15' : colors.secondary,
-                  borderColor: isSelected ? colors.primary : colors.border,
+                  backgroundColor: isWinner ? '#F59E0B18' : isSelected ? colors.primary + '15' : colors.secondary,
+                  borderColor: isWinner ? '#F59E0B' : isSelected ? colors.primary : colors.border,
+                  opacity: !isOptionDisabled
+                    ? 1
+                    : bet.status === 'settled'
+                    ? (isWinner || isSelected ? 1 : 0.3)
+                    : 0.6,
                 },
-                isOptionDisabled && styles.optionDisabled,
               ]}
               onPress={() => !isOptionDisabled && onOptionPress(option)}
               disabled={isOptionDisabled}
@@ -127,36 +178,24 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
                   style={[
                     styles.optionText,
                     {
-                      color: isSelected ? colors.primary : colors.foreground,
-                      fontWeight: isSelected ? '700' : '600',
+                      color: isWinner ? '#F59E0B' : isSelected ? colors.primary : colors.mutedForeground,
+                      fontWeight: isSelected || isWinner ? '700' : '500',
                     },
                   ]}
-                  numberOfLines={2}
+                  numberOfLines={1}
                 >
-                  {option}
+                  {formatOptionLabel(option)}
                 </Text>
                 {showOdds && optionOdds && (
-                  <View style={[styles.oddsChip, { backgroundColor: colors.primary + '20' }]}>
-                    <Text style={[styles.oddsText, { color: colors.primary }]}>
-                      {optionOdds === '—' ? '—' : `x${optionOdds}`}
-                    </Text>
-                  </View>
+                  <Text style={[styles.oddsText, { color: isWinner ? '#F59E0B' : colors.foreground }]}>
+                    {optionOdds}
+                  </Text>
                 )}
               </View>
             </TouchableOpacity>
           );
         })}
       </View>
-
-      {/* User pick indicator */}
-      {userSelection && (
-        <View style={[styles.userPickBanner, { backgroundColor: colors.primary + '10' }]}>
-          <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-          <Text style={[styles.userPickText, { color: colors.primary }]}>
-            Tu selección: {userSelection}
-          </Text>
-        </View>
-      )}
     </View>
   );
 };
@@ -164,34 +203,37 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
 const styles = StyleSheet.create({
   container: {
     borderRadius: BorderRadius.md,
-    marginBottom: Spacing.md,
+    marginBottom: 8,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
   },
   headerGradient: {
-    padding: Spacing.md,
+    padding: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.sm,
+    marginBottom: 6,
   },
   headerLeft: {
     flex: 1,
     marginRight: Spacing.sm,
   },
   title: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 2,
   },
   description: {
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -202,10 +244,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  potInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   potInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
+  },
+  cancelIconBtn: {
+    paddingLeft: 8,
   },
   potText: {
     fontSize: 12,
@@ -218,34 +269,40 @@ const styles = StyleSheet.create({
   optionsContainer: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
-    padding: Spacing.sm,
-    gap: Spacing.sm,
+    padding: 6,
+    gap: 6,
   },
   optionButton: {
     flex: 1,
     minWidth: 0,
-    padding: Spacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
     borderRadius: BorderRadius.sm,
     borderWidth: 2,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   optionDisabled: {
     opacity: 0.6,
   },
   optionContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 6,
   },
   optionText: {
-    fontSize: 14,
-    textAlign: 'center',
+    fontSize: 13,
+    flex: 1,
+    textAlign: 'left',
   },
   oddsChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   oddsText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   userPickBanner: {
@@ -260,7 +317,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },  // EventCard styles
   eventCard: {
-    padding: Spacing.lg,
+    padding: 14,
     borderRadius: BorderRadius.lg,
     marginBottom: Spacing.md,
     borderWidth: 0,
@@ -283,19 +340,19 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   eventHeader: {
-    marginBottom: Spacing.md,
+    marginBottom: 10,
     zIndex: 1,
   },
   eventInfo: {
     flex: 1,
   },
   eventTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
   },
   eventDescription: {
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
   },
@@ -380,6 +437,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     zIndex: 1,
   },
+  eventAdminBar: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 5,
+    zIndex: 2,
+  },
   // SwipeableRow styles
   swipeActions: {
     flexDirection: 'row',
@@ -406,9 +472,10 @@ interface EventCardProps {
   onPress: () => void;
   expanded?: boolean;
   userHasPick?: boolean;
+  adminActionBar?: React.ReactNode;
 }
 
-export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, userHasPick = false }) => {
+export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, userHasPick = false, adminActionBar }) => {
   const colors = Colors[theme];
 
   const getStatusLabel = (status: string) => {
@@ -417,6 +484,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
       case 'live': return 'En vivo';
       case 'finished': return 'Finalizado';
       case 'cancelled': return 'Cancelado';
+      case 'locked': return 'Cerrado';
       default: return status;
     }
   };
@@ -426,6 +494,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
       case 'live': return '#10B981';
       case 'upcoming': return '#DC2E4B';
       case 'finished': return '#F59E0B';
+      case 'locked': return '#F59E0B';
       default: return colors.mutedForeground;
     }
   };
@@ -503,6 +572,13 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
         <View style={styles.eventDateRow}>
           <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
           <Text style={[styles.eventDate, { color: colors.mutedForeground }]}>{dateStr}</Text>
+        </View>
+      ) : null}
+
+      {/* Admin action button — absolutely positioned at bottom-right, no height change */}
+      {adminActionBar ? (
+        <View style={styles.eventAdminBar} pointerEvents="box-none">
+          {adminActionBar}
         </View>
       ) : null}
     </TouchableOpacity>
