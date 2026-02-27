@@ -101,6 +101,33 @@ export const listenBets = (
 };
 
 /**
+ * Listen to all picks for a single bet in realtime.
+ * Used to derive live pool totals (totalPot, totalPicks, optionTotals) on the
+ * client side when Firestore rules prevent member writes on the bet document.
+ */
+export const listenBetPicks = (
+  tournamentId: string,
+  eventId: string,
+  betId: string,
+  callback: (picks: Pick[]) => void,
+): (() => void) => {
+  const picksRef = collection(
+    db,
+    'tournaments', tournamentId,
+    'events', eventId,
+    'bets', betId,
+    'picks',
+  );
+  return onSnapshot(picksRef, (snapshot) => {
+    const picks = snapshot.docs.map((d) => ({
+      uid: d.id,
+      ...d.data(),
+    })) as Pick[];
+    callback(picks);
+  });
+};
+
+/**
  * Get a single bet
  */
 export const getBet = async (tournamentId: string, eventId: string, betId: string): Promise<Bet | null> => {
@@ -275,6 +302,11 @@ export const upsertMyPick = async (
   const pickRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks', uid);
   const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
 
+  // Compute selectionKey here so the permission-error fallback can also use it
+  const selectionKey = typeof selection === 'object'
+    ? JSON.stringify(selection)
+    : String(selection);
+
   try {
     await runTransaction(db, async (transaction) => {
       const betDoc = await transaction.get(betRef);
@@ -287,10 +319,7 @@ export const upsertMyPick = async (
       const bet = betDoc.data() as Bet;
       const previousPick = pickDoc.exists() ? pickDoc.data() as Pick : null;
       
-      // For score type, convert selection to string key for optionTotals
-      const selectionKey = typeof selection === 'object' 
-        ? JSON.stringify(selection) 
-        : String(selection);
+      // selectionKey is computed in the outer scope
 
       // Calculate new totals
       let newTotalPot = bet.totalPot || 0;
@@ -299,11 +328,11 @@ export const upsertMyPick = async (
 
       // If updating existing pick, remove old values
       if (previousPick) {
-        newTotalPot -= previousPick.stakeAmount;
+        newTotalPot = Math.max(0, newTotalPot - previousPick.stakeAmount);
         const oldKey = typeof previousPick.selection === 'object'
           ? JSON.stringify(previousPick.selection)
           : String(previousPick.selection);
-        newOptionTotals[oldKey] = (newOptionTotals[oldKey] || 0) - previousPick.stakeAmount;
+        newOptionTotals[oldKey] = Math.max(0, (newOptionTotals[oldKey] || 0) - previousPick.stakeAmount);
       } else {
         // New pick
         newTotalPicks += 1;
@@ -348,25 +377,64 @@ export const upsertMyPick = async (
       error?.message?.includes('Missing or insufficient permissions');
 
     if (isPermissionError) {
-      // Transaction failed because the user lacks write access to the bet document.
-      // Check if the pick was somehow saved anyway (rare).
+      // Read old pick BEFORE overwriting so we can compute the delta for bet totals.
+      // NOTE: This non-transactional fallback may produce slightly inaccurate totals
+      // under concurrent updates, but listenBetPicks-derived client totals will
+      // eventually converge to the correct values.
       const existingDoc = await getDoc(pickRef);
-      if (existingDoc.exists()) {
-        try { await updatePicksIndex(tournamentId, eventId, betId, uid); } catch { /* ignore */ }
-        return;
-      }
-      // Fallback: write the pick directly — users always have write access to their own pick.
+      const existingPick = existingDoc.exists() ? (existingDoc.data() as Pick) : null;
+
+      // Write/update the pick directly (users always have write access to their own pick)
       await setDoc(
         pickRef,
         {
           uid,
           selection,
           stakeAmount: stakeAmount || 0,
-          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          ...(existingPick ? {} : { createdAt: serverTimestamp() }),
         },
-        { merge: true }
+        { merge: true },
       );
+
+      // Attempt to update bet totals so odds reflect the new pick.
+      // This may still fail if Firestore rules deny member writes on the bet doc,
+      // but it will succeed if rules are more permissive.
+      try {
+        const currentBetDoc = await getDoc(betRef);
+        if (currentBetDoc.exists()) {
+          const currentBet = currentBetDoc.data() as Bet;
+          let newTotalPot = currentBet.totalPot || 0;
+          let newTotalPicks = currentBet.totalPicks || 0;
+          const newOptionTotals = { ...(currentBet.optionTotals || {}) };
+
+          if (existingPick) {
+            // Subtract old pick contribution
+            const oldKey =
+              typeof existingPick.selection === 'object'
+                ? JSON.stringify(existingPick.selection)
+                : String(existingPick.selection);
+            newTotalPot -= existingPick.stakeAmount || 0;
+            newOptionTotals[oldKey] = Math.max(
+              0,
+              (newOptionTotals[oldKey] || 0) - (existingPick.stakeAmount || 0),
+            );
+          } else {
+            newTotalPicks += 1;
+          }
+
+          newTotalPot = Math.max(0, newTotalPot + stakeAmount);
+          newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
+
+          await updateDoc(betRef, {
+            totalPot: newTotalPot,
+            totalPicks: newTotalPicks,
+            optionTotals: newOptionTotals,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch { /* Bet totals update not permitted — odds will reflect on next full recalc */ }
+
       try { await updatePicksIndex(tournamentId, eventId, betId, uid); } catch { /* ignore */ }
       return;
     }
@@ -438,39 +506,86 @@ export const deleteMyPick = async (
   const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
   const indexRef = doc(db, 'users', uid, 'picksIndex', `${tournamentId}_${eventId}_${betId}`);
 
-  await runTransaction(db, async (transaction) => {
-    const betDoc = await transaction.get(betRef);
-    const pickDoc = await transaction.get(pickRef);
+  try {
+    await runTransaction(db, async (transaction) => {
+      const betDoc = await transaction.get(betRef);
+      const pickDoc = await transaction.get(pickRef);
 
-    if (!pickDoc.exists()) return; // Nothing to delete
+      if (!pickDoc.exists()) return; // Nothing to delete
 
-    if (!betDoc.exists()) throw new Error('Bet not found');
+      if (!betDoc.exists()) throw new Error('Bet not found');
 
-    const bet = betDoc.data() as Bet;
-    const previousPick = pickDoc.data() as Pick;
+      const bet = betDoc.data() as Bet;
+      const previousPick = pickDoc.data() as Pick;
 
-    const selectionKey =
-      typeof previousPick.selection === 'object'
-        ? JSON.stringify(previousPick.selection)
-        : String(previousPick.selection);
+      const selectionKey =
+        typeof previousPick.selection === 'object'
+          ? JSON.stringify(previousPick.selection)
+          : String(previousPick.selection);
 
-    const newTotalPot = Math.max(0, (bet.totalPot || 0) - previousPick.stakeAmount);
-    const newTotalPicks = Math.max(0, (bet.totalPicks || 0) - 1);
-    const newOptionTotals = { ...(bet.optionTotals || {}) };
-    newOptionTotals[selectionKey] = Math.max(
-      0,
-      (newOptionTotals[selectionKey] || 0) - previousPick.stakeAmount,
-    );
+      const newTotalPot = Math.max(0, (bet.totalPot || 0) - previousPick.stakeAmount);
+      const newTotalPicks = Math.max(0, (bet.totalPicks || 0) - 1);
+      const newOptionTotals = { ...(bet.optionTotals || {}) };
+      newOptionTotals[selectionKey] = Math.max(
+        0,
+        (newOptionTotals[selectionKey] || 0) - previousPick.stakeAmount,
+      );
 
-    transaction.update(betRef, {
-      totalPot: newTotalPot,
-      totalPicks: newTotalPicks,
-      optionTotals: newOptionTotals,
-      updatedAt: serverTimestamp(),
+      transaction.update(betRef, {
+        totalPot: newTotalPot,
+        totalPicks: newTotalPicks,
+        optionTotals: newOptionTotals,
+        updatedAt: serverTimestamp(),
+      });
+
+      transaction.delete(pickRef);
     });
+  } catch (error: any) {
+    const isPermissionError =
+      error?.code === 'permission-denied' ||
+      error?.message?.includes('insufficient permissions') ||
+      error?.message?.includes('Missing or insufficient permissions');
 
-    transaction.delete(pickRef);
-  });
+    if (isPermissionError) {
+      // Fallback for members who can't write the bet document:
+      // read the existing pick, delete it, and attempt to update bet totals separately.
+      const existingDoc = await getDoc(pickRef);
+      if (!existingDoc.exists()) return; // Nothing to delete
+
+      const previousPick = existingDoc.data() as Pick;
+      const selectionKey =
+        typeof previousPick.selection === 'object'
+          ? JSON.stringify(previousPick.selection)
+          : String(previousPick.selection);
+
+      await deleteDoc(pickRef);
+
+      try {
+        const currentBetDoc = await getDoc(betRef);
+        if (currentBetDoc.exists()) {
+          const currentBet = currentBetDoc.data() as Bet;
+          const newTotalPot = Math.max(0, (currentBet.totalPot || 0) - (previousPick.stakeAmount || 0));
+          const newTotalPicks = Math.max(0, (currentBet.totalPicks || 0) - 1);
+          const newOptionTotals = { ...(currentBet.optionTotals || {}) };
+          newOptionTotals[selectionKey] = Math.max(
+            0,
+            (newOptionTotals[selectionKey] || 0) - (previousPick.stakeAmount || 0),
+          );
+          await updateDoc(betRef, {
+            totalPot: newTotalPot,
+            totalPicks: newTotalPicks,
+            optionTotals: newOptionTotals,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch { /* Bet totals update not permitted — totals may be stale */ }
+
+      try { await deleteDoc(indexRef); } catch { }
+      return;
+    }
+
+    throw error;
+  }
 
   // Clean up picks index (best effort)
   try {
@@ -487,7 +602,7 @@ export const deleteMyPick = async (
 export const calculateOdds = (bet: Bet, fee: number = 0.05): Record<string, string> => {
   const odds: Record<string, string> = {};
   
-  if (!bet.totalPot || bet.totalPot === 0 || !bet.optionTotals) {
+  if (!bet.totalPot || bet.totalPot <= 0 || !bet.optionTotals) {
     // No picks yet, show default odds
     bet.options.forEach(option => {
       odds[option] = '—';
@@ -500,8 +615,8 @@ export const calculateOdds = (bet: Bet, fee: number = 0.05): Record<string, stri
   bet.options.forEach(option => {
     const amountOnOption = bet.optionTotals?.[option] || 0;
     
-    if (amountOnOption === 0) {
-      // No one picked this option, show max odds or placeholder
+    if (amountOnOption <= 0) {
+      // No one picked this option (or stale negative value), show placeholder
       odds[option] = '—';
     } else {
       const calculatedOdds = effectivePot / amountOnOption;

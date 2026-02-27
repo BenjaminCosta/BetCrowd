@@ -217,8 +217,8 @@ const TorneosScreen = ({ navigation }: any) => {
   const getRoleInfo = (tournamentId: string, ownerId: string) => {
     const role = myRoles[tournamentId] || (ownerId === user?.uid ? 'owner' : 'member');
     switch (role) {
-      case 'owner':  return { label: 'Propietario', icon: 'ribbon-outline' as const,          color: colors.primary };
-      case 'admin':  return { label: 'Admin',        icon: 'shield-checkmark-outline' as const, color: colors.primary };
+      case 'owner':  return { label: 'Propietario', icon: 'ribbon-outline' as const,          color: colors.mutedForeground };
+      case 'admin':  return { label: 'Admin',        icon: 'shield-checkmark-outline' as const, color: colors.mutedForeground };
       default:       return { label: 'Miembro',      icon: 'person-outline' as const,    color: colors.mutedForeground };
     }
   };

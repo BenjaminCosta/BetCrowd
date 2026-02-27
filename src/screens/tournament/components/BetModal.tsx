@@ -29,6 +29,7 @@ interface BetModalProps {
   onClose: () => void;
   onConfirm: () => void;
   currentPick?: string | null;
+  currentPickStake?: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ const BetModal: React.FC<BetModalProps> = ({
   onClose,
   onConfirm,
   currentPick,
+  currentPickStake,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -56,6 +58,8 @@ const BetModal: React.FC<BetModalProps> = ({
   const amountNum = parseFloat(betAmount) || 0;
   const estimatedGain = amountNum * (parseFloat(odd) || 0);
   const alreadySelected = !!currentPick && currentPick === option;
+  const fixedGain = (bet.stakeAmount ?? 0) * (parseFloat(odd) || 0);
+  const pickGain = (currentPickStake ?? 0) * (parseFloat(odd) || 0);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -129,6 +133,16 @@ const BetModal: React.FC<BetModalProps> = ({
                   </Text>
                 </View>
               )}
+              {alreadySelected && pickGain > 0 && (
+                <View style={styles.modalGainRow}>
+                  <Text style={[styles.modalGainLabel, { color: colors.mutedForeground }]}>
+                    Si ganás
+                  </Text>
+                  <Text style={[styles.modalGainValue, { color: colors.success }]}>
+                    x{parseFloat(odd).toFixed(2)} = ${pickGain.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
             </View>
           ) : (
             <View style={styles.modalAmountSection}>
@@ -140,6 +154,16 @@ const BetModal: React.FC<BetModalProps> = ({
                   ${(bet.stakeAmount ?? 0).toLocaleString('es-AR')}
                 </Text>
               </View>
+              {fixedGain > 0 && (
+                <View style={styles.modalGainRow}>
+                  <Text style={[styles.modalGainLabel, { color: colors.mutedForeground }]}>
+                    Ganancia estimada
+                  </Text>
+                  <Text style={[styles.modalGainValue, { color: colors.success }]}>
+                    ${fixedGain.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 

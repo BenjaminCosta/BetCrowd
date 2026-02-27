@@ -1,0 +1,284 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------
+    // HELPERS
+    // -------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isMe(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isTournamentMember(tournamentId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/tournaments/$(tournamentId)/members/$(request.auth.uid));
+    }
+
+    function myRole(tournamentId) {
+      return get(/databases/$(database)/documents/tournaments/$(tournamentId)/members/$(request.auth.uid)).data.role;
+    }
+
+    function isTournamentAdmin(tournamentId) {
+      let role = myRole(tournamentId);
+      return isTournamentMember(tournamentId) &&
+        (role == "owner" || role == "admin");
+    }
+
+    function isTournamentOwnerDoc(tournamentId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.ownerId == request.auth.uid;
+    }
+
+    // -------------------------
+    // USERS (private profile)
+    // -------------------------
+    match /users/{userId} {
+      allow read: if isMe(userId);
+
+      allow create, update: if isMe(userId)
+        && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if false;
+
+      match /tournamentRefs/{tournamentId} {
+        allow read: if isMe(userId);
+
+        allow create, update: if isMe(userId)
+          && request.resource.data.keys().hasAll(["role", "joinedAt"]);
+
+        allow delete: if isMe(userId);
+      }
+
+      match /friends/{friendUid} {
+        allow read: if isMe(userId);
+
+        allow create: if isSignedIn()
+          && (request.auth.uid == userId || request.auth.uid == friendUid)
+          && request.resource.data.uid == friendUid;
+
+        allow delete: if isMe(userId);
+      }
+
+      match /incomingRequests/{fromUid} {
+        allow read: if isMe(userId);
+
+        allow create: if isSignedIn()
+          && request.auth.uid == fromUid
+          && request.resource.data.uid == fromUid;
+
+        allow delete: if isMe(userId);
+      }
+
+      match /outgoingRequests/{toUid} {
+        allow read: if isMe(userId);
+
+        allow create: if isMe(userId)
+          && request.resource.data.uid == toUid;
+
+        allow delete: if isMe(userId);
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isMe(userId);
+
+        allow create: if isSignedIn()
+          && (request.auth.uid == userId || request.resource.data.fromUid == request.auth.uid);
+
+        allow update: if isMe(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"]);
+
+        allow delete: if isMe(userId);
+      }
+
+      // picksIndex — written by the client to track user's picks across tournaments
+      match /picksIndex/{entryId} {
+        allow read, write: if isMe(userId);
+      }
+    }
+
+    // -------------------------
+    // PUBLIC PROFILES (search friends)
+    // -------------------------
+    match /publicProfiles/{uid} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isMe(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.usernameLower is string
+        && request.resource.data.username is string
+        && request.resource.data.displayName is string;
+
+      allow delete: if false;
+    }
+
+    // -------------------------
+    // USERNAMES (unique claim)
+    // -------------------------
+    match /usernames/{username} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(["uid"])
+        && request.resource.data.uid == request.auth.uid;
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && resource.data.uid == request.auth.uid;
+    }
+
+    // -------------------------
+    // INVITE CODES (index)
+    // -------------------------
+    match /inviteCodes/{code} {
+      allow get: if isSignedIn();
+      allow list: if false;
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(["tournamentId", "ownerId"])
+        && request.resource.data.ownerId == request.auth.uid;
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    // -------------------------
+    // TOURNAMENTS
+    // -------------------------
+    match /tournaments/{tournamentId} {
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasAll([
+          "name",
+          "format",
+          "contribution",
+          "participantsEstimated",
+          "ownerId",
+          "inviteCode",
+          "status"
+        ]);
+
+      allow get, list: if isTournamentMember(tournamentId);
+
+      allow update: if isTournamentAdmin(tournamentId);
+
+      allow delete: if false;
+
+      // -------------------------
+      // MEMBERS
+      // -------------------------
+      match /members/{uid} {
+        allow read: if isTournamentMember(tournamentId);
+
+        allow create: if isSignedIn()
+          && !exists(/databases/$(database)/documents/tournaments/$(tournamentId)/members/$(uid))
+          && (
+            isTournamentAdmin(tournamentId)
+            || (
+              request.auth.uid == uid
+              && (
+                request.resource.data.role == "member"
+                || (request.resource.data.role == "owner" && isTournamentOwnerDoc(tournamentId))
+              )
+            )
+          )
+          && request.resource.data.keys().hasAll(["role"])
+          && request.resource.data.role in ["owner", "admin", "member"];
+
+        allow update, delete: if isTournamentAdmin(tournamentId);
+      }
+
+      // -------------------------
+      // EVENTS
+      // -------------------------
+      match /events/{eventId} {
+        allow read: if isTournamentMember(tournamentId);
+        allow create, update, delete: if isTournamentAdmin(tournamentId);
+
+        // -------------------------
+        // BETS
+        // -------------------------
+        match /bets/{betId} {
+          // ✅ read: cualquier miembro
+          allow read: if isTournamentMember(tournamentId);
+
+          // ✅ create/delete: solo admin/owner
+          allow create, delete: if isTournamentAdmin(tournamentId);
+
+          // ✅ update:
+          // - Admin: todo
+          // - Member: SOLO los campos de agregados del pool, y SOLO si el bet está abierto.
+          //   Campos permitidos: totalPot, totalPicks, optionTotals, updatedAt
+          //   IMPORTANTE: estos nombres deben coincidir exactamente con los que escribe el código.
+          allow update: if isTournamentAdmin(tournamentId)
+            || (
+              isTournamentMember(tournamentId)
+              && resource.data.status == "open"
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(["totalPot", "totalPicks", "optionTotals", "updatedAt"])
+            );
+
+          // -------------------------
+          // PICKS (docId = uid)
+          // -------------------------
+          match /picks/{uid} {
+            // ✅ read: cualquier miembro (necesario para listenBetPicks y calcular pool client-side)
+            allow read: if isTournamentMember(tournamentId);
+
+            // ✅ write: el usuario solo puede escribir su propio pick y solo si el bet está open
+            allow create, update, delete: if isTournamentMember(tournamentId)
+              && request.auth.uid == uid
+              && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId))
+              && get(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId)).data.status == "open";
+          }
+        }
+      }
+
+      // -------------------------
+      // TOURNAMENT INVITES (OPCIONAL)
+      // -------------------------
+      match /invites/{uid} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == uid || isTournamentMember(tournamentId)
+        );
+
+        allow create: if isTournamentAdmin(tournamentId);
+
+        allow update: if isSignedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"]);
+
+        allow delete: if isSignedIn() && (
+          request.auth.uid == uid || isTournamentAdmin(tournamentId)
+        );
+      }
+
+      // -------------------------
+      // (Legacy) PREDICTIONS
+      // -------------------------
+      match /predictions/{predictionId} {
+        allow read: if isTournamentMember(tournamentId);
+
+        allow create: if isTournamentMember(tournamentId)
+          && request.resource.data.userId == request.auth.uid;
+
+        allow update, delete: if isTournamentMember(tournamentId)
+          && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // -------------------------
+    // DENY BY DEFAULT
+    // -------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

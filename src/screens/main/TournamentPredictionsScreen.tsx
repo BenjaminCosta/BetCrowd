@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import {
   upsertMyPick,
   deleteMyPick,
   calculateOdds,
+  listenBetPicks,
   type Bet,
 } from '../../services/betService';
 import { listEvents } from '../../services/eventService';
@@ -58,6 +59,15 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const [confirmingBet, setConfirmingBet] = useState(false);
   const [betFeedback, setBetFeedback] = useState('');
   const [modalCurrentPick, setModalCurrentPick] = useState<string | null>(null);
+  const [modalCurrentPickStake, setModalCurrentPickStake] = useState<number>(0);
+
+  // ── Live pool totals (same pattern as TournamentScreen) ──────────────────
+  const [liveTotals, setLiveTotals] = useState<Record<string, {
+    totalPot: number;
+    totalPicks: number;
+    optionTotals: Record<string, number>;
+  }>>({});
+  const picksUnsubsRef = useRef<Record<string, () => void>>({});
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -68,6 +78,11 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   useEffect(() => {
     if (user) loadData();
   }, [user]);
+
+  // Cleanup picks listeners on unmount
+  useEffect(() => {
+    return () => { Object.values(picksUnsubsRef.current).forEach(u => { u(); }); };
+  }, []);
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadData = async () => {
@@ -125,6 +140,31 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
         }),
       );
 
+      // Reset picks listeners and subscribe to live picks for all open bets
+      Object.values(picksUnsubsRef.current).forEach(u => { u(); });
+      picksUnsubsRef.current = {};
+      setLiveTotals({});
+      for (const pd of allOpenPicks) {
+        if (picksUnsubsRef.current[pd.betId]) continue;
+        picksUnsubsRef.current[pd.betId] = listenBetPicks(
+          pd.tournamentId, pd.eventId, pd.betId,
+          (allPicks) => {
+            let totalPot = 0;
+            const optionTotals: Record<string, number> = {};
+            allPicks.forEach(p => {
+              totalPot += p.stakeAmount || 0;
+              const key = typeof p.selection === 'object'
+                ? JSON.stringify(p.selection) : String(p.selection);
+              optionTotals[key] = (optionTotals[key] || 0) + (p.stakeAmount || 0);
+            });
+            setLiveTotals(prev => ({
+              ...prev,
+              [pd.betId]: { totalPot, totalPicks: allPicks.length, optionTotals },
+            }));
+          },
+        );
+      }
+
       setOpenPicks(allOpenPicks);
       setSettledPicks(allSettledPicks);
     } catch (err) {
@@ -141,7 +181,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   };
 
   // ── BetModal handlers ─────────────────────────────────────────────────────
-  const openBetModal = (bet: Bet, event: any, tournamentId: string, option: string, currentSelection?: string | null) => {
+  const openBetModal = (bet: Bet, event: any, tournamentId: string, option: string, currentSelection?: string | null, pickStake?: number) => {
     const odds = calculateOdds(bet);
     setModalBet(bet);
     setModalEvent(event);
@@ -151,6 +191,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     setBetAmount('');
     setBetFeedback('');
     setModalCurrentPick(currentSelection ?? null);
+    setModalCurrentPickStake(pickStake ?? 0);
     setShowBetModal(true);
   };
 
@@ -164,6 +205,19 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
           ? (modalBet.stakeAmount ?? 0)
           : parseFloat(betAmount) || 0;
       await upsertMyPick(modalTournamentId, modalEvent.id, modalBet.id, user.uid, modalOption, stake);
+
+      // Optimistic: update selection in state immediately so UI feels instant
+      const _tId = modalTournamentId;
+      const _bId = modalBet.id;
+      const _opt = modalOption;
+      setOpenPicks(prev =>
+        prev.map(p =>
+          p.tournamentId === _tId && p.betId === _bId
+            ? { ...p, pick: { ...p.pick, selection: _opt } }
+            : p,
+        ),
+      );
+
       setBetFeedback('¡Apuesta actualizada!');
       setTimeout(() => {
         setShowBetModal(false);
@@ -194,6 +248,12 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
               Alert.alert('Error', 'Sesión expirada. Vuelve a iniciar sesión.');
               return;
             }
+            // Optimistic: remove immediately so UI reflects the action instantly
+            setOpenPicks(prev =>
+              prev.filter(
+                p => !(p.tournamentId === pickData.tournamentId && p.betId === pickData.betId),
+              ),
+            );
             try {
               await deleteMyPick(
                 pickData.tournamentId,
@@ -201,8 +261,9 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 pickData.betId,
                 uid,
               );
-              loadData();
+              loadData(); // background refresh for accuracy
             } catch {
+              loadData(); // restore correct state on error
               Alert.alert('Error', 'No se pudo cancelar la apuesta.');
             }
           },
@@ -354,17 +415,20 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                         typeof pick.selection === 'object'
                           ? `${pick.selection.home ?? 0} - ${pick.selection.away ?? 0}`
                           : pick.selection;
+                      const mergedBet = liveTotals[pickData.betId]
+                        ? { ...bet, ...liveTotals[pickData.betId] }
+                        : bet;
                       return (
                         <View
                           key={`${pickData.tournamentId}-${pickData.betId}-${idx}`}
                           style={styles.pickWrapper}
                         >
                           <BetCardCompact
-                            bet={bet}
+                            bet={mergedBet}
                             theme={theme}
                             onOptionPress={(option: string) => {
                               if (bet.status === 'open') {
-                                openBetModal(bet, event, pickData.tournamentId, option, displaySelection);
+                                openBetModal(mergedBet, event, pickData.tournamentId, option, displaySelection, pick.stakeAmount);
                               }
                             }}
                             userSelection={displaySelection}
@@ -395,6 +459,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
           onClose={() => setShowBetModal(false)}
           onConfirm={handleConfirmBet}
           currentPick={modalCurrentPick}
+          currentPickStake={modalCurrentPickStake}
         />
       </View>
     </GestureHandlerRootView>

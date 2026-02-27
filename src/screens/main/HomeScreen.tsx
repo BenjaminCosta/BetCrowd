@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import { useTournaments } from '../../context/TournamentsContext';
 import { getUserProfile } from '../../services/userService';
 import { getTournamentMemberCount } from '../../services/tournamentService';
 import { Event, listenEvents } from '../../services/eventService';
-import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds } from '../../services/betService';
+import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds, listenBetPicks } from '../../services/betService';
 
 // Format label mapping
 const getFormatLabel = (formatId: string) => {
@@ -107,6 +107,14 @@ const HomeScreen = ({ navigation }: any) => {
   const [showCreateTournamentSheet, setShowCreateTournamentSheet] = useState(false);
   const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
 
+  // Live pool totals derived from picks subcollection (same pattern as TournamentScreen)
+  const [liveTotals, setLiveTotals] = useState<Record<string, {
+    totalPot: number;
+    totalPicks: number;
+    optionTotals: Record<string, number>;
+  }>>({});
+  const picksUnsubsRef = useRef<Record<string, () => void>>({});
+
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1500);
     return () => clearTimeout(timer);
@@ -123,6 +131,11 @@ const HomeScreen = ({ navigation }: any) => {
       loadParticipantCounts();
     }
   }, [tournaments, user]);
+
+  // Cleanup picks listeners on unmount
+  useEffect(() => {
+    return () => { Object.values(picksUnsubsRef.current).forEach(u => { u(); }); };
+  }, []);
 
   const loadParticipantCounts = async () => {
     const counts: Record<string, number> = {};
@@ -167,8 +180,8 @@ const HomeScreen = ({ navigation }: any) => {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // Load events from all tournaments (limit to first 5 tournaments to avoid excessive calls)
-      const tournamentsToCheck = tournaments.slice(0, 5);
+      // Load events from active tournaments only (exclude soft-deleted)
+      const tournamentsToCheck = tournaments.filter(t => t.status !== 'deleted').slice(0, 5);
       
       await Promise.all(
         tournamentsToCheck.map(async (tournament) => {
@@ -217,7 +230,35 @@ const HomeScreen = ({ navigation }: any) => {
         })
       );
 
-      setTodayEvents(eventsWithBets.slice(0, 5));
+      const eventsToShow = eventsWithBets.slice(0, 5);
+      setTodayEvents(eventsToShow);
+
+      // Refresh picks listeners for the new event list
+      Object.values(picksUnsubsRef.current).forEach(u => { u(); });
+      picksUnsubsRef.current = {};
+      setLiveTotals({});
+      for (const event of eventsToShow) {
+        const bet = event.primaryBet;
+        if (!bet) continue;
+        if (picksUnsubsRef.current[bet.id]) continue;
+        picksUnsubsRef.current[bet.id] = listenBetPicks(
+          event.tournamentId, event.id, bet.id,
+          (allPicks) => {
+            let totalPot = 0;
+            const optionTotals: Record<string, number> = {};
+            allPicks.forEach(p => {
+              totalPot += p.stakeAmount || 0;
+              const key = typeof p.selection === 'object'
+                ? JSON.stringify(p.selection) : String(p.selection);
+              optionTotals[key] = (optionTotals[key] || 0) + (p.stakeAmount || 0);
+            });
+            setLiveTotals(prev => ({
+              ...prev,
+              [bet.id]: { totalPot, totalPicks: allPicks.length, optionTotals },
+            }));
+          },
+        );
+      }
     } catch (error) {
       console.error('Error loading today events:', error);
     } finally {
@@ -233,8 +274,8 @@ const HomeScreen = ({ navigation }: any) => {
       const { listBets, getMyPick } = await import('../../services/betService');
       const uid = user.uid;
 
-      // Fetch all events for the first 3 tournaments in parallel
-      const tournamentsToCheck = tournaments.slice(0, 3);
+      // Fetch all events for the first 3 active tournaments in parallel
+      const tournamentsToCheck = tournaments.filter(t => t.status !== 'deleted').slice(0, 3);
       const eventsByTournament = await Promise.allSettled(
         tournamentsToCheck.map(async (tournament) => ({
           tournament,
@@ -352,7 +393,10 @@ const HomeScreen = ({ navigation }: any) => {
       : item.title;
 
     const primaryBet = item.primaryBet;
-    const realOdds = primaryBet ? calculateOdds(primaryBet) : {};
+    const mergedPrimaryBet = primaryBet && liveTotals[primaryBet.id]
+      ? { ...primaryBet, ...liveTotals[primaryBet.id] }
+      : primaryBet;
+    const realOdds = mergedPrimaryBet ? calculateOdds(mergedPrimaryBet) : {};
     const options = primaryBet?.options?.slice(0, 3) ?? [];
     const hasOdds = options.length > 0;
 
@@ -367,7 +411,11 @@ const HomeScreen = ({ navigation }: any) => {
     const userSelection = existingUserBet?.pickSelection;
 
     return (
-      <View style={[styles.eventCard, { backgroundColor: colors.card }]}>
+      <TouchableOpacity
+        style={[styles.eventCard, { backgroundColor: colors.card }]}
+        onPress={() => navigation.navigate('Tournament', { tournamentId: item.tournamentId, openEventId: item.id })}
+        activeOpacity={0.85}
+      >
         <View style={styles.eventCardGradient}>
           <LinearGradient
             colors={[colors.primary + '15', 'transparent']}
@@ -434,42 +482,49 @@ const HomeScreen = ({ navigation }: any) => {
           </Text>
 
           {/* Chips de odds reales */}
-          {hasOdds ? (
-            <View style={styles.oddsRow}>
-              {options.map((option) => {
-                const oddVal = realOdds[option] ?? '—';
-                const isSelected = userSelection === option;
-                const canPress = primaryBet?.status === 'open';
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    style={[styles.oddsChip, { backgroundColor: isSelected ? colors.primary : colors.muted }]}
-                    onPress={() => canPress && handleOddPress(item, option, primaryBet!.id, oddVal)}
-                    activeOpacity={canPress ? 0.7 : 1}
-                    disabled={!canPress}
-                  >
-                    <Text
-                      style={[styles.oddsLabel, { color: isSelected ? '#FFFFFF' : colors.mutedForeground }]}
-                      numberOfLines={1}
-                    >
-                      {option}
-                    </Text>
-                    <Text
-                      style={[styles.oddsValue, { color: isSelected ? '#FFFFFF' : oddVal === '—' ? colors.mutedForeground : colors.foreground }]}
-                    >
-                      {oddVal}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={[styles.oddsChip, { backgroundColor: colors.muted, flex: 0, paddingHorizontal: 16 }]}>
-              <Text style={[styles.oddsLabel, { color: colors.mutedForeground }]}>Sin cuotas</Text>
-            </View>
-          )}
+{hasOdds ? (
+  <View style={styles.oddsRow}>
+    {options.map((option) => {
+      const oddVal = realOdds[option] ?? '—';
+      const isSelected = userSelection === option;
+      const canPress = primaryBet?.status === 'open';
+      return (
+        <TouchableOpacity
+          key={option}
+          style={[
+            styles.oddsChip,
+            { 
+              backgroundColor: isSelected ? colors.primary + "15" : colors.muted,
+              borderWidth: 2,
+              borderColor: isSelected ? colors.primary : colors.border,
+            }
+          ]}
+          onPress={() => canPress && handleOddPress(item, option, primaryBet!.id, oddVal)}
+          activeOpacity={canPress ? 0.7 : 1}
+          disabled={!canPress}
+        >
+          <Text
+            style={[styles.oddsLabel, { color: isSelected ? colors.primary : colors.mutedForeground }]}
+            numberOfLines={1}
+          >
+            {option}
+          </Text>
+          <Text
+            style={[styles.oddsValue, { color: isSelected ? colors.foreground : oddVal === '—' ? colors.mutedForeground : colors.foreground }]}
+          >
+            {oddVal}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+) : (
+  <View style={[styles.oddsChip, { backgroundColor: colors.muted, flex: 0, paddingHorizontal: 16 }]}>
+    <Text style={[styles.oddsLabel, { color: colors.mutedForeground }]}>Sin cuotas</Text>
+  </View>
+)}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

@@ -50,27 +50,30 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
     }
   };
 
-  const userWon = (() => {
-    if (bet.status !== 'settled' || !userSelection) return false;
-    if (bet.type === 'score') {
-      const score = bet.result?.score;
+  const isWinningOption = (b: typeof bet, option: string): boolean => {
+    if (b.status !== 'settled') return false;
+    if (b.type === 'score') {
+      const score = b.result?.score;
       if (!score) return false;
-      const parts = userSelection.split(' - ');
-      const home = parseInt(parts[0], 10);
-      const away = parseInt(parts[1], 10);
-      return !isNaN(home) && !isNaN(away) && home === score.home && away === score.away;
+      const match = option.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (!match) return false;
+      const home = parseInt(match[1], 10);
+      const away = parseInt(match[2], 10);
+      return home === score.home && away === score.away;
     }
-    return !!bet.result?.winner && bet.result.winner === userSelection;
-  })();
+    return !!b.result?.winner && b.result.winner === option;
+  };
+
+  const userWon = userSelection ? isWinningOption(bet, userSelection) : false;
   const userLost = (() => {
     if (bet.status !== 'settled' || !userSelection) return false;
     if (bet.type === 'score') {
       const score = bet.result?.score;
       if (!score) return false;
-      const parts = userSelection.split(' - ');
-      const home = parseInt(parts[0], 10);
-      const away = parseInt(parts[1], 10);
-      if (isNaN(home) || isNaN(away)) return false;
+      const match = userSelection.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (!match) return false;
+      const home = parseInt(match[1], 10);
+      const away = parseInt(match[2], 10);
       return !(home === score.home && away === score.away);
     }
     return !!bet.result?.winner && bet.result.winner !== userSelection;
@@ -150,9 +153,11 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
       {/* Options */}
       <View style={styles.optionsContainer}>
         {bet.options.map((option, index) => {
+          const isSettled = bet.status === 'settled';
           const isSelected = userSelection === option;
           const optionOdds = odds[option];
-          const isWinner = bet.status === 'settled' && bet.result?.winner === option;
+          // Determine if this option is the winner
+          const isWinner = isWinningOption(bet, option);
 
           return (
             <TouchableOpacity
@@ -160,8 +165,20 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
               style={[
                 styles.optionButton,
                 {
-                  backgroundColor: isWinner ? '#F59E0B18' : isSelected ? colors.primary + '15' : colors.secondary,
-                  borderColor: isWinner ? '#F59E0B' : isSelected ? colors.primary : colors.border,
+                  // isWinner always takes priority in settled bets (no red).
+                  // Lost selection: restore the original red primary tint so the user
+                  // can see which option they picked.
+                  // Open/locked selection: red primary tint as before.
+                  backgroundColor: isWinner
+                    ? colors.muted
+                    : isSelected
+                    ? colors.primary + '15'
+                    : colors.secondary,
+                  borderColor: isWinner
+                    ? colors.foreground + '30'
+                    : isSelected
+                    ? colors.primary
+                    : colors.border,
                   opacity: !isOptionDisabled
                     ? 1
                     : bet.status === 'settled'
@@ -178,7 +195,9 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
                   style={[
                     styles.optionText,
                     {
-                      color: isWinner ? '#F59E0B' : isSelected ? colors.primary : colors.mutedForeground,
+                      // Winner takes neutral foreground (no red).
+                      // Selected non-winner (open or lost) gets red primary.
+                      color: isWinner ? colors.mutedForeground : isSelected ? colors.primary : colors.mutedForeground,
                       fontWeight: isSelected || isWinner ? '700' : '500',
                     },
                   ]}
@@ -186,8 +205,17 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
                 >
                   {formatOptionLabel(option)}
                 </Text>
+                {isWinner && (
+                  <Ionicons name="checkmark-circle" size={14} color={colors.foreground} style={{ opacity: 0.7 }} />
+                )}
+                {/* Subtle "Tu pick" label when user picked this but it didn't win */}
+                {isSelected && isSettled && !isWinner && (
+                  <Text style={{ fontSize: 9, color: colors.mutedForeground, fontWeight: '700', opacity: 0.65 }}>
+                    TU PICK
+                  </Text>
+                )}
                 {showOdds && optionOdds && (
-                  <Text style={[styles.oddsText, { color: isWinner ? '#F59E0B' : colors.foreground }]}>
+                  <Text style={[styles.oddsText, { color: colors.foreground }]}>
                     {optionOdds}
                   </Text>
                 )}

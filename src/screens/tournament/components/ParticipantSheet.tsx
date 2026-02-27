@@ -42,7 +42,7 @@ const formatAmount = (n: number) => `$${n.toFixed(0)}`;
 
 const getRoleInfo = (role: string | null) => {
   switch (role) {
-    case 'owner': return { label: 'Organizador', color: '#F59E0B' };
+    case 'owner': return { label: 'Organizador', color: '#D7263D' };
     case 'admin':  return { label: 'Admin',        color: '#D7263D' };
     default:       return null;
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ import {
 import { listenEvents, deleteEvent, updateEvent, Event } from '../../services/eventService';
 import {
   listenBets,
+  listenBetPicks,
   listBets,
   getMyPick,
   lockBet,
@@ -111,6 +112,13 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const [userPicks, setUserPicks] = useState<Record<string, Pick | null>>({});
   const sheetBetsUnsubRef = useRef<(() => void) | null>(null);
   const [eventPicks, setEventPicks] = useState<Record<string, boolean>>({});
+
+  // Live pool totals derived from picks subcollection (avoids Firestore rules
+  // blocking member writes on the bet document).
+  const [liveTotals, setLiveTotals] = useState<Record<string,
+    { totalPot: number; totalPicks: number; optionTotals: Record<string, number> }
+  >>({});
+  const picksUnsubsRef = useRef<Record<string, () => void>>({});
 
   // ── Create event/bet sheet state ────────────────────────────────────────────
   const [showCreateEventSheet, setShowCreateEventSheet] = useState(false);
@@ -195,11 +203,49 @@ const TournamentScreen = ({ navigation, route }: any) => {
     setSheetBetsLoading(true);
     setUserPicks({});
 
+    // Reset live totals and per-bet picks listeners for the new event
+    setLiveTotals({});
+    Object.values(picksUnsubsRef.current).forEach(u => u());
+    picksUnsubsRef.current = {};
+
     sheetBetsUnsubRef.current?.();
     const unsub = listenBets(tournamentId, event.id, async (bets) => {
       setSheetBets(bets);
       setSheetBetsLoading(false);
       if (!user) return;
+
+      // Set up per-bet picks listeners IMMEDIATELY (before the slower getMyPick calls).
+      // This ensures we don't miss pick changes that happen during the await below.
+      bets.forEach(bet => {
+        if (picksUnsubsRef.current[bet.id]) return; // already subscribed
+        picksUnsubsRef.current[bet.id] = listenBetPicks(
+          tournamentId, event.id, bet.id,
+          (allPicks) => {
+            // Derive live pool totals from all picks
+            let totalPot = 0;
+            const optionTotals: Record<string, number> = {};
+            let myPick: Pick | null = null;
+            allPicks.forEach(p => {
+              totalPot += p.stakeAmount || 0;
+              const key = typeof p.selection === 'object'
+                ? JSON.stringify(p.selection)
+                : String(p.selection);
+              optionTotals[key] = (optionTotals[key] || 0) + (p.stakeAmount || 0);
+              if (p.uid === user.uid) myPick = p;
+            });
+            setLiveTotals(prev => ({
+              ...prev,
+              [bet.id]: { totalPot, totalPicks: allPicks.length, optionTotals },
+            }));
+            // Keep userPicks in sync so selection highlight updates immediately
+            // without waiting for the listenBets → getMyPick round-trip.
+            setUserPicks(prev => ({ ...prev, [bet.id]: myPick }));
+            setEventPicks(prev => ({ ...prev, [event.id]: myPick !== null || Object.values(prev).some(Boolean) }));
+          },
+        );
+      });
+
+      // Fetch the current user's picks (slower, but gives the initial state)
       const picks: Record<string, Pick | null> = {};
       await Promise.all(
         bets.map(async (bet) => {
@@ -226,10 +272,22 @@ const TournamentScreen = ({ navigation, route }: any) => {
 
   const closeSheet = () => {
     sheetBetsUnsubRef.current?.();
+    Object.values(picksUnsubsRef.current).forEach(u => u());
+    picksUnsubsRef.current = {};
+    setLiveTotals({});
     setShowEventSheet(false);
     setSelectedEvent(null);
     setSheetBets([]);
   };
+
+  // Merge live picks-derived totals into sheetBets so BetCardCompact always
+  // shows up-to-date pool / odds regardless of whether the bet doc was updated.
+  const mergedSheetBets = useMemo(
+    () => sheetBets.map(bet =>
+      liveTotals[bet.id] ? { ...bet, ...liveTotals[bet.id] } : bet,
+    ),
+    [sheetBets, liveTotals],
+  );
 
   const handleDeleteEvent = (event: Event) => {
     Alert.alert('Eliminar evento', `¿Eliminar "${event.title}"?`, [
@@ -464,7 +522,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
         <EventBottomSheet
           visible={showEventSheet}
           event={selectedEvent}
-          sheetBets={sheetBets}
+          sheetBets={mergedSheetBets}
           sheetBetsLoading={sheetBetsLoading}
           userPicks={userPicks}
           isAdmin={isAdmin}

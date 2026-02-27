@@ -15,6 +15,7 @@ export interface UserBalance {
   username: string;
   displayName: string;
   photoURL?: string;
+  role?: 'owner' | 'admin' | 'member';
   netBalance: number; // positive = gana, negative = pierde
   totalWon: number;
   totalLost: number;
@@ -45,6 +46,11 @@ export const calculateTournamentBalances = async (
     }
 
     const memberUids = membersSnapshot.docs.map(doc => doc.id);
+    const memberRoles = new Map<string, 'owner' | 'admin' | 'member'>();
+    membersSnapshot.docs.forEach(d => {
+      const r = (d.data() as any).role;
+      memberRoles.set(d.id, r === 'owner' ? 'owner' : r === 'admin' ? 'admin' : 'member');
+    });
     
     // Initialize balances map
     const balancesMap = new Map<string, { totalWon: number; totalLost: number; wonCount: number; lostCount: number }>();
@@ -114,8 +120,17 @@ export const calculateTournamentBalances = async (
           losers = picks.filter(p => p.selection !== winningOption);
         }
 
-        // If no winners, it's a push - no one wins or loses
-        if (winners.length === 0) continue;
+        // If no winners, still count picks as losses (pickers were wrong)
+        // but don't redistribute any money
+        if (winners.length === 0) {
+          losers.forEach(loser => {
+            const current = balancesMap.get(loser.uid);
+            if (current) {
+              current.lostCount += 1;
+            }
+          });
+          continue;
+        }
 
         // Calculate winnings
         const totalWinnerStakes = winners.reduce((sum, w) => sum + (w.stakeAmount || 0), 0);
@@ -183,6 +198,7 @@ export const calculateTournamentBalances = async (
         username: profile?.username ?? '',
         displayName: profile?.displayName ?? profile?.username ?? '',
         photoURL: profile?.photoURL,
+        role: memberRoles.get(uid) ?? 'member',
         totalWon: balance.totalWon,
         totalLost: balance.totalLost,
         netBalance: balance.totalWon - balance.totalLost,

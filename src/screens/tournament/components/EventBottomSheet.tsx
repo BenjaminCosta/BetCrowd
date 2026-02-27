@@ -15,7 +15,7 @@ import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { FloatingActionButton } from '../../../components/FloatingActionButton';
 import { SwipeableRow, BetCardCompact } from '../../../components/BetanoComponents';
-import { deleteBet, upsertMyPick, calculateOdds, Bet, Pick } from '../../../services/betService';
+import { deleteBet, deleteMyPick, upsertMyPick, calculateOdds, Bet, Pick } from '../../../services/betService';
 import { Event } from '../../../services/eventService';
 import { useAuth } from '../../../context/AuthContext';
 import CreateBetForm from '../../../components/forms/CreateBetForm';
@@ -65,6 +65,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
   const [confirmingBet, setConfirmingBet] = useState(false);
   const [betFeedback, setBetFeedback] = useState('');
   const [modalCurrentPick, setModalCurrentPick] = useState<string | null>(null);
+  const [modalCurrentPickStake, setModalCurrentPickStake] = useState<number>(0);
   const betFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -115,6 +116,20 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
     ]);
   };
 
+  const handleCancelPick = (bet: Bet) => {
+    if (!user || !event) return;
+    Alert.alert('Cancelar apuesta', '¿Seguro que querés cancelar tu apuesta?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Sí, cancelar', style: 'destructive',
+        onPress: async () => {
+          try { await deleteMyPick(tournamentId, event.id, bet.id, user.uid); }
+          catch (e: any) { Alert.alert('Error', e.message || 'No se pudo cancelar'); }
+        },
+      },
+    ]);
+  };
+
   const openBetModal = (bet: Bet, option: string) => {
     const odds = calculateOdds(bet);
     setModalBet(bet);
@@ -131,6 +146,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
           : JSON.stringify(existingPick.selection)
         : null,
     );
+    setModalCurrentPickStake(existingPick?.stakeAmount ?? 0);
     setShowBetModal(true);
   };
 
@@ -344,6 +360,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
                           userSelection={mySelection}
                           disabled={!isOpen}
                           showOdds
+                          onCancel={isOpen && mySelection ? () => handleCancelPick(bet) : undefined}
                         />
                       </View>
                     </SwipeableRow>
@@ -371,6 +388,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
           onClose={() => setShowBetModal(false)}
           onConfirm={handleConfirmBet}
           currentPick={modalCurrentPick}
+          currentPickStake={modalCurrentPickStake}
         />
       </GestureHandlerRootView>
     </Modal>
