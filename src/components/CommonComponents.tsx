@@ -213,6 +213,7 @@ interface InputProps {
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric' | 'email-address';
   secureTextEntry?: boolean;
+  onFocus?: () => void;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -223,6 +224,7 @@ export const Input: React.FC<InputProps> = ({
   multiline = false,
   keyboardType = 'default',
   secureTextEntry = false,
+  onFocus,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -231,6 +233,7 @@ export const Input: React.FC<InputProps> = ({
     <TextInput
       value={value}
       onChangeText={onChangeText}
+      onFocus={onFocus}
       placeholder={placeholder}
       placeholderTextColor={colors.mutedForeground}
       style={[

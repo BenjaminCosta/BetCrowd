@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -226,7 +228,8 @@ const TournamentSettingsScreen = ({ navigation, route }: any) => {
       <TopBar showBackButton />
       <LoadingBar isLoading={saving} />
 
-      <ScrollView style={styles.content}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         <View style={styles.header}>
           <Ionicons name="settings" size={32} color={colors.primary} />
           <Text style={[styles.title, { color: colors.foreground }]}>
@@ -377,6 +380,7 @@ const TournamentSettingsScreen = ({ navigation, route }: any) => {
           </TouchableOpacity>
         </Card>
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 };

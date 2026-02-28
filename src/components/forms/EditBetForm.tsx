@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
@@ -139,7 +141,8 @@ const EditBetForm: React.FC<EditBetFormProps> = ({ tournamentId, eventId, betId,
   }
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
       <View style={styles.pageHeader}>
         <Text style={[styles.pageTitle, { color: colors.foreground }]}>Editar Apuesta</Text>
         {event?.title ? (
@@ -268,6 +271,7 @@ const EditBetForm: React.FC<EditBetFormProps> = ({ tournamentId, eventId, betId,
         </TouchableOpacity>
       </Card>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -11,8 +11,26 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
-import { Bet } from '../../../services/betService';
+import { Bet, calculateOdds } from '../../../services/betService';
 import { Event } from '../../../services/eventService';
+
+// Inlined so there's no stale-bundle risk with new exports
+const calcEstimatedOdds = (
+  bet: Bet,
+  selectedOption: string,
+  stakeAmount: number,
+  fee = 0.05,
+): string => {
+  if (bet.status === 'pending') return '\u2014';
+  if (stakeAmount <= 0) return calculateOdds(bet, fee)[selectedOption] ?? '\u2014';
+  const totalPotActual = bet.totalPot || 0;
+  const optionTotalsActual = bet.optionTotals?.[selectedOption] || 0;
+  const newPot = totalPotActual + stakeAmount;
+  const newOptionTotal = optionTotalsActual + stakeAmount;
+  if (newOptionTotal <= 0) return '\u2014';
+  const effectivePot = newPot * (1 - fee);
+  return Math.min(effectivePot / newOptionTotal, 99.99).toFixed(2);
+};
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -55,11 +73,23 @@ const BetModal: React.FC<BetModalProps> = ({
   if (!bet || !event) return null;
 
   const isFreeStake = bet.stakeType !== 'fixed';
+  const isPending = bet.status === 'pending';
   const amountNum = parseFloat(betAmount) || 0;
-  const estimatedGain = amountNum * (parseFloat(odd) || 0);
+
+  // Estimated odds = current odds WITH user's stake included for more accurate confirmation
+  const userStake = isFreeStake ? amountNum : (bet.stakeAmount ?? 0);
+  const estimatedOddStr = isPending
+    ? '—'
+    : userStake > 0
+    ? calcEstimatedOdds(bet, option, userStake)
+    : odd;
+  const estimatedOddNum = parseFloat(estimatedOddStr) || 0;
+  const currentOddNum = parseFloat(odd) || 0;
+
+  const estimatedGain = amountNum * estimatedOddNum; // free stake
+  const fixedGain = (bet.stakeAmount ?? 0) * estimatedOddNum; // fixed stake (estimated)
   const alreadySelected = !!currentPick && currentPick === option;
-  const fixedGain = (bet.stakeAmount ?? 0) * (parseFloat(odd) || 0);
-  const pickGain = (currentPickStake ?? 0) * (parseFloat(odd) || 0);
+  const pickGain = (currentPickStake ?? 0) * currentOddNum; // current pick gain at current odds
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -96,8 +126,22 @@ const BetModal: React.FC<BetModalProps> = ({
                 </Text>
                 <Text style={[styles.modalOptionText, { color: colors.foreground }]}>{option}</Text>
               </View>
-              <Text style={[styles.modalOddValue, { color: colors.foreground }]}>{odd}</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.modalOddValue, { color: colors.foreground }]}>
+                  {estimatedOddStr}
+                </Text>
+                {!isPending && odd !== '—' && odd !== estimatedOddStr && (
+                  <Text style={[styles.modalOddActual, { color: colors.mutedForeground }]}>
+                    actual: {odd}
+                  </Text>
+                )}
+              </View>
             </View>
+            {isPending && (
+              <Text style={[styles.modalPendingNote, { color: colors.mutedForeground }]}>
+                Falta una apuesta del otro lado para activar el mercado.
+              </Text>
+            )}
           </View>
 
           {/* Amount */}
@@ -226,6 +270,8 @@ const styles = StyleSheet.create({
   modalOddContainer: { borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: Spacing.lg },
   modalOddRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalOddLabel: { fontSize: 12, marginBottom: 4 },
+  modalOddActual: { fontSize: 11, marginTop: 2 },
+  modalPendingNote: { fontSize: 11, marginTop: Spacing.sm, lineHeight: 15 },
   modalOptionText: { fontSize: 16, fontWeight: '700' },
   modalOddValue: { fontSize: 22, fontWeight: '800' },
   modalAmountSection: { marginBottom: Spacing.lg },

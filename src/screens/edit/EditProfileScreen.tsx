@@ -240,7 +240,8 @@ const EditProfileScreen = ({ navigation }: any) => {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar showBackButton />
       
-      <ScrollView style={styles.content}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
           {photoURL ? (
@@ -412,6 +413,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Password Change Modal */}
       <Modal

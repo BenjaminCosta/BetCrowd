@@ -29,6 +29,7 @@ import { getUserProfile } from '../../services/userService';
 import { getTournamentMemberCount } from '../../services/tournamentService';
 import { Event, listenEvents } from '../../services/eventService';
 import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds, listenBetPicks } from '../../services/betService';
+import { isEventToday, getEventBadgeLabel } from '../../utils/formatters';
 
 // Format label mapping
 const getFormatLabel = (formatId: string) => {
@@ -59,11 +60,11 @@ const getFormatIcon = (formatId: string) => {
   return iconMap[formatId] || 'trophy';
 };
 
+
 // Extended event with tournament info
 interface EventWithTournament extends Event {
   tournamentId: string;
   tournamentName: string;
-  tournamentContribution?: number; // aporte por participante (pozo real)
   primaryBet?: Bet; // La bet principal (open primero, luego locked)
 }
 
@@ -196,7 +197,6 @@ const HomeScreen = ({ navigation }: any) => {
                   ...event,
                   tournamentId: tournament.id,
                   tournamentName: tournament.name,
-                  tournamentContribution: tournament.contribution,
                 });
               }
             });
@@ -221,7 +221,7 @@ const HomeScreen = ({ navigation }: any) => {
         allEvents.map(async (event) => {
           try {
             const bets = await listBets(event.tournamentId, event.id);
-            const openBet = bets.find((b) => b.status === 'open');
+            const openBet = bets.find((b) => b.status === 'pending' || b.status === 'open');
             const lockedBet = bets.find((b) => b.status === 'locked');
             return { ...event, primaryBet: openBet || lockedBet || undefined };
           } catch {
@@ -307,7 +307,7 @@ const HomeScreen = ({ navigation }: any) => {
         )
         .flatMap(({ value: { tournament, event, bets } }) =>
           bets
-            .filter((b) => b.status === 'open' || b.status === 'locked')
+            .filter((b) => b.status === 'open' || b.status === 'pending')
             .map(async (bet) => {
               const pick = await getMyPick(tournament.id, event.id, bet.id, uid);
               if (!pick) return null;
@@ -400,10 +400,6 @@ const HomeScreen = ({ navigation }: any) => {
     const options = primaryBet?.options?.slice(0, 3) ?? [];
     const hasOdds = options.length > 0;
 
-    // Pozo real: contribution * participantes actuales
-    const memberCount = participantCounts[item.tournamentId] || 1;
-    const pozoTotal = (item.tournamentContribution ?? 0) * memberCount;
-
     // Find the user's existing pick for this event's primary bet
     const existingUserBet = userBets.find(
       (b) => b.eventId === item.id && b.betId === primaryBet?.id
@@ -428,16 +424,16 @@ const HomeScreen = ({ navigation }: any) => {
         {/* Badge estado arriba a la derecha */}
         <View style={[
           styles.statusBadge,
-          { backgroundColor: item.status === 'live' ? colors.success : colors.muted }
+          { backgroundColor: isEventToday(item) ? colors.success : colors.muted }
         ]}>
-          {item.status === 'live' && (
+          {isEventToday(item) && (
             <View style={[styles.liveDot, { backgroundColor: '#FFFFFF' }]} />
           )}
           <Text style={[
             styles.statusBadgeText,
-            { color: item.status === 'live' ? '#FFFFFF' : colors.mutedForeground }
+            { color: isEventToday(item) ? '#FFFFFF' : colors.mutedForeground }
           ]}>
-            {item.status === 'live' ? 'EN VIVO' : 'PRÓXIMO'}
+            {getEventBadgeLabel(item)}
           </Text>
         </View>
 
@@ -464,16 +460,11 @@ const HomeScreen = ({ navigation }: any) => {
             {eventDisplayTitle}
           </Text>
 
-          {/* Torneo + Pozo en la misma fila */}
+          {/* Torneo */}
           <View style={styles.eventCardMeta}>
             <Text style={[styles.eventTournament, { color: colors.mutedForeground, flex: 1 }]} numberOfLines={1}>
               {item.tournamentName}
             </Text>
-            {pozoTotal > 0 && (
-              <Text style={[styles.eventPozo, { color: colors.foreground }]}>
-                ${pozoTotal.toLocaleString('es-AR')}
-              </Text>
-            )}
           </View>
 
           {/* Tipo de apuesta */}
@@ -487,7 +478,7 @@ const HomeScreen = ({ navigation }: any) => {
     {options.map((option) => {
       const oddVal = realOdds[option] ?? '—';
       const isSelected = userSelection === option;
-      const canPress = primaryBet?.status === 'open';
+      const canPress = primaryBet?.status === 'open' || primaryBet?.status === 'pending';
       return (
         <TouchableOpacity
           key={option}
@@ -656,10 +647,12 @@ const HomeScreen = ({ navigation }: any) => {
                       </View>
                       <View style={[
                         styles.betStatusBadge,
-                        { backgroundColor: bet.status === 'open' ? colors.success : colors.warning }
+                        { backgroundColor:
+                          bet.status === 'pending' ? '#8B8D9720' :
+                          bet.status === 'open' ? colors.success : colors.warning  }
                       ]}>
                         <Text style={styles.betStatusText}>
-                          {bet.status === 'open' ? 'ABIERTA' : 'CERRADA'}
+                          {bet.status === 'pending' ? 'PENDIENTE' : bet.status === 'open' ? 'ABIERTA' : 'CERRADA'}
                         </Text>
                       </View>
                     </View>
@@ -768,12 +761,6 @@ const HomeScreen = ({ navigation }: any) => {
                         </Text>
                       </View>
                     </View>
-                    <View style={[styles.prizeContainer, { backgroundColor: colors.primary + '15' }]}>
-                      <Text style={[styles.prizeValue, { color: colors.foreground }]}>${tournament.contribution}</Text>
-                      <Text style={[styles.prizeLabel, { color: colors.mutedForeground }]}>
-                        Aporte
-                      </Text>
-                    </View>
                   </View>
                   
                   <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
@@ -842,10 +829,7 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
 
             {selectedEvent && (() => {
-              const memberCount = participantCounts[selectedEvent.tournamentId] || 1;
-              const pozoTotal = (selectedEvent.tournamentContribution ?? 0) * memberCount;
               const amountNum = parseFloat(betAmount) || 0;
-              const isOverMax = pozoTotal > 0 && amountNum > pozoTotal;
               const estimatedGain = amountNum * (parseFloat(selectedOdd) || 0);
               const isFreeStake = selectedEvent.primaryBet?.stakeType !== 'fixed';
               const alreadySelected = !!selectedCurrentPick && selectedCurrentPick === selectedOption;
@@ -884,25 +868,13 @@ const HomeScreen = ({ navigation }: any) => {
                     </View>
                   </View>
 
-                  {/* Pozo total */}
-                  {pozoTotal > 0 && (
-                    <View style={styles.modalPozoRow}>
-                      <Text style={[styles.modalPozoLabel, { color: colors.mutedForeground }]}>
-                        Pozo total
-                      </Text>
-                      <Text style={[styles.modalPozoValue, { color: colors.foreground }]}>
-                        ${pozoTotal.toLocaleString('es-AR')}
-                      </Text>
-                    </View>
-                  )}
-
                   {/* Input de monto (solo si stakeType es libre) */}
                   {isFreeStake ? (
                     <View style={styles.modalAmountSection}>
                       <Text style={[styles.modalAmountLabel, { color: colors.mutedForeground }]}>
                         Monto a apostar
                       </Text>
-                      <View style={[styles.modalAmountInputWrap, { backgroundColor: colors.muted, borderColor: isOverMax ? colors.destructive : colors.border }]}>
+                      <View style={[styles.modalAmountInputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                         <Text style={[styles.modalAmountCurrency, { color: colors.mutedForeground }]}>$</Text>
                         <TextInput
                           style={[styles.modalAmountInput, { color: colors.foreground }]}
@@ -914,13 +886,8 @@ const HomeScreen = ({ navigation }: any) => {
                           maxLength={10}
                         />
                       </View>
-                      {isOverMax && (
-                        <Text style={[styles.modalAmountError, { color: colors.destructive }]}>
-                          Máximo: ${pozoTotal.toLocaleString('es-AR')}
-                        </Text>
-                      )}
                       {/* Ganancia estimada */}
-                      {amountNum > 0 && !isOverMax && (
+                      {amountNum > 0 && (
                         <View style={styles.modalGainRow}>
                           <Text style={[styles.modalGainLabel, { color: colors.mutedForeground }]}>
                             Ganancia estimada
@@ -967,10 +934,10 @@ const HomeScreen = ({ navigation }: any) => {
 
                   {/* Botón rojo primary */}
                   <TouchableOpacity
-                    style={[styles.modalConfirmButton, { backgroundColor: colors.primary, opacity: (confirmingBet || isOverMax || alreadySelected) ? 0.45 : 1 }]}
+                    style={[styles.modalConfirmButton, { backgroundColor: colors.primary, opacity: (confirmingBet || alreadySelected) ? 0.45 : 1 }]}
                     onPress={handleConfirmBet}
                     activeOpacity={0.8}
-                    disabled={confirmingBet || isOverMax || alreadySelected}
+                    disabled={confirmingBet || alreadySelected}
                   >
                     {confirmingBet ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />

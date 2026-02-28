@@ -274,21 +274,15 @@ const TorneosScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
-            {t.contribution > 0 && (
-              <View style={[styles.cardContributionBadge, { backgroundColor: colors.primary + '15' }]}>
-                <Text style={[styles.cardContributionValue, { color: colors.foreground }]}>
-                  ${t.contribution.toLocaleString('es-AR')}
-                </Text>
-                <Text style={[styles.cardContributionLabel, { color: colors.mutedForeground }]}>
-                  Aporte
-                </Text>
-              </View>
-            )}
+            <View style={[styles.cardRoleBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
+              <Text style={[styles.cardRoleText, { color: roleInfo.color }]}>{roleInfo.label}</Text>
+            </View>
           </View>
 
           <View style={[styles.cardDivider, { backgroundColor: colors.border }]} />
 
-          {/* Footer: participants + arrow button */}
+          {/* Footer: participants */}
           <View style={styles.cardFooter}>
             <View style={styles.cardMeta}>
               <View style={styles.cardMetaItem}>
@@ -297,14 +291,6 @@ const TorneosScreen = ({ navigation }: any) => {
                 </View>
                 <Text style={[styles.cardMetaText, { color: colors.foreground }]}>
                   {count}/{max} participantes
-                </Text>
-              </View>
-              <View style={styles.cardMetaItem}>
-                <View style={[styles.cardMetaIconCircle, { backgroundColor: roleInfo.color + '20' }]}>
-                  <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
-                </View>
-                <Text style={[styles.cardMetaText, { color: roleInfo.color, fontWeight: '600' }]}>
-                  {roleInfo.label}
                 </Text>
               </View>
             </View>
@@ -499,7 +485,7 @@ const styles = StyleSheet.create({
   // Tournament card
   card: {
     borderRadius: 16,
-    padding: 12,
+    padding: 14,
     marginBottom: Spacing.md,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -521,15 +507,16 @@ const styles = StyleSheet.create({
   },
   cardInfo: { flex: 1, marginRight: 12, gap: 4 },
   cardFormatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  cardContributionBadge: {
+  cardRoleBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    minWidth: 80,
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  cardContributionValue: { fontSize: 17, fontWeight: '700' },
-  cardContributionLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  cardRoleText: { fontSize: 11, fontWeight: '500' },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',

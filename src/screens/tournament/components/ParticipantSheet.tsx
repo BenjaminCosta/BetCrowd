@@ -8,10 +8,12 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { Card } from '../../../components/CommonComponents';
@@ -59,6 +61,10 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } = useSwipeToClose(
+    visible,
+    onClose,
+  );
 
   const [view, setView] = useState<SheetView>('summary');
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('won');
@@ -115,7 +121,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
             const bets = await listBets(tournamentId, event.id);
             return {
               event,
-              bets: bets.filter((b) => b.status === 'open' || b.status === 'locked'),
+              bets: bets.filter((b) => b.status === 'pending' || b.status === 'open' || b.status === 'locked'),
             };
           }),
         );
@@ -177,13 +183,18 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={doClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.overlay}>
-          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={doClose} />
 
-          <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={[styles.handle, { backgroundColor: colors.border }]} />
+          <Animated.View style={[styles.container, { backgroundColor: colors.background }, animatedContainerStyle]}>
+            {/* Handle – swipe down to close */}
+            <SwipeDragHandle
+              onGestureEvent={onGestureEvent}
+              onHandlerStateChange={onHandlerStateChange}
+              color={colors.border}
+            />
 
             {/* ── Header ───────────────────────────────────────────────────── */}
             <View style={styles.headerRow}>
@@ -206,7 +217,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                   : 'Apuestas perdidas'}
               </Text>
               <TouchableOpacity
-                onPress={onClose}
+                onPress={doClose}
                 style={styles.navBtn}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -368,9 +379,13 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                         <Text style={[styles.activeBetEvent, { color: colors.mutedForeground }]} numberOfLines={1}>{eventTitle}</Text>
                         <Text style={[styles.activeBetTitle, { color: colors.foreground }]} numberOfLines={1}>{bet.title}</Text>
                       </View>
-                      <View style={[styles.activeBetBadge, { backgroundColor: bet.status === 'open' ? colors.success + '20' : colors.warning + '20' }]}>
-                        <Text style={[styles.activeBetStatus, { color: bet.status === 'open' ? colors.success : colors.warning }]}>
-                          {bet.status === 'open' ? 'ABIERTA' : 'CERRADA'}
+                      <View style={[styles.activeBetBadge, { backgroundColor:
+                        bet.status === 'pending' ? colors.pending + '20' :
+                        bet.status === 'open' ? colors.success + '20' : colors.warning + '20' }]}>
+                        <Text style={[styles.activeBetStatus, { color:
+                          bet.status === 'pending' ? colors.pending :
+                          bet.status === 'open' ? colors.success : colors.warning }]}>
+                          {bet.status === 'pending' ? 'PENDIENTE' : bet.status === 'open' ? 'ABIERTA' : 'CERRADA'}
                         </Text>
                       </View>
                     </View>
@@ -443,7 +458,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                 )}
               </View>
             )}
-          </View>
+          </Animated.View>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -507,11 +522,7 @@ const styles = StyleSheet.create({
     height: '92%',
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    paddingTop: Spacing.md,
-  },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    alignSelf: 'center', marginBottom: Spacing.sm,
+    // paddingTop removed – SwipeDragHandle provides top padding
   },
 
   // Header

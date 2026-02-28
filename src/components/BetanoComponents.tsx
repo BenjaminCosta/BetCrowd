@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
+import { isEventToday, getEventBadgeLabel } from '../utils/formatters';
 import { Bet, calculateOdds } from '../services/betService';
 import { Event } from '../services/eventService';
 
@@ -33,10 +34,38 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
   onCancel,
 }) => {
   const colors = Colors[theme];
-  const odds = showOdds ? calculateOdds(bet) : {};
-  
+  // Pending bets show no odds numbers (market not formed)
+  const odds = showOdds && bet.status !== 'pending' ? calculateOdds(bet) : {};
+  const [showPendingTip, setShowPendingTip] = useState(false);
+  const infoButtonRef = useRef<any>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, btnW: 0 });
+  const tooltipFadeAnim = useRef(new Animated.Value(0)).current;
+  const tooltipSlideAnim = useRef(new Animated.Value(4)).current;
+
+  const handleShowTooltip = () => {
+    infoButtonRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
+      setTooltipPos({ x, y: y + h + 6, btnW: w });
+      setShowPendingTip(true);
+      tooltipFadeAnim.setValue(0);
+      tooltipSlideAnim.setValue(4);
+      Animated.parallel([
+        Animated.timing(tooltipFadeAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
+        Animated.timing(tooltipSlideAnim, { toValue: 0, duration: 160, useNativeDriver: true }),
+      ]).start();
+    });
+  };
+
+  const handleHideTooltip = () => {
+    Animated.parallel([
+      Animated.timing(tooltipFadeAnim, { toValue: 0, duration: 140, useNativeDriver: true }),
+      Animated.timing(tooltipSlideAnim, { toValue: 4, duration: 140, useNativeDriver: true }),
+    ]).start(() => setShowPendingTip(false));
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'pending':
+        return '#8B8D97';
       case 'open':
         return '#10B981';
       case 'locked':
@@ -82,6 +111,8 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
 
   const getStatusLabel = (status: string) => {
     switch (status) {
+      case 'pending':
+        return 'PENDIENTE';
       case 'open':
         return 'ABIERTA';
       case 'locked':
@@ -95,7 +126,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
     }
   };
 
-  const isOptionDisabled = disabled || bet.status !== 'open';
+  const isOptionDisabled = disabled || (bet.status !== 'open' && bet.status !== 'pending');
 
   return (
     <View style={[styles.container, { backgroundColor: colors.card }]}>
@@ -115,13 +146,32 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
               </Text>
             )}
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: badgeColor }]}>
-            {userWon && <Ionicons name="checkmark" size={10} color="#FFF" />}
-            {userLost && <Ionicons name="close" size={10} color="#FFF" />}
-            <Text style={styles.statusText}>{getStatusLabel(bet.status)}</Text>
+          <View style={styles.headerRight}>
+            <View style={[
+              styles.statusBadge,
+              { backgroundColor: badgeColor },
+              bet.status === 'pending' && styles.statusBadgePending,
+            ]}>
+              {userWon && <Ionicons name="checkmark" size={10} color="#FFF" />}
+              {userLost && <Ionicons name="close" size={10} color="#FFF" />}
+              <Text style={styles.statusText}>{getStatusLabel(bet.status)}</Text>
+            </View>
+            {bet.status === 'pending' && (
+              <TouchableOpacity
+                ref={infoButtonRef}
+                onPress={() => showPendingTip ? handleHideTooltip() : handleShowTooltip()}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.pendingInfoBtn}
+              >
+                <Ionicons
+                  name={showPendingTip ? 'information-circle' : 'information-circle-outline'}
+                  size={15}
+                  color={colors.mutedForeground}
+                />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
-
         {/* Pot info + optional cancel icon */}
         <View style={styles.potInfoRow}>
           <View style={styles.potInfo}>
@@ -138,7 +188,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
               </>
             )}
           </View>
-          {onCancel && bet.status === 'open' && (
+          {onCancel && (bet.status === 'open' || bet.status === 'pending') && (
             <TouchableOpacity
               onPress={onCancel}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -224,6 +274,37 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
           );
         })}
       </View>
+
+      {/* Floating tooltip for pending state */}
+      {bet.status === 'pending' && (
+        <Modal
+          transparent
+          visible={showPendingTip}
+          onRequestClose={handleHideTooltip}
+          statusBarTranslucent
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={handleHideTooltip}
+            activeOpacity={1}
+          />
+          <Animated.View
+            style={[
+              styles.floatingTooltip,
+              {
+                opacity: tooltipFadeAnim,
+                transform: [{ translateY: tooltipSlideAnim }],
+                top: tooltipPos.y,
+                right: Dimensions.get('window').width - tooltipPos.x - tooltipPos.btnW,
+              },
+            ]}
+          >
+            <Text style={styles.floatingTooltipText}>
+              Esperando apuestas para activar el mercado.
+            </Text>
+          </Animated.View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -258,6 +339,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+  },
+  pendingInfoBtn: {
+    padding: 2,
+  },
+  floatingTooltip: {
+    position: 'absolute',
+    maxWidth: 220,
+    backgroundColor: 'rgba(20,20,20,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  floatingTooltipText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.70)',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -265,6 +372,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  statusBadgePending: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
   },
   statusText: {
     color: '#FFFFFF',
@@ -506,25 +617,10 @@ interface EventCardProps {
 export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, userHasPick = false, adminActionBar }) => {
   const colors = Colors[theme];
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'upcoming': return 'Próximo';
-      case 'live': return 'En vivo';
-      case 'finished': return 'Finalizado';
-      case 'cancelled': return 'Cancelado';
-      case 'locked': return 'Cerrado';
-      default: return status;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'live': return '#10B981';
-      case 'upcoming': return '#DC2E4B';
-      case 'finished': return '#F59E0B';
-      case 'locked': return '#F59E0B';
-      default: return colors.mutedForeground;
-    }
+  const getStatusColor = (): string => {
+    if (event.status === 'cancelled') return colors.mutedForeground;
+    if (event.status === 'finished' || event.status === 'locked') return colors.warning;
+    return isEventToday(event) ? colors.success : '#DC2E4B';
   };
 
   const formatDate = (timestamp: any) => {
@@ -548,7 +644,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
     event.homeTeam && event.awayTeam ? event.title : event.notes ?? null;
 
   const dateStr = event.startsAt ? formatDate(event.startsAt) : null;
-  const statusColor = getStatusColor(event.status);
+  const statusColor = getStatusColor();
 
   return (
     <TouchableOpacity
@@ -568,11 +664,11 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
       {/* Top row: status badge + "ya apostaste" */}
       <View style={styles.eventTopRow}>
         <View style={[styles.eventStatusBadge, { backgroundColor: statusColor + '20' }]}>
-          {event.status === 'live' && (
+          {isEventToday(event) && (
             <View style={[styles.eventLiveDot, { backgroundColor: statusColor }]} />
           )}
           <Text style={[styles.eventStatusText, { color: statusColor }]}>
-            {getStatusLabel(event.status).toUpperCase()}
+            {getEventBadgeLabel(event)}
           </Text>
         </View>
         {userHasPick && (

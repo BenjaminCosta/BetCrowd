@@ -8,10 +8,13 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
+import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal';
+import { Colors, Spacing, BorderRadius } from '../../../theme/colors'; // Spacing used by SwipeDragHandle marginBottom
+import { isEventToday, getEventBadgeLabel } from '../../../utils/formatters';
 import { useTheme } from '../../../context/ThemeContext';
 import { FloatingActionButton } from '../../../components/FloatingActionButton';
 import { SwipeableRow, BetCardCompact } from '../../../components/BetanoComponents';
@@ -54,6 +57,10 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } = useSwipeToClose(
+    visible,
+    onClose,
+  );
 
   const [view, setView] = useState<SheetView>('detail');
   const [editingBetId, setEditingBetId] = useState<string | null>(null);
@@ -96,11 +103,11 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
   };
 
   const handleBackdropPress = () => {
-    if (view !== 'detail') { goBack(); } else { onClose(); }
+    if (view !== 'detail') { goBack(); } else { doClose(); }
   };
 
   const handleHardwareBack = () => {
-    if (view !== 'detail') { goBack(); } else { onClose(); }
+    if (view !== 'detail') { goBack(); } else { doClose(); }
   };
 
   const handleDeleteBet = (bet: Bet) => {
@@ -168,21 +175,21 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
     }
   };
 
-  const statusLabels: Record<string, string> = {
-    upcoming: 'PRÓXIMO',
-    live: 'EN VIVO',
-    finished: 'FINALIZADO',
-    cancelled: 'CANCELADO',
-  };
+  const isToday = isEventToday(event);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleHardwareBack}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={handleHardwareBack}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.sheetOverlay}>
           <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={handleBackdropPress} />
-          <View style={[styles.sheetContainer, { backgroundColor: colors.card }]}>
-            {/* Handle */}
-            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+          <Animated.View style={[styles.sheetContainer, { backgroundColor: colors.card }, animatedContainerStyle]}>
+            {/* Handle – swipe down to close */}
+            <SwipeDragHandle
+              onGestureEvent={onGestureEvent}
+              onHandlerStateChange={onHandlerStateChange}
+              color={colors.border}
+              marginBottom={Spacing.md}
+            />
 
             {view !== 'detail' && (
               <View style={styles.backHeader}>
@@ -242,21 +249,21 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
                     styles.sheetStatusBadge,
                     {
                       backgroundColor:
-                        event.status === 'live' ? colors.success + '20' : colors.primary + '20',
+                        isToday ? colors.success + '20' : colors.primary + '20',
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.sheetStatusText,
-                      { color: event.status === 'live' ? colors.success : colors.primary },
+                      { color: isToday ? colors.success : colors.primary },
                     ]}
                   >
-                    {statusLabels[event.status] ?? event.status.toUpperCase()}
+                    {getEventBadgeLabel(event)}
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={onClose} style={styles.sheetCloseBtn}>
+              <TouchableOpacity onPress={doClose} style={styles.sheetCloseBtn}>
                 <Ionicons name="close" size={24} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
@@ -331,7 +338,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
                       ? myPick.selection
                       : JSON.stringify(myPick.selection)
                     : null;
-                  const isOpen = bet.status === 'open';
+                  const canInteract = bet.status === 'open' || bet.status === 'pending';
 
                   return (
                     <SwipeableRow
@@ -356,11 +363,11 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
                         <BetCardCompact
                           bet={bet}
                           theme={theme}
-                          onOptionPress={(option) => isOpen && openBetModal(bet, option)}
+                          onOptionPress={(option) => canInteract && openBetModal(bet, option)}
                           userSelection={mySelection}
-                          disabled={!isOpen}
+                          disabled={!canInteract}
                           showOdds
-                          onCancel={isOpen && mySelection ? () => handleCancelPick(bet) : undefined}
+                          onCancel={canInteract && mySelection ? () => handleCancelPick(bet) : undefined}
                         />
                       </View>
                     </SwipeableRow>
@@ -369,11 +376,16 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
               )}
             </ScrollView>
 
-            {isAdmin && (
-              <FloatingActionButton onPress={() => setView('create_bet')} />
-            )}
+            {isAdmin && (() => {
+              const blocked =
+                event.status === 'finished' ||
+                event.status === 'cancelled' ||
+                event.status === 'locked' ||
+                (event.date ? event.date < new Date().toISOString().split('T')[0] : false);
+              return !blocked ? <FloatingActionButton onPress={() => setView('create_bet')} /> : null;
+            })()}
             </>)}
-          </View>
+          </Animated.View>
         </View>
         <BetModal
           visible={showBetModal}
@@ -405,11 +417,10 @@ const styles = StyleSheet.create({
   sheetContainer: {
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    paddingTop: Spacing.md,
+    // paddingTop removed – SwipeDragHandle provides top padding
     paddingHorizontal: Spacing.lg,
     height: '90%',
   },
-  sheetHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: Spacing.md },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, marginBottom: Spacing.sm },
   sheetTitle: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
   sheetSubtitle: { fontSize: 13, marginBottom: 6 },

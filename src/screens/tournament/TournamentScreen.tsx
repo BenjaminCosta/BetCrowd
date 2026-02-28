@@ -13,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
-import { Badge } from '../../components/CommonComponents';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SheetModal } from '../../components/SheetModal';
 import CreateEventForm from '../../components/forms/CreateEventForm';
@@ -60,14 +59,12 @@ const TABS: { key: Tab; label: string }[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const getTournamentStatusBadgeVariant = (
-  status: string,
-): 'default' | 'success' | 'warning' | 'danger' | 'pending' | 'active' => {
+const getTournamentStatusBadgeColor = (status: string): string => {
   switch (status) {
-    case 'active': return 'default';
+    case 'active': return Colors.dark.success;
     case 'archived':
     case 'locked':
-    default: return 'pending';
+    default: return Colors.dark.warning;
   }
 };
 
@@ -324,7 +321,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               const bets = await listBets(tournamentId, event.id);
               await Promise.all(
                 bets
-                  .filter((b) => b.status === 'open')
+                  .filter((b) => b.status === 'open' || b.status === 'pending')
                   .map((b) => lockBet(tournamentId, event.id, b.id)),
               );
               await updateEvent(tournamentId, event.id, { status: 'locked' });
@@ -451,9 +448,11 @@ const TournamentScreen = ({ navigation, route }: any) => {
                 {tournament?.name ?? '—'}
               </Text>
               {tournament && (
-                <Badge variant={getTournamentStatusBadgeVariant(tournament.status)}>
-                  {getTournamentStatusLabel(tournament.status)}
-                </Badge>
+                <View style={[styles.statusBadge, { backgroundColor: getTournamentStatusBadgeColor(tournament.status) }]}>
+                  <Text style={styles.statusBadgeText}>
+                    {getTournamentStatusLabel(tournament.status)}
+                  </Text>
+                </View>
               )}
             </View>
           </View>
@@ -573,6 +572,8 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg },
   headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.md },
   headerTitle: { flex: 1, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'flex-start' },
+  statusBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   segmentedControl: {
     flexDirection: 'row',
     marginHorizontal: Spacing.lg,

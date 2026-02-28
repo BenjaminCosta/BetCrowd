@@ -7,8 +7,12 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Calendar, DateData } from 'react-native-calendars';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input, SectionHeader } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
@@ -52,6 +56,28 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
   const [awayTeam, setAwayTeam] = useState('');
   const [notes, setNotes] = useState('');
   const [bulkCount, setBulkCount] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [showDateModal, setShowDateModal] = useState(false);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Seleccionar fecha';
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const calendarTheme = {
+    backgroundColor: colors.card,
+    calendarBackground: colors.card,
+    textSectionTitleColor: colors.foreground,
+    selectedDayBackgroundColor: colors.primary,
+    selectedDayTextColor: '#FFFFFF',
+    todayTextColor: colors.primary,
+    dayTextColor: colors.foreground,
+    textDisabledColor: colors.mutedForeground,
+    monthTextColor: colors.foreground,
+    arrowColor: colors.primary,
+  };
 
   useEffect(() => {
     if (tournamentId) loadData();
@@ -70,6 +96,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
           setHomeTeam(eventData.homeTeam || '');
           setAwayTeam(eventData.awayTeam || '');
           setNotes(eventData.notes || '');
+          setEventDate(eventData.date || '');
         }
       }
     } catch (error) {
@@ -161,6 +188,10 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
       Alert.alert('Error', 'El título es requerido');
       return;
     }
+    if (!eventDate) {
+      Alert.alert('Error', 'La fecha del evento es requerida');
+      return;
+    }
     try {
       setCreating(true);
       const eventData = {
@@ -168,6 +199,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
         type: 'custom' as const,
         startsAt: null,
         status: 'upcoming' as const,
+        date: eventDate,
         ...(homeTeam && { homeTeam: homeTeam.trim() }),
         ...(awayTeam && { awayTeam: awayTeam.trim() }),
         ...(notes && { notes: notes.trim() }),
@@ -287,7 +319,13 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
   }
 
   return (
-    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: Spacing.xl }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>
@@ -332,6 +370,30 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
             <Input value={notes} onChangeText={setNotes} placeholder="Información adicional..." multiline />
           </View>
 
+          <View style={styles.formGroup}>
+            <Text style={[styles.label, { color: colors.foreground }]}>Fecha del evento *</Text>
+            <TouchableOpacity
+              style={[
+                styles.dateButton,
+                {
+                  backgroundColor: colors.secondary,
+                  borderColor: eventDate ? colors.primary : colors.border,
+                  borderWidth: eventDate ? 1.5 : 1,
+                },
+              ]}
+              onPress={() => setShowDateModal(true)}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={20}
+                color={eventDate ? colors.primary : colors.mutedForeground}
+              />
+              <Text style={[styles.dateText, { color: eventDate ? colors.foreground : colors.mutedForeground }]}>
+                {formatDate(eventDate)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={[styles.createButton, { backgroundColor: colors.primary }]}
             onPress={handleCustomCreate}
@@ -349,6 +411,25 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
         </Card>
       </View>
     </ScrollView>
+    <Modal visible={showDateModal} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Fecha del evento</Text>
+            <TouchableOpacity onPress={() => setShowDateModal(false)}>
+              <Ionicons name="close" size={24} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+          <Calendar
+            onDayPress={(day: DateData) => { setEventDate(day.dateString); setShowDateModal(false); }}
+            markedDates={{ [eventDate]: { selected: true, selectedColor: colors.primary } }}
+            minDate={new Date().toISOString().split('T')[0]}
+            theme={calendarTheme}
+          />
+        </View>
+      </View>
+    </Modal>
+  </KeyboardAvoidingView>
   );
 };
 
@@ -385,4 +466,14 @@ const styles = StyleSheet.create({
     gap: 8, padding: 16, borderRadius: 12,
   },
   createButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  dateButton: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  dateText: { fontSize: 14, fontWeight: '600' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.lg },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
+  modalTitle: { fontSize: 20, fontWeight: '700' },
 });

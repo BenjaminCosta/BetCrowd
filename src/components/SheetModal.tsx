@@ -1,9 +1,171 @@
-import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import React, { useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Modal,
+  Animated,
+  Dimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
+
+// ─── Shared swipe-to-close hook ───────────────────────────────────────────────
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const SWIPE_CLOSE_THRESHOLD = 80;
+const VELOCITY_CLOSE_THRESHOLD = 600;
+
+/**
+ * Manages the full sheet animation lifecycle:
+ *   - Entry: spring slide-up when `visible` becomes true.
+ *   - Exit:  timing slide-down, then `onClose()` — NO Modal-level animation needed.
+ *   - Swipe: tracks finger, snaps back or exits with velocity-aware duration.
+ *
+ * IMPORTANT: use `animationType="none"` on the host Modal, and call
+ * `doClose()` (not `onClose`) for every user-triggered close action so the
+ * exit animation plays exactly once.
+ */
+export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
+  // Starts off-screen so the entry spring looks natural on first render.
+  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const isClosingRef = useRef(false);
+
+  // Keep a stable ref to avoid stale closures in doClose / onHandlerStateChange.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  // ── Entry / reset ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (visible) {
+      isClosingRef.current = false;
+      // Spring in — feels snappy but not bouncy.
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 12,
+      }).start();
+    } else {
+      // visible went false externally (form success, etc.) — reset silently.
+      translateY.setValue(SCREEN_HEIGHT);
+    }
+  }, [visible]);
+
+  // ── Programmatic close (backdrop tap, X button, hardware back) ─────────────
+  /** Animate the sheet out, then call onClose. Use for ALL user-triggered closes. */
+  const doClose = useCallback(() => {
+    if (isClosingRef.current) return; // guard against double-calls
+    isClosingRef.current = true;
+    Animated.timing(translateY, {
+      toValue: SCREEN_HEIGHT,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      translateY.setValue(SCREEN_HEIGHT);
+      onCloseRef.current();
+    });
+  }, [translateY]);
+
+  // ── Swipe gesture ──────────────────────────────────────────────────────────
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { translationY: translateY } }],
+    { useNativeDriver: true },
+  );
+
+  const onHandlerStateChange = ({ nativeEvent }: any) => {
+    if (nativeEvent.state === State.END || nativeEvent.state === State.CANCELLED) {
+      const { translationY, velocityY } = nativeEvent;
+      if (translationY > SWIPE_CLOSE_THRESHOLD || velocityY > VELOCITY_CLOSE_THRESHOLD) {
+        if (isClosingRef.current) return;
+        isClosingRef.current = true;
+        // Velocity-aware duration so fast flicks feel instant.
+        const duration = Math.max(100, 220 - Math.floor(velocityY / 10));
+        Animated.timing(translateY, {
+          toValue: SCREEN_HEIGHT,
+          duration,
+          useNativeDriver: true,
+        }).start(() => {
+          translateY.setValue(SCREEN_HEIGHT);
+          onCloseRef.current();
+        });
+      } else {
+        // Not enough — snap back with a small spring.
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 10,
+        }).start();
+      }
+    }
+  };
+
+  const animatedContainerStyle = {
+    transform: [
+      {
+        translateY: translateY.interpolate({
+          inputRange: [-50, 0, SCREEN_HEIGHT],
+          outputRange: [0, 0, SCREEN_HEIGHT],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
+  };
+
+  return { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose };
+};
+
+// ─── Shared drag-handle component ────────────────────────────────────────────
+
+interface SwipeDragHandleProps {
+  onGestureEvent: (...args: any[]) => void;
+  onHandlerStateChange: (e: any) => void;
+  /** Color of the pill (usually colors.border) */
+  color: string;
+  /** Extra bottom margin to match the replaced handle's spacing. Default 8 */
+  marginBottom?: number;
+}
+
+/**
+ * The pill + invisible drag area at the top of every sheet.
+ * Wraps a PanGestureHandler so the whole area is swipeable.
+ */
+export const SwipeDragHandle: React.FC<SwipeDragHandleProps> = ({
+  onGestureEvent,
+  onHandlerStateChange,
+  color,
+  marginBottom = Spacing.sm,
+}) => (
+  <PanGestureHandler
+    onGestureEvent={onGestureEvent}
+    onHandlerStateChange={onHandlerStateChange}
+    activeOffsetY={5}
+    failOffsetY={-10}
+  >
+    {/* Animated.View is required as a direct child of PanGestureHandler */}
+    <Animated.View style={[dragHandleStyles.area, { marginBottom }]}>
+      <View style={[dragHandleStyles.pill, { backgroundColor: color }]} />
+    </Animated.View>
+  </PanGestureHandler>
+);
+
+const dragHandleStyles = StyleSheet.create({
+  area: {
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.sm,
+    // Wide enough so the pill is easy to grab
+    alignSelf: 'stretch',
+  },
+  pill: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
+});
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -18,20 +180,23 @@ interface SheetModalProps {
 
 /**
  * Generic 90%-height bottom sheet.
- * Same visual pattern as TournamentScreen's renderEventSheet.
- * Provides: backdrop, container, drag handle, X close button.
+ * Provides: animated swipe-down-to-close, backdrop-tap-to-close, drag handle, X button.
  * Children are responsible for their own title/content/scrolling.
  */
 export const SheetModal: React.FC<SheetModalProps> = ({ visible, onClose, children }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } = useSwipeToClose(
+    visible,
+    onClose,
+  );
 
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      animationType="none"
+      onRequestClose={doClose}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.overlay}>
@@ -39,17 +204,21 @@ export const SheetModal: React.FC<SheetModalProps> = ({ visible, onClose, childr
           <TouchableOpacity
             style={styles.backdrop}
             activeOpacity={1}
-            onPress={onClose}
+            onPress={doClose}
           />
 
-          {/* Sheet container */}
-          <View style={[styles.container, { backgroundColor: colors.card }]}>
-            {/* Drag handle */}
-            <View style={[styles.handle, { backgroundColor: colors.border }]} />
+          {/* Sheet container – follows the drag gesture */}
+          <Animated.View style={[styles.container, { backgroundColor: colors.card }, animatedContainerStyle]}>
+            {/* Drag handle – swipe-down gesture target */}
+            <SwipeDragHandle
+              onGestureEvent={onGestureEvent}
+              onHandlerStateChange={onHandlerStateChange}
+              color={colors.border}
+            />
 
             {/* Close row – X button right-aligned */}
             <View style={styles.closeRow}>
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={doClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={24} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
@@ -58,7 +227,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({ visible, onClose, childr
             <View style={styles.content}>
               {children}
             </View>
-          </View>
+          </Animated.View>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -80,14 +249,7 @@ const styles = StyleSheet.create({
     height: '90%',
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    paddingTop: Spacing.md,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: Spacing.sm,
+    // paddingTop removed – SwipeDragHandle adds its own top padding
   },
   closeRow: {
     flexDirection: 'row',

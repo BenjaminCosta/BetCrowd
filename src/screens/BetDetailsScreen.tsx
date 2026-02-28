@@ -244,8 +244,8 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
     );
   };
 
-  const canPlacePick = bet?.status === 'open';
-  const canEdit = myPick && bet?.status === 'open';
+  const canPlacePick = bet?.status === 'open' || bet?.status === 'pending';
+  const canEdit = myPick && (bet?.status === 'open' || bet?.status === 'pending');
 
   if (loading) {
     return (
@@ -314,7 +314,7 @@ const BetDetailsScreen = ({ navigation, route }: any) => {
           {isAdmin && bet.status !== 'cancelled' && (
             <Card style={styles.adminCard}>
               <View style={styles.adminButtons}>
-                {bet.status === 'open' && (
+                {(bet.status === 'open' || bet.status === 'pending') && (
                   <TouchableOpacity
                     style={[styles.adminButton, { backgroundColor: colors.card, borderColor: colors.border }]}
                     onPress={handleLock}

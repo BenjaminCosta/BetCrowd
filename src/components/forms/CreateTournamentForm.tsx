@@ -7,12 +7,14 @@ import {
   Modal,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
 import { LoadingBar } from '../LoadingBar';
-import { Card, Input, SectionHeader, Chip } from '../CommonComponents';
+import { Card, Input, SectionHeader } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
 import { createTournament } from '../../services/tournamentService';
 
@@ -44,7 +46,6 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
   const [tournamentName, setTournamentName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('');
-  const [contribution, setContribution] = useState('');
   const [participants, setParticipants] = useState('10');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -60,12 +61,7 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
       Alert.alert('Error', 'Debes seleccionar un formato de torneo');
       return;
     }
-    const contributionNum = parseInt(contribution) || 0;
     const participantsNum = parseInt(participants) || 0;
-    if (contributionNum < 0) {
-      Alert.alert('Error', 'El aporte no puede ser negativo');
-      return;
-    }
     if (participantsNum <= 0) {
       Alert.alert('Error', 'Debe haber al menos 1 participante');
       return;
@@ -80,7 +76,7 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
         name: tournamentName.trim(),
         description: description.trim(),
         format: selectedFormat,
-        contribution: contributionNum,
+        contribution: 0,
         participantsEstimated: participantsNum,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -104,12 +100,6 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
     return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const calculateTotalPool = () => {
-    const cont = parseInt(contribution) || 0;
-    const part = parseInt(participants) || 0;
-    return cont * part;
-  };
-
   const calendarTheme = {
     backgroundColor: colors.card,
     calendarBackground: colors.card,
@@ -124,10 +114,10 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <LoadingBar isLoading={isLoading} />
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
@@ -223,22 +213,9 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
             </View>
           </Card>
 
-          {/* Balance */}
+          {/* Participantes */}
           <Card style={styles.section}>
-            <SectionHeader title="Balance del torneo" />
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.mutedForeground }]}>Aporte por persona</Text>
-              <View style={styles.inputWithChip}>
-                <Input
-                  value={contribution}
-                  onChangeText={setContribution}
-                  placeholder="1000"
-                  keyboardType="numeric"
-                  style={{ flex: 1 }}
-                />
-                <Chip label="ARS" selected style={styles.currencyChip} />
-              </View>
-            </View>
+            <SectionHeader title="Participantes" />
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>Participantes estimados</Text>
               <Input
@@ -247,34 +224,6 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
                 placeholder="10"
                 keyboardType="numeric"
               />
-            </View>
-          </Card>
-
-          {/* Resumen */}
-          <Card style={[styles.summaryCard, { backgroundColor: colors.secondary }]}>
-            <View style={styles.summaryHeader}>
-              <Ionicons name="information-circle" size={24} color={colors.primary} />
-              <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Resumen del torneo</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Aporte por persona:</Text>
-              <Text style={[styles.summaryValue, { color: colors.foreground }]}>${contribution || '0'} ARS</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Participantes:</Text>
-              <Text style={[styles.summaryValue, { color: colors.foreground }]}>{participants || '0'}</Text>
-            </View>
-            <View style={[styles.summaryRow, styles.summaryTotal]}>
-              <Text style={[styles.summaryLabel, { color: colors.foreground }]}>Pozo total estimado:</Text>
-              <Text style={[styles.summaryValueLarge, { color: '#10B981' }]}>
-                ${calculateTotalPool().toLocaleString()} ARS
-              </Text>
-            </View>
-            <View style={[styles.disclaimer, { backgroundColor: colors.muted }]}>
-              <Ionicons name="alert-circle-outline" size={16} color={colors.mutedForeground} />
-              <Text style={[styles.disclaimerText, { color: colors.mutedForeground }]}>
-                La app solo registra el balance entre participantes. Los pagos se realizan fuera de la app.
-              </Text>
             </View>
           </Card>
 
@@ -326,7 +275,7 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

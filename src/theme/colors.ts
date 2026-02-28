@@ -20,6 +20,7 @@ export const Colors = {
     ring: '#D7263D',
     success: '#10B981',
     warning: '#F59E0B',
+    pending: '#8B8D97',
   },
   light: {
     background: '#FFFFFF',
@@ -41,6 +42,7 @@ export const Colors = {
     ring: '#D7263D',
     success: '#10B981',
     warning: '#F59E0B',
+    pending: '#8B8D97',
   },
 };
 

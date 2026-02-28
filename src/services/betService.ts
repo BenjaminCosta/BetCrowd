@@ -25,7 +25,7 @@ export interface Bet {
   options: string[]; // for winner/custom, or ["Over", "Under"] for over_under
   stakeType: 'fixed' | 'free';
   stakeAmount: number;
-  status: 'open' | 'locked' | 'settled' | 'cancelled';
+  status: 'pending' | 'open' | 'locked' | 'settled' | 'cancelled';
   closesAt?: Timestamp | null;
   createdBy: string;
   createdAt: Timestamp;
@@ -157,6 +157,21 @@ export const createBet = async (
     throw new Error('Debes iniciar sesión');
   }
 
+  // ── Guard: verify event is still active before writing ─────────────────────
+  const eventRef = doc(db, 'tournaments', tournamentId, 'events', eventId);
+  const eventSnap = await getDoc(eventRef);
+  if (!eventSnap.exists()) throw new Error('El evento no existe.');
+  const eventData = eventSnap.data();
+  if (eventData.status === 'finished' || eventData.status === 'cancelled' || eventData.status === 'locked') {
+    throw new Error('No se pueden crear apuestas en eventos finalizados.');
+  }
+  if (eventData.date) {
+    const today = new Date().toISOString().split('T')[0];
+    if (eventData.date < today) {
+      throw new Error('No se pueden crear apuestas en eventos finalizados.');
+    }
+  }
+
   const betRef = doc(collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets'));
   
   // Initialize optionTotals based on options
@@ -172,7 +187,7 @@ export const createBet = async (
     options: input.options || [],
     stakeType: input.stakeType,
     stakeAmount: input.stakeAmount || 0,
-    status: 'open' as const,
+    status: 'pending' as const,
     closesAt: input.closesAt || null,
     createdBy: user.uid,
     createdAt: serverTimestamp(),
@@ -342,8 +357,14 @@ export const upsertMyPick = async (
       newTotalPot += stakeAmount;
       newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
 
+      // Auto-transition pending -> open when a second option gets a pick
+      const optionsWithPicks = Object.values(newOptionTotals).filter((v) => v > 0).length;
+      const statusTransition =
+        bet.status === 'pending' && optionsWithPicks >= 2 ? { status: 'open' as const } : {};
+
       // Update bet with new totals
       transaction.update(betRef, {
+        ...statusTransition,
         totalPot: newTotalPot,
         totalPicks: newTotalPicks,
         optionTotals: newOptionTotals,
@@ -426,7 +447,14 @@ export const upsertMyPick = async (
           newTotalPot = Math.max(0, newTotalPot + stakeAmount);
           newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
 
+          const fallbackOptionsWithPicks = Object.values(newOptionTotals).filter((v) => v > 0).length;
+          const fallbackStatusTransition =
+            currentBet.status === 'pending' && fallbackOptionsWithPicks >= 2
+              ? { status: 'open' as const }
+              : {};
+
           await updateDoc(betRef, {
+            ...fallbackStatusTransition,
             totalPot: newTotalPot,
             totalPicks: newTotalPicks,
             optionTotals: newOptionTotals,
@@ -628,6 +656,58 @@ export const calculateOdds = (bet: Bet, fee: number = 0.05): Record<string, stri
 
   return odds;
 };
+
+/**
+ * Calculate estimated odds for a specific option INCLUDING the user's own stake.
+ * Use this in the confirmation modal to show "with your bet" odds.
+ * Returns '—' for pending bets (market not formed yet).
+ */
+export const calculateEstimatedOdds = (
+  bet: Bet,
+  selectedOption: string,
+  stakeAmount: number,
+  fee: number = 0.05,
+): string => {
+  if (bet.status === 'pending') return '—';
+  if (stakeAmount <= 0) return calculateOdds(bet, fee)[selectedOption] ?? '—';
+
+  const totalPotActual = bet.totalPot || 0;
+  const optionTotalsActual = bet.optionTotals?.[selectedOption] || 0;
+
+  const newPot = totalPotActual + stakeAmount;
+  const newOptionTotal = optionTotalsActual + stakeAmount;
+
+  if (newOptionTotal <= 0) return '—';
+
+  const effectivePot = newPot * (1 - fee);
+  const odds = effectivePot / newOptionTotal;
+  const cappedOdds = Math.min(odds, 99.99);
+  return cappedOdds.toFixed(2);
+};
+
+// ─── Bet Status Helpers ───────────────────────────────────────────────────────
+
+export type BetStatus = Bet['status'];
+
+/** Status is one of the "active" (not yet resolved) states */
+export const isActiveBet = (status: BetStatus): boolean =>
+  status === 'pending' || status === 'open' || status === 'locked';
+
+/** User can still place a new pick */
+export const canPlacePick = (status: BetStatus): boolean =>
+  status === 'pending' || status === 'open';
+
+/** User can change their existing pick */
+export const canEditPick = (status: BetStatus): boolean =>
+  status === 'pending' || status === 'open';
+
+/** User can cancel/delete their existing pick */
+export const canCancelPick = (status: BetStatus): boolean =>
+  status === 'pending' || status === 'open';
+
+/** Admin action buttons (edit/delete/close/results) are available */
+export const adminActionsVisible = (status: BetStatus): boolean =>
+  status !== 'cancelled';
 
 /**
  * Update user's picks index for PredictionsScreen

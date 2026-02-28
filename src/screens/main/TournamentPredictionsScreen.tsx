@@ -353,6 +353,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
         <ScrollView
           style={styles.content}
+          contentContainerStyle={styles.contentContainer}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -427,14 +428,14 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                             bet={mergedBet}
                             theme={theme}
                             onOptionPress={(option: string) => {
-                              if (bet.status === 'open') {
+                              if (bet.status === 'open' || bet.status === 'pending') {
                                 openBetModal(mergedBet, event, pickData.tournamentId, option, displaySelection, pick.stakeAmount);
                               }
                             }}
                             userSelection={displaySelection}
-                            disabled={bet.status !== 'open'}
+                            disabled={bet.status !== 'open' && bet.status !== 'pending'}
                             showOdds
-                            onCancel={bet.status === 'open' ? () => confirmCancel(pickData) : undefined}
+                            onCancel={(bet.status === 'open' || bet.status === 'pending') ? () => confirmCancel(pickData) : undefined}
                           />
                         </View>
                       );
@@ -468,7 +469,8 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { flex: 1, padding: 14 },
+  content: { flex: 1 },
+  contentContainer: { padding: 14, paddingBottom: 80 },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

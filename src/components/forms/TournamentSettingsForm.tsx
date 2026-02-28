@@ -52,7 +52,6 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [contribution, setContribution] = useState('');
   const [participantsEstimated, setParticipantsEstimated] = useState('');
 
   useEffect(() => {
@@ -67,7 +66,6 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
         setTournament(data);
         setName(data.name);
         setDescription(data.description || '');
-        setContribution(data.contribution?.toString() || '0');
         setParticipantsEstimated(data.participantsEstimated?.toString() || '0');
       }
     } catch (e) {
@@ -97,14 +95,12 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
       Alert.alert('No permitido', 'No se puede editar porque el torneo ya tiene actividad.');
       return;
     }
-    const contributionNum = parseInt(contribution) || 0;
     const participantsNum = parseInt(participantsEstimated) || 0;
-    if (contributionNum < 0) { Alert.alert('Error', 'El aporte no puede ser negativo'); return; }
     if (participantsNum <= 0) { Alert.alert('Error', 'Debe haber al menos 1 participante'); return; }
     try {
       setSaving(true);
       await updateTournamentConfig(tournamentId, {
-        contribution: contributionNum,
+        contribution: 0,
         participantsEstimated: participantsNum,
       });
       Alert.alert('Éxito', 'Configuración actualizada');
@@ -238,16 +234,6 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
             </Text>
           </View>
         )}
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>Aporte por persona</Text>
-          <Input
-            value={contribution}
-            onChangeText={(t) => { if (!tournament.hasActivity) setContribution(t); }}
-            placeholder="1000"
-            keyboardType="numeric"
-            editable={!tournament.hasActivity}
-          />
-        </View>
         <View style={styles.formGroup}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Participantes estimados</Text>
           <Input

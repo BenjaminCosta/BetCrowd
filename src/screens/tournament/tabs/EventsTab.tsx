@@ -64,6 +64,7 @@ const EventsTab: React.FC<EventsTabProps> = ({
   const colors = Colors[theme];
 
   return (
+    <View style={styles.container}>
     <ScrollView
       style={styles.tabScroll}
       contentContainerStyle={styles.tabContent}
@@ -162,6 +163,7 @@ const EventsTab: React.FC<EventsTabProps> = ({
         ))
       )}
     </ScrollView>
+    </View>
   );
 };
 
@@ -170,11 +172,12 @@ export default EventsTab;
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   tabScroll: { flex: 1 },
   tabContent: { padding: Spacing.lg, paddingBottom: 100 },
-  chipRow: { marginBottom: Spacing.lg },
+  chipRow: { marginBottom: Spacing.lg, height: 40 },
   filterChip: { marginRight: Spacing.sm },
-  centeredLoader: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
+  centeredLoader: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64 },
   adminActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',

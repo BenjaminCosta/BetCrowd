@@ -8,6 +8,8 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
@@ -58,14 +60,22 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
       ]);
       setTournament(tournamentData);
       setEvent(eventData);
-      if (tournamentData?.contribution) {
-        setStakeAmount(tournamentData.contribution.toString());
-      }
     } catch (error) {
       Alert.alert('Error', 'No se pudo cargar los datos');
     } finally {
       setLoading(false);
     }
+  };
+
+  // ─── Event blocked check ─────────────────────────────────────────────────
+  const isEventBlocked = (): boolean => {
+    if (!event) return false;
+    if (event.status === 'finished' || event.status === 'cancelled' || event.status === 'locked') return true;
+    if (event.date) {
+      const today = new Date().toISOString().split('T')[0];
+      if (event.date < today) return true;
+    }
+    return false;
   };
 
   const applyWinnerTemplate = () => {
@@ -100,6 +110,10 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
   };
 
   const handleCreate = async () => {
+    if (isEventBlocked()) {
+      Alert.alert('Error', 'No se pueden crear apuestas en eventos finalizados.');
+      return;
+    }
     if (!title.trim()) {
       Alert.alert('Error', 'El título es requerido');
       return;
@@ -145,12 +159,28 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
   }
 
   return (
-    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingBottom: Spacing.xl }}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>Crear Apuesta</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{event?.title || 'Evento'}</Text>
         </View>
+
+        {/* Blocked banner */}
+        {isEventBlocked() && (
+          <View style={[styles.blockedBanner, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <Ionicons name="lock-closed-outline" size={16} color={colors.mutedForeground} />
+            <Text style={[styles.blockedText, { color: colors.mutedForeground }]}>
+              No se pueden crear apuestas en eventos finalizados.
+            </Text>
+          </View>
+        )}
 
         {/* Templates */}
         <Card style={styles.templatesCard}>
@@ -284,20 +314,30 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
             </View>
           )}
 
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>Monto de apuesta *</Text>
+          <View style={[styles.stakeGroup, { backgroundColor: colors.secondary, borderColor: colors.primary + '40' }]}>
+            <View style={styles.stakeLabelRow}>
+              <Ionicons name="cash" size={16} color={colors.primary} />
+              <Text style={[styles.stakeLabel, { color: colors.foreground }]}>Monto de apuesta *</Text>
+            </View>
+            <Text style={[styles.stakeHint, { color: colors.mutedForeground }]}>
+              Monto fijo por participante para esta apuesta
+            </Text>
             <Input
               value={stakeAmount}
               onChangeText={setStakeAmount}
-              placeholder="Monto en $"
+              placeholder="Ej: 500"
               keyboardType="numeric"
             />
           </View>
 
           <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
+            style={[
+              styles.createButton,
+              { backgroundColor: isEventBlocked() ? colors.secondary : colors.primary },
+              (creating || isEventBlocked()) && { opacity: 0.6 },
+            ]}
             onPress={handleCreate}
-            disabled={creating}
+            disabled={creating || isEventBlocked()}
           >
             {creating ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -311,6 +351,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
         </Card>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -354,4 +395,24 @@ const styles = StyleSheet.create({
     gap: Spacing.sm, padding: Spacing.lg, borderRadius: BorderRadius.md,
   },
   createButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  stakeGroup: {
+    marginBottom: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    gap: Spacing.xs,
+  },
+  stakeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: Spacing.xs },
+  stakeLabel: { fontSize: 14, fontWeight: '700' },
+  stakeHint: { fontSize: 12, lineHeight: 16, marginBottom: Spacing.sm },
+  blockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+  },
+  blockedText: { flex: 1, fontSize: 13, lineHeight: 18 },
 });

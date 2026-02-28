@@ -79,7 +79,8 @@ service cloud.firestore {
         allow create: if isMe(userId)
           && request.resource.data.uid == toUid;
 
-        allow delete: if isMe(userId);
+        allow delete: if isMe(userId)
+          || (isSignedIn() && request.auth.uid == toUid);
       }
 
       match /notifications/{notificationId} {
@@ -214,15 +215,23 @@ service cloud.firestore {
 
           // ✅ update:
           // - Admin: todo
-          // - Member: SOLO los campos de agregados del pool, y SOLO si el bet está abierto.
+          // - Member: SOLO los campos de agregados del pool, y SOLO si el bet está abierto o pendiente.
           //   Campos permitidos: totalPot, totalPicks, optionTotals, updatedAt
-          //   IMPORTANTE: estos nombres deben coincidir exactamente con los que escribe el código.
+          //   También permite la transición automática pending -> open cuando aparece contraparte.
           allow update: if isTournamentAdmin(tournamentId)
             || (
               isTournamentMember(tournamentId)
-              && resource.data.status == "open"
+              && resource.data.status in ["pending", "open"]
               && request.resource.data.diff(resource.data).affectedKeys()
                   .hasOnly(["totalPot", "totalPicks", "optionTotals", "updatedAt"])
+            )
+            || (
+              // Members can auto-transition pending -> open when second side fills in
+              isTournamentMember(tournamentId)
+              && resource.data.status == "pending"
+              && request.resource.data.status == "open"
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(["status", "totalPot", "totalPicks", "optionTotals", "updatedAt"])
             );
 
           // -------------------------
@@ -232,11 +241,11 @@ service cloud.firestore {
             // ✅ read: cualquier miembro (necesario para listenBetPicks y calcular pool client-side)
             allow read: if isTournamentMember(tournamentId);
 
-            // ✅ write: el usuario solo puede escribir su propio pick y solo si el bet está open
+            // ✅ write: el usuario solo puede escribir su propio pick y solo si el bet está open o pending
             allow create, update, delete: if isTournamentMember(tournamentId)
               && request.auth.uid == uid
               && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId))
-              && get(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId)).data.status == "open";
+              && get(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId)).data.status in ["pending", "open"];
           }
         }
       }

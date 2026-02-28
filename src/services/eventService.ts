@@ -30,6 +30,7 @@ export interface Event {
   awayTeam?: string;
   roundNumber?: number;
   notes?: string;
+  date?: string; // YYYY-MM-DD
 }
 
 export type EventInput = Omit<Event, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>;
@@ -133,6 +134,7 @@ export const createEvent = async (
       ...(input.awayTeam && { awayTeam: input.awayTeam }),
       ...(input.roundNumber !== undefined && { roundNumber: input.roundNumber }),
       ...(input.notes && { notes: input.notes }),
+      ...(input.date && { date: input.date }),
     };
     
     await setDoc(eventRef, eventData);
@@ -178,6 +180,7 @@ export const createEventsBatch = async (
         ...(input.awayTeam && { awayTeam: input.awayTeam }),
         ...(input.roundNumber !== undefined && { roundNumber: input.roundNumber }),
         ...(input.notes && { notes: input.notes }),
+        ...(input.date && { date: input.date }),
       };
       batch.set(eventRef, eventData);
     });
