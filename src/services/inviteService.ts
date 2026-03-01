@@ -214,6 +214,7 @@ export const rejectTournamentInvite = async (inviteId: string): Promise<void> =>
   const snap = await getDoc(inviteRef);
   if (!snap.exists()) throw new Error('Invitación no encontrada');
   if (snap.data()?.toUid !== user.uid) throw new Error('No autorizado');
+  if (snap.data()?.status !== 'pending') throw new Error('Invitación no está pendiente');
 
   await updateDoc(inviteRef, {
     status: 'rejected',

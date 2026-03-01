@@ -27,7 +27,6 @@ import HelpSupportScreen from '../screens/HelpSupportScreen';
 import JoinCodeScreen from '../screens/JoinCodeScreen';
 import NotFoundScreen from '../screens/NotFoundScreen';
 import SearchScreen from '../screens/SearchScreen';
-import BetsListScreen from '../screens/unused/BetsListScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import NotificationCenterScreen from '../screens/NotificationCenterScreen';
 import InvitationsScreen from '../screens/InvitationsScreen';
@@ -96,7 +95,6 @@ const AppStack = () => {
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="Tournament" component={TournamentScreen} />
       <Stack.Screen name="TournamentSettings" component={TournamentSettingsScreen} />
-      <Stack.Screen name="BetsList" component={BetsListScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />

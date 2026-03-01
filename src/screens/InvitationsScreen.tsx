@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,11 @@ const InvitationsScreen = ({ navigation }: any) => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [previewInvite, setPreviewInvite] = useState<TournamentInvite | null>(null);
   const [showPreviewSheet, setShowPreviewSheet] = useState(false);
+
+  const pendingSentCount = useMemo(
+    () => sentInvites.filter(i => i.status === 'pending').length,
+    [sentInvites],
+  );
 
   const handleAcceptInvite = async (invite: TournamentInvite) => {
     try {
@@ -334,10 +339,10 @@ const InvitationsScreen = ({ navigation }: any) => {
           >
             Enviadas
           </Text>
-          {sentInvites.filter(i => i.status === 'pending').length > 0 && (
+          {pendingSentCount > 0 && (
             <View style={[styles.badge, { backgroundColor: colors.muted }]}>
               <Text style={styles.badgeText}>
-                {sentInvites.filter(i => i.status === 'pending').length}
+                {pendingSentCount}
               </Text>
             </View>
           )}

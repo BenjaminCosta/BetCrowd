@@ -172,7 +172,9 @@ const TournamentScreen = ({ navigation, route }: any) => {
     if (!openInviteSheetRef.current) return;
     openInviteSheetRef.current = false; // fire exactly once
     Keyboard.dismiss();
-    const task = InteractionManager.runAfterInteractions(() => {      setIsInvitePostCreation(true);      setShowInviteSheet(true);
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsInvitePostCreation(true);
+      setShowInviteSheet(true);
       // Clear param so Back→Forward doesn’t re-open the sheet
       navigation.setParams({ openInviteSheet: undefined });
     });

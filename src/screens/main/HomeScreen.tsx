@@ -594,15 +594,6 @@ const HomeScreen = ({ navigation }: any) => {
                     APUESTAS ABIERTAS
                   </Text>
                 </View>
-                <TouchableOpacity 
-                  style={styles.viewAll}
-                  onPress={() => navigation.navigate('BetsList')}
-                >
-                  <Text style={[styles.viewAllText, { color: colors.primary }]}>
-                    Ver todas
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-                </TouchableOpacity>
               </View>
 
               <View style={styles.betsList}>

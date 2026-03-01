@@ -307,6 +307,7 @@ service cloud.firestore {
       // Only signed-in tournament members can create an invite
       allow create: if isSignedIn()
         && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid != request.auth.uid
         && request.resource.data.keys().hasAll([
              "tournamentId", "tournamentName", "fromUid", "toUid", "status"
            ])

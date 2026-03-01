@@ -83,7 +83,7 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
     { useNativeDriver: true },
   );
 
-  const onHandlerStateChange = ({ nativeEvent }: any) => {
+  const onHandlerStateChange = useCallback(({ nativeEvent }: any) => {
     if (nativeEvent.state === State.END || nativeEvent.state === State.CANCELLED) {
       const { translationY, velocityY } = nativeEvent;
       if (translationY > SWIPE_CLOSE_THRESHOLD || velocityY > VELOCITY_CLOSE_THRESHOLD) {
@@ -110,7 +110,7 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
         }).start();
       }
     }
-  };
+  }, [screenHeight, translateY]);
 
   const animatedContainerStyle = {
     transform: [

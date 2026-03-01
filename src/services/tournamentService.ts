@@ -668,7 +668,7 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
           where('status', '==', 'pending'),
         )
       );
-      await Promise.all(
+      await Promise.allSettled(
         pendingInvites.docs.map((d) =>
           setDoc(d.ref, { status: 'cancelled', updatedAt: serverTimestamp() }, { merge: true })
         )

@@ -118,6 +118,29 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
     }
   };
 
+  const renderMemberPreviews = () => {
+    const members =
+      mode === 'invite' ? invite?.memberPreviews : codePreview?.memberPreviews;
+    if (!members || members.length === 0) return null;
+    return (
+      <View style={[styles.membersCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.membersTitle, { color: colors.mutedForeground }]}>
+          Miembros actuales
+        </Text>
+        {members.map((m) => (
+          <View key={m.uid} style={styles.memberRow}>
+            <View style={styles.memberAvatar}>
+              <Text style={styles.memberInitials}>{getInitials(m.displayName)}</Text>
+            </View>
+            <Text style={[styles.memberName, { color: colors.foreground }]} numberOfLines={1}>
+              {m.displayName}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   // ─── Main render ──────────────────────────────────────────────────────────
 
   return (
@@ -195,28 +218,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
               </View>
 
               {/* Member previews — visible in both invite and join modes */}
-              {(() => {
-                const members =
-                  mode === 'invite' ? invite?.memberPreviews : codePreview?.memberPreviews;
-                if (!members || members.length === 0) return null;
-                return (
-                  <View style={[styles.membersCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.membersTitle, { color: colors.mutedForeground }]}>
-                      Miembros actuales
-                    </Text>
-                    {members.map((m) => (
-                      <View key={m.uid} style={styles.memberRow}>
-                        <View style={styles.memberAvatar}>
-                          <Text style={styles.memberInitials}>{getInitials(m.displayName)}</Text>
-                        </View>
-                        <Text style={[styles.memberName, { color: colors.foreground }]} numberOfLines={1}>
-                          {m.displayName}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                );
-              })()}
+              {renderMemberPreviews()}
 
               {/* Spacer for CTAs */}
               <View style={{ height: Spacing.xl }} />
@@ -232,7 +234,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
                     disabled={loading}
                   >
                     {loading ? (
-                      <ActivityIndicator size="small" color="#FFF" />
+                      <ActivityIndicator size="small" color={colors.foreground} />
                     ) : (
                       <Text style={[styles.rejectBtnText, { color: '#FFF' }]}>
                         Rechazar

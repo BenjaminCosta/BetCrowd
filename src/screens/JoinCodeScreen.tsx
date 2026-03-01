@@ -35,6 +35,7 @@ const JoinCodeScreen = ({ navigation }: any) => {
       const preview = await getTournamentCodePreview(trimmed);
       if (!preview) {
         Alert.alert('Código inválido', 'No se encontró ningún torneo con ese código.');
+        setCodePreview(null);
         return;
       }
       setShowPreviewSheet(false); // explicit reset

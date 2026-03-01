@@ -205,6 +205,9 @@ export const updateFullProfile = async (
  * Never throws — any failure is logged and silently ignored so login is never blocked.
  */
 export const ensureUserProfile = async (uid: string): Promise<void> => {
+  // Guard: auth.currentUser is used for display/email defaults.
+  // Always call with auth.currentUser.uid to avoid writing another user's data.
+  if (auth.currentUser?.uid !== uid) return;
   try {
     const userRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userRef);
