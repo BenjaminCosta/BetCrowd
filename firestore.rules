@@ -47,8 +47,9 @@ service cloud.firestore {
       match /tournamentRefs/{tournamentId} {
         allow read: if isMe(userId);
 
+        // joinedAt is a serverTimestamp transform — NOT in request.resource.data
         allow create, update: if isMe(userId)
-          && request.resource.data.keys().hasAll(["role", "joinedAt"]);
+          && request.resource.data.keys().hasAll(["role"]);
 
         allow delete: if isMe(userId);
       }
@@ -143,7 +144,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(["tournamentId", "ownerId"])
         && request.resource.data.ownerId == request.auth.uid;
 
-      allow update: if false;
+      // Members can progressively update the memberPreviews snapshot (shown in preview sheets)
+      allow update: if isSignedIn()
+        && isTournamentMember(resource.data.tournamentId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberPreviews']);
 
       allow delete: if isSignedIn()
         && resource.data.ownerId == request.auth.uid;
@@ -186,7 +190,15 @@ service cloud.firestore {
               request.auth.uid == uid
               && (
                 request.resource.data.role == "member"
-                || (request.resource.data.role == "owner" && isTournamentOwnerDoc(tournamentId))
+                || (
+                  request.resource.data.role == "owner"
+                  // Either the tournament exists and this user owns it,
+                  // OR the tournament doesn't exist yet (created in same batch)
+                  && (
+                    isTournamentOwnerDoc(tournamentId)
+                    || !exists(/databases/$(database)/documents/tournaments/$(tournamentId))
+                  )
+                )
               )
             )
           )
@@ -281,6 +293,46 @@ service cloud.firestore {
         allow update, delete: if isTournamentMember(tournamentId)
           && resource.data.userId == request.auth.uid;
       }
+    }
+
+    // -------------------------
+    // TOURNAMENT INVITES (global collection)
+    // -------------------------
+    match /tournamentInvites/{inviteId} {
+      // fromUid or toUid can read their own invites
+      allow read: if isSignedIn() &&
+        (resource.data.fromUid == request.auth.uid ||
+         resource.data.toUid  == request.auth.uid);
+
+      // Only signed-in tournament members can create an invite
+      allow create: if isSignedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.keys().hasAll([
+             "tournamentId", "tournamentName", "fromUid", "toUid", "status"
+           ])
+        && request.resource.data.status == "pending"
+        && exists(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)/members/$(request.auth.uid));
+
+      // toUid can accept/reject; fromUid can cancel
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"])
+        && (
+          // toUid: pending → accepted | rejected
+          (
+            request.auth.uid == resource.data.toUid
+            && resource.data.status == "pending"
+            && request.resource.data.status in ["accepted", "rejected"]
+          )
+          ||
+          // fromUid: pending → cancelled
+          (
+            request.auth.uid == resource.data.fromUid
+            && resource.data.status == "pending"
+            && request.resource.data.status == "cancelled"
+          )
+        );
+
+      allow delete: if false;
     }
 
     // -------------------------

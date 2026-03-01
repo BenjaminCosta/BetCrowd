@@ -31,9 +31,15 @@ const formatOptions = [
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+export interface CreateTournamentResult {
+  tournamentId: string;
+  tournamentName: string;
+  inviteCode: string;
+}
+
 interface CreateTournamentFormProps {
   /** Called after the tournament is successfully created (Alert OK pressed) */
-  onSuccess: () => void;
+  onSuccess: (result: CreateTournamentResult) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -72,7 +78,7 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
     }
     setIsLoading(true);
     try {
-      const { inviteCode } = await createTournament({
+      const { tournamentId, inviteCode } = await createTournament({
         name: tournamentName.trim(),
         description: description.trim(),
         format: selectedFormat,
@@ -81,11 +87,12 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
-      Alert.alert(
-        '¡Torneo creado!',
-        `Tu torneo se ha creado exitosamente.\n\nCódigo de invitación: ${inviteCode}`,
-        [{ text: 'OK', onPress: () => onSuccess() }],
-      );
+      // Llamar onSuccess DIRECTAMENTE — sin Alert.alert intermediario.
+      // En iOS, Alert.alert usa UIAlertController (modal nativo). Si intentamos
+      // abrir un React Native <Modal> dentro del onPress del Alert, iOS puede
+      // descartar silenciosamente la presentación porque el Alert todavía
+      // está animando su salida. Eliminando el Alert se evita ese conflicto.
+      onSuccess({ tournamentId, tournamentName: tournamentName.trim(), inviteCode });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'No se pudo crear el torneo');
     } finally {

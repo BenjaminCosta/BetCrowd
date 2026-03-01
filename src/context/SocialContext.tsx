@@ -21,6 +21,14 @@ import {
   markAsRead as markAsReadService,
   markAllAsRead as markAllAsReadService,
 } from '../services/notificationsService';
+import {
+  TournamentInvite,
+  listenReceivedInvites,
+  listenSentInvites,
+  acceptTournamentInvite as acceptInviteService,
+  rejectTournamentInvite as rejectInviteService,
+  cancelTournamentInvite as cancelInviteService,
+} from '../services/inviteService';
 import { PublicProfile, getPublicProfile } from '../services/publicProfileService';
 import { getUserProfile } from '../services/userService';
 
@@ -38,12 +46,17 @@ interface SocialContextType {
   incomingRequests: FriendRequestWithProfile[];
   outgoingRequests: FriendRequestWithProfile[];
   friendsLoading: boolean;
-  
+
+  // Tournament Invites
+  receivedInvites: TournamentInvite[];
+  sentInvites: TournamentInvite[];
+  pendingInviteCount: number;
+
   // Notifications
   notifications: Notification[];
   unreadCount: number;
   notificationsLoading: boolean;
-  
+
   // Actions
   sendFriendRequest: (targetUid: string) => Promise<void>;
   acceptFriendRequest: (fromUid: string) => Promise<void>;
@@ -53,7 +66,11 @@ interface SocialContextType {
   getFriendshipStatus: (targetUid: string) => Promise<FriendshipStatus>;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
-  
+  // Invite actions
+  acceptInvite: (inviteId: string) => Promise<string>;
+  rejectInvite: (inviteId: string) => Promise<void>;
+  cancelInvite: (inviteId: string) => Promise<void>;
+
   // Refresh
   refreshFriends: () => void;
 }
@@ -73,6 +90,10 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+
+  // Tournament Invites state
+  const [receivedInvites, setReceivedInvites] = useState<TournamentInvite[]>([]);
+  const [sentInvites, setSentInvites] = useState<TournamentInvite[]>([]);
 
   // Current user profile for username
   const [currentUsername, setCurrentUsername] = useState<string>('');
@@ -98,6 +119,8 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       setOutgoingRequests([]);
       setNotifications([]);
       setUnreadCount(0);
+      setReceivedInvites([]);
+      setSentInvites([]);
       setFriendsLoading(false);
       setNotificationsLoading(false);
       return;
@@ -160,12 +183,18 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
       setUnreadCount(count);
     });
 
+    // Tournament invite listeners
+    const unsubReceivedInvites = listenReceivedInvites(user.uid, setReceivedInvites);
+    const unsubSentInvites = listenSentInvites(user.uid, setSentInvites);
+
     return () => {
       unsubFriends();
       unsubIncoming();
       unsubOutgoing();
       unsubNotifications();
       unsubUnreadCount();
+      unsubReceivedInvites();
+      unsubSentInvites();
     };
   }, [user]);
 
@@ -226,10 +255,27 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     await markAllAsReadService(user.uid);
   };
 
+  const acceptInvite = async (inviteId: string): Promise<string> => {
+    if (!user) throw new Error('User not authenticated');
+    return acceptInviteService(inviteId);
+  };
+
+  const rejectInvite = async (inviteId: string): Promise<void> => {
+    if (!user) throw new Error('User not authenticated');
+    return rejectInviteService(inviteId);
+  };
+
+  const cancelInvite = async (inviteId: string): Promise<void> => {
+    if (!user) throw new Error('User not authenticated');
+    return cancelInviteService(inviteId);
+  };
+
   const refreshFriends = () => {
     // The listeners will automatically refresh, but this can be used to force a manual check
     setFriendsLoading(true);
   };
+
+  const pendingInviteCount = receivedInvites.filter((i) => i.status === 'pending').length;
 
   return (
     <SocialContext.Provider
@@ -238,6 +284,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         incomingRequests,
         outgoingRequests,
         friendsLoading,
+        receivedInvites,
+        sentInvites,
+        pendingInviteCount,
         notifications,
         unreadCount,
         notificationsLoading,
@@ -249,6 +298,9 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         getFriendshipStatus: checkFriendshipStatus,
         markAsRead,
         markAllAsRead,
+        acceptInvite,
+        rejectInvite,
+        cancelInvite,
         refreshFriends,
       }}
     >

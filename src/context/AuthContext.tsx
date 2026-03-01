@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, ReactNode } from
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { signIn as signInService, signUp as signUpService, signOutUser as signOutService, SignUpData } from '../services/authService';
+import { ensureUserProfile } from '../services/userService';
 
 interface AuthContextType {
   user: User | null;
@@ -19,6 +20,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        // Fire-and-forget — creates/patches /users/{uid} and /publicProfiles/{uid}
+        // for legacy accounts that were created before these collections existed.
+        ensureUserProfile(currentUser.uid).catch(() => {});
+      }
       setUser(currentUser);
       setLoading(false);
     });

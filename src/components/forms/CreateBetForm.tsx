@@ -165,6 +165,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
       contentContainerStyle={{ paddingBottom: Spacing.xl }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets={true}
     >
       <View style={styles.content}>
         <View style={styles.header}>

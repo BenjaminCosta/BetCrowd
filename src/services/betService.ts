@@ -357,10 +357,9 @@ export const upsertMyPick = async (
       newTotalPot += stakeAmount;
       newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
 
-      // Auto-transition pending -> open when a second option gets a pick
-      const optionsWithPicks = Object.values(newOptionTotals).filter((v) => v > 0).length;
-      const statusTransition =
-        bet.status === 'pending' && optionsWithPicks >= 2 ? { status: 'open' as const } : {};
+      // Recalculate status: pending ↔ open based on how many sides now have picks
+      const newStatus = computeBetStatusFromOptionTotals(bet.status, newOptionTotals);
+      const statusTransition = newStatus !== bet.status ? { status: newStatus } : {};
 
       // Update bet with new totals
       transaction.update(betRef, {
@@ -447,11 +446,8 @@ export const upsertMyPick = async (
           newTotalPot = Math.max(0, newTotalPot + stakeAmount);
           newOptionTotals[selectionKey] = (newOptionTotals[selectionKey] || 0) + stakeAmount;
 
-          const fallbackOptionsWithPicks = Object.values(newOptionTotals).filter((v) => v > 0).length;
-          const fallbackStatusTransition =
-            currentBet.status === 'pending' && fallbackOptionsWithPicks >= 2
-              ? { status: 'open' as const }
-              : {};
+          const newStatus = computeBetStatusFromOptionTotals(currentBet.status, newOptionTotals);
+          const fallbackStatusTransition = newStatus !== currentBet.status ? { status: newStatus } : {};
 
           await updateDoc(betRef, {
             ...fallbackStatusTransition,
@@ -559,7 +555,11 @@ export const deleteMyPick = async (
         (newOptionTotals[selectionKey] || 0) - previousPick.stakeAmount,
       );
 
+      const newStatus = computeBetStatusFromOptionTotals(bet.status, newOptionTotals);
+      const deleteStatusTransition = newStatus !== bet.status ? { status: newStatus } : {};
+
       transaction.update(betRef, {
+        ...deleteStatusTransition,
         totalPot: newTotalPot,
         totalPicks: newTotalPicks,
         optionTotals: newOptionTotals,
@@ -599,7 +599,10 @@ export const deleteMyPick = async (
             0,
             (newOptionTotals[selectionKey] || 0) - (previousPick.stakeAmount || 0),
           );
+          const newStatus = computeBetStatusFromOptionTotals(currentBet.status, newOptionTotals);
+          const deleteStatusTransition = newStatus !== currentBet.status ? { status: newStatus } : {};
           await updateDoc(betRef, {
+            ...deleteStatusTransition,
             totalPot: newTotalPot,
             totalPicks: newTotalPicks,
             optionTotals: newOptionTotals,
@@ -621,6 +624,20 @@ export const deleteMyPick = async (
   } catch {
     // Ignore index cleanup errors
   }
+};
+
+/**
+ * Recompute bet status from current optionTotals.
+ * Only transitions between 'pending' and 'open'.
+ * Leaves 'locked', 'settled', and 'cancelled' untouched.
+ */
+export const computeBetStatusFromOptionTotals = (
+  currentStatus: Bet['status'],
+  optionTotals: Record<string, number>,
+): Bet['status'] => {
+  if (currentStatus !== 'pending' && currentStatus !== 'open') return currentStatus;
+  const sidesWithPicks = Object.values(optionTotals).filter((v) => v > 0).length;
+  return sidesWithPicks >= 2 ? 'open' : 'pending';
 };
 
 /**
@@ -659,30 +676,55 @@ export const calculateOdds = (bet: Bet, fee: number = 0.05): Record<string, stri
 
 /**
  * Calculate estimated odds for a specific option INCLUDING the user's own stake.
- * Use this in the confirmation modal to show "with your bet" odds.
- * Returns '—' for pending bets (market not formed yet).
+ * Correctly handles the edit scenario by first undoing the existing pick, then
+ * applying the new one — matching exactly what upsertMyPick writes to Firestore.
+ *
+ * @param existingPickOption - The option key of the user's current pick (if editing).
+ * @param existingPickStake  - The stake of the user's current pick (if editing).
  */
 export const calculateEstimatedOdds = (
   bet: Bet,
   selectedOption: string,
   stakeAmount: number,
+  existingPickOption?: string | null,
+  existingPickStake?: number,
   fee: number = 0.05,
 ): string => {
-  if (bet.status === 'pending') return '—';
-  if (stakeAmount <= 0) return calculateOdds(bet, fee)[selectedOption] ?? '—';
+  const hasExistingPick = !!existingPickOption && (existingPickStake ?? 0) > 0;
 
-  const totalPotActual = bet.totalPot || 0;
-  const optionTotalsActual = bet.optionTotals?.[selectedOption] || 0;
+  // Free-stake: no amount entered yet — fall back to current odds
+  if (stakeAmount <= 0 && !hasExistingPick) {
+    return calculateOdds(bet, fee)[selectedOption] ?? '—';
+  }
 
-  const newPot = totalPotActual + stakeAmount;
-  const newOptionTotal = optionTotalsActual + stakeAmount;
+  // Project new state, mirroring upsertMyPick's transaction logic exactly
+  let newPot = bet.totalPot || 0;
+  const newOptionTotals: Record<string, number> = { ...(bet.optionTotals || {}) };
 
+  // Step 1: undo existing pick (edit scenario)
+  if (hasExistingPick) {
+    newPot = Math.max(0, newPot - existingPickStake!);
+    newOptionTotals[existingPickOption!] = Math.max(
+      0,
+      (newOptionTotals[existingPickOption!] || 0) - existingPickStake!,
+    );
+  }
+
+  // Step 2: apply new pick
+  if (stakeAmount > 0) {
+    newPot += stakeAmount;
+    newOptionTotals[selectedOption] = (newOptionTotals[selectedOption] || 0) + stakeAmount;
+  }
+
+  // Market must have picks on at least 2 different sides to produce real odds
+  const sidesWithPicks = Object.values(newOptionTotals).filter((v) => v > 0).length;
+  if (sidesWithPicks < 2) return '—';
+
+  const newOptionTotal = newOptionTotals[selectedOption] || 0;
   if (newOptionTotal <= 0) return '—';
 
   const effectivePot = newPot * (1 - fee);
-  const odds = effectivePot / newOptionTotal;
-  const cappedOdds = Math.min(odds, 99.99);
-  return cappedOdds.toFixed(2);
+  return Math.min(effectivePot / newOptionTotal, 99.99).toFixed(2);
 };
 
 // ─── Bet Status Helpers ───────────────────────────────────────────────────────

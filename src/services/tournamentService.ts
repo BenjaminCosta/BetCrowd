@@ -145,6 +145,8 @@ export const createTournament = async (input: CreateTournamentInput): Promise<{ 
         transaction.set(inviteCodeRef, {
           tournamentId,
           ownerId: user.uid,
+          name: input.name,
+          memberPreviews: [{ uid: user.uid, displayName: user.displayName || 'Usuario' }],
           createdAt: serverTimestamp(),
         });
 
@@ -218,6 +220,24 @@ export const joinTournamentByInviteCode = async (code: string): Promise<string> 
     inviteCode: tournamentData.inviteCode,
     status: tournamentData.status,
   });
+
+  // ── Step 6: Append new member preview to the inviteCodes doc (best-effort, rules-guarded) ────
+  // The inviteCodes rule allows members to update only the memberPreviews field.
+  try {
+    const codeRef = doc(db, 'inviteCodes', upperCode);
+    const codeSnap = await getDoc(codeRef);
+    if (codeSnap.exists()) {
+      const existing: { uid: string; displayName: string }[] =
+        codeSnap.data().memberPreviews ?? [];
+      const merged = [
+        ...existing.filter((m) => m.uid !== user.uid),
+        { uid: user.uid, displayName: user.displayName || 'Usuario' },
+      ].slice(0, 5);
+      await setDoc(codeRef, { memberPreviews: merged }, { merge: true });
+    }
+  } catch {
+    // Best-effort — never fail the join if preview update errors
+  }
 
   return tournamentId;
 };
@@ -450,21 +470,34 @@ const syncDenormalizedData = async (
   tournamentId: string,
   updates: Partial<Pick<TournamentRef, 'name' | 'format' | 'contribution' | 'participantsEstimated' | 'inviteCode' | 'status'>>
 ): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  // Always update the current user's own ref (guaranteed to succeed)
   try {
-    // Get all members
+    const myRef = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
+    await setDoc(myRef, updates, { merge: true });
+  } catch {
+    // Current user might not have a ref yet (edge case)
+  }
+
+  // Best-effort: try updating other members' refs.
+  // This will only succeed for the current user's own doc (already done above)
+  // and may fail for others due to rules — that's OK. Their refs will self-heal
+  // when they next load their tournaments via listMyTournaments/listenMyTournamentRefs.
+  try {
     const membersRef = collection(db, 'tournaments', tournamentId, 'members');
     const membersSnapshot = await getDocs(membersRef);
 
-    // Update each member's tournamentRef
-    const updatePromises = membersSnapshot.docs.map(memberDoc => {
-      const userId = memberDoc.id;
-      const userTournamentRef = doc(db, 'users', userId, 'tournamentRefs', tournamentId);
-      return setDoc(userTournamentRef, updates, { merge: true });
-    });
-
-    await Promise.all(updatePromises);
-  } catch (error) {
-    console.error('Error syncing denormalized data:', error);
+    const otherMembers = membersSnapshot.docs.filter((d) => d.id !== user.uid);
+    await Promise.allSettled(
+      otherMembers.map((memberDoc) => {
+        const userTournamentRef = doc(db, 'users', memberDoc.id, 'tournamentRefs', tournamentId);
+        return setDoc(userTournamentRef, updates, { merge: true });
+      })
+    );
+  } catch {
+    // Silent — self-healing in listenMyTournamentRefs covers stale refs
   }
 };
 
@@ -585,8 +618,10 @@ export const archiveTournament = async (tournamentId: string): Promise<void> => 
       { merge: true }
     );
 
-    // Sync status to all members
-    await syncDenormalizedData(tournamentId, { status: 'archived' });
+    // Update only the current user's own tournamentRef.
+    // Other members will see status='archived' from the main tournament doc.
+    const myRefDoc = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
+    await setDoc(myRefDoc, { status: 'archived' }, { merge: true }).catch(() => {});
   } catch (error: any) {
     throw new Error(error.message || 'No se pudo archivar el torneo');
   }
@@ -604,6 +639,7 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
   }
 
   try {
+    // 1. Mark tournament as deleted
     const tournamentRef = doc(db, 'tournaments', tournamentId);
     await setDoc(
       tournamentRef,
@@ -616,8 +652,30 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
       { merge: true }
     );
 
-    // Sync status to all members' tournamentRefs
-    await syncDenormalizedData(tournamentId, { status: 'deleted' });
+    // 2. Update only the current user's own tournamentRef
+    //    (Rules only allow writing to your own /users/{uid}/ subcollection.)
+    //    Other members will see status='deleted' from the main tournament doc.
+    const myRefDoc = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
+    await setDoc(myRefDoc, { status: 'deleted' }, { merge: true }).catch(() => {});
+
+    // 3. Best-effort: cancel any pending invitations for this tournament
+    try {
+      const pendingInvites = await getDocs(
+        query(
+          collection(db, 'tournamentInvites'),
+          where('tournamentId', '==', tournamentId),
+          where('fromUid', '==', user.uid),
+          where('status', '==', 'pending'),
+        )
+      );
+      await Promise.all(
+        pendingInvites.docs.map((d) =>
+          setDoc(d.ref, { status: 'cancelled', updatedAt: serverTimestamp() }, { merge: true })
+        )
+      );
+    } catch {
+      // Best-effort — never fail the delete if invite cancellation errors
+    }
   } catch (error: any) {
     throw new Error(error.message || 'No se pudo eliminar el torneo');
   }

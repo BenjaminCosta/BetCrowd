@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { isEventToday, getEventBadgeLabel } from '../utils/formatters';
-import { Bet, calculateOdds } from '../services/betService';
+import { Bet, calculateOdds, calculateEstimatedOdds } from '../services/betService';
 import { Event } from '../services/eventService';
 
 const { width } = Dimensions.get('window');
@@ -35,7 +35,19 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
 }) => {
   const colors = Colors[theme];
   // Pending bets show no odds numbers (market not formed)
-  const odds = showOdds && bet.status !== 'pending' ? calculateOdds(bet) : {};
+  const baseOdds = showOdds && bet.status !== 'pending' ? calculateOdds(bet) : {};
+  // For open fixed-stake bets: fill in '—' slots with projected odds (what the
+  // confirmation modal would show), so card and modal are consistent.
+  const odds: Record<string, string> = (
+    bet.status === 'open' && bet.stakeType === 'fixed' && (bet.stakeAmount ?? 0) > 0
+      ? Object.fromEntries(
+          Object.entries(baseOdds).map(([opt, val]) => [
+            opt,
+            val === '\u2014' ? calculateEstimatedOdds(bet, opt, bet.stakeAmount ?? 0) : val,
+          ]),
+        )
+      : baseOdds
+  );
   const [showPendingTip, setShowPendingTip] = useState(false);
   const infoButtonRef = useRef<any>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, btnW: 0 });

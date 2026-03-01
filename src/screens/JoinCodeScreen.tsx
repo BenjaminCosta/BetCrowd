@@ -1,33 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
+import TournamentPreviewSheet from './tournament/components/TournamentPreviewSheet';
+import { getTournamentCodePreview, TournamentCodePreview } from '../services/inviteService';
 
 const JoinCodeScreen = ({ navigation }: any) => {
   const [code, setCode] = useState('');
+  const [validating, setValidating] = useState(false);
+  const [codePreview, setCodePreview] = useState<TournamentCodePreview | null>(null);
+  const [showPreviewSheet, setShowPreviewSheet] = useState(false);
   const { theme } = useTheme();
   const colors = Colors[theme];
 
-  const handleJoin = () => {
-    if (!code.trim()) {
-      return;
+  const handleValidateCode = async () => {
+    const trimmed = code.trim().toUpperCase();
+    if (trimmed.length < 6) return;
+
+    Keyboard.dismiss(); // dismiss before any setState
+    setValidating(true);
+    try {
+      const preview = await getTournamentCodePreview(trimmed);
+      if (!preview) {
+        Alert.alert('Código inválido', 'No se encontró ningún torneo con ese código.');
+        return;
+      }
+      setShowPreviewSheet(false); // explicit reset
+      setCodePreview(preview);    // payload set → useEffect below fires
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'No se pudo verificar el código');
+    } finally {
+      setValidating(false);
     }
-    // Lógica para unirse al torneo
-    navigation.navigate('Tournament', { inviteCode: code.trim() });
+  };
+
+  // Two-step open: same pattern as CreateTournamentScreen — wait for all
+  // pending interactions before presenting the Modal.
+  useEffect(() => {
+    if (!codePreview) return;
+    Keyboard.dismiss();
+    const task = InteractionManager.runAfterInteractions(() => {
+      setShowPreviewSheet(true);
+    });
+    return () => task.cancel();
+  }, [codePreview]);
+
+  const handleJoinSuccess = (tournamentId: string) => {
+    setShowPreviewSheet(false);
+    navigation.navigate('Tournament', { tournamentId });
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar showBackButton />
-      
+
       <View style={styles.content}>
         <Text style={[styles.title, { color: colors.foreground }]}>
           Unirse con Código
@@ -51,21 +89,38 @@ const JoinCodeScreen = ({ navigation }: any) => {
             maxLength={8}
           />
 
-          <TouchableOpacity onPress={handleJoin} disabled={code.length < 6}>
+          <TouchableOpacity
+            onPress={handleValidateCode}
+            disabled={code.trim().length < 6 || validating}
+          >
             <LinearGradient
               colors={Gradients.primary as any}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={[
                 styles.joinButton,
-                code.length < 6 && { opacity: 0.5 },
+                (code.trim().length < 6 || validating) && { opacity: 0.5 },
               ]}
             >
-              <Text style={styles.joinButtonText}>Unirse al Torneo</Text>
+              {validating ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.joinButtonText}>Continuar</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* key forces a fresh Animated.Value each time the user previews a tournament */}
+      <TournamentPreviewSheet
+        key={`preview-${codePreview?.tournamentId ?? 'empty'}`}
+        visible={showPreviewSheet}
+        onClose={() => setShowPreviewSheet(false)}
+        mode="join"
+        codePreview={codePreview}
+        onSuccess={handleJoinSuccess}
+      />
     </View>
   );
 };

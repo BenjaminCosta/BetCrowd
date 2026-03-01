@@ -8,8 +8,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   FlatList,
-  Modal,
-  TextInput,
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,12 +20,13 @@ import { SwipeableRow } from '../../components/BetanoComponents';
 import { SheetModal } from '../../components/SheetModal';
 import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
 import JoinCodeForm from '../../components/forms/JoinCodeForm';
+import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTournaments } from '../../context/TournamentsContext';
 import { getUserProfile } from '../../services/userService';
-import { getTournamentMemberCount } from '../../services/tournamentService';
-import { Event, listenEvents } from '../../services/eventService';
+import { getTournamentMemberCount, listMyTournaments } from '../../services/tournamentService';
+import { Event, listenEvents, listEvents } from '../../services/eventService';
 import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds, listenBetPicks } from '../../services/betService';
 import { isEventToday, getEventBadgeLabel } from '../../utils/formatters';
 
@@ -77,6 +76,8 @@ interface UserBetInfo {
   tournamentId: string;
   status: string;
   pickSelection?: string;
+  stakeAmount?: number;
+  eventStartsAt?: number; // millis, used for sorting
 }
 
 // Carousel layout constants
@@ -104,6 +105,8 @@ const HomeScreen = ({ navigation }: any) => {
   const [confirmingBet, setConfirmingBet] = useState(false);
   const [betFeedback, setBetFeedback] = useState<string>('');
   const [selectedCurrentPick, setSelectedCurrentPick] = useState<string | null>(null);
+  const [modalBet, setModalBet] = useState<Bet | null>(null);
+  const [modalCurrentPickStake, setModalCurrentPickStake] = useState<number>(0);
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
   const [showCreateTournamentSheet, setShowCreateTournamentSheet] = useState(false);
   const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
@@ -140,7 +143,9 @@ const HomeScreen = ({ navigation }: any) => {
 
   const loadParticipantCounts = async () => {
     const counts: Record<string, number> = {};
-    for (const tournament of tournaments.slice(0, 2)) {
+    // Must use the same filter+slice as the render so counts align with the
+    // tournaments actually displayed on screen.
+    for (const tournament of tournaments.filter(t => t.status !== 'deleted').slice(0, 2)) {
       try {
         const count = await getTournamentMemberCount(tournament.id);
         counts[tournament.id] = count;
@@ -173,25 +178,19 @@ const HomeScreen = ({ navigation }: any) => {
   const loadTodayEvents = async () => {
     if (tournaments.length === 0) return;
     setLoadingEvents(true);
-    
+
     try {
       const allEvents: EventWithTournament[] = [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayStr = new Date().toISOString().split('T')[0];
 
-      // Load events from active tournaments only (exclude soft-deleted)
-      const tournamentsToCheck = tournaments.filter(t => t.status !== 'deleted').slice(0, 5);
-      
+      // Check every non-deleted tournament — no arbitrary slice
+      const tournamentsToCheck = tournaments.filter(t => t.status !== 'deleted');
+
       await Promise.all(
         tournamentsToCheck.map(async (tournament) => {
           try {
-            const eventsRef = await import('../../services/eventService');
-            const events = await eventsRef.listEvents(tournament.id);
-            
+            const events = await listEvents(tournament.id);
             events.forEach((event) => {
-              // Filter: upcoming or live events
               if (event.status === 'upcoming' || event.status === 'live') {
                 allEvents.push({
                   ...event,
@@ -206,17 +205,25 @@ const HomeScreen = ({ navigation }: any) => {
         })
       );
 
-      // Sort by status (live first) and then by date
+      // Sort: 1) live  2) today (event.date === today)  3) upcoming by startsAt
       allEvents.sort((a, b) => {
-        if (a.status === 'live' && b.status !== 'live') return -1;
-        if (a.status !== 'live' && b.status === 'live') return 1;
-        if (a.startsAt && b.startsAt) {
-          return a.startsAt.toMillis() - b.startsAt.toMillis();
-        }
+        const aLive = a.status === 'live';
+        const bLive = b.status === 'live';
+        if (aLive && !bLive) return -1;
+        if (!aLive && bLive) return 1;
+
+        const aToday = a.date === todayStr;
+        const bToday = b.date === todayStr;
+        if (aToday && !bToday) return -1;
+        if (!aToday && bToday) return 1;
+
+        if (a.startsAt && b.startsAt) return a.startsAt.toMillis() - b.startsAt.toMillis();
+        if (a.startsAt) return -1;
+        if (b.startsAt) return 1;
         return 0;
       });
 
-      // For each event, find the primary bet (open first, then locked)
+      // For each event, find the primary bet (open/pending first, then locked)
       const eventsWithBets = await Promise.all(
         allEvents.map(async (event) => {
           try {
@@ -230,7 +237,7 @@ const HomeScreen = ({ navigation }: any) => {
         })
       );
 
-      const eventsToShow = eventsWithBets.slice(0, 5);
+      const eventsToShow = eventsWithBets;
       setTodayEvents(eventsToShow);
 
       // Refresh picks listeners for the new event list
@@ -267,72 +274,60 @@ const HomeScreen = ({ navigation }: any) => {
   };
 
   const loadUserBets = async () => {
-    if (!user || tournaments.length === 0) return;
-
+    if (!user) return;
     try {
-      const { listEvents } = await import('../../services/eventService');
-      const { listBets, getMyPick } = await import('../../services/betService');
-      const uid = user.uid;
+      // Mirror TournamentPredictionsScreen: query every tournament the user belongs to,
+      // then walk every event/bet to find picks on bets that are not yet settled/cancelled.
+      const allTournaments = await listMyTournaments();
+      const found: UserBetInfo[] = [];
 
-      // Fetch all events for the first 3 active tournaments in parallel
-      const tournamentsToCheck = tournaments.filter(t => t.status !== 'deleted').slice(0, 3);
-      const eventsByTournament = await Promise.allSettled(
-        tournamentsToCheck.map(async (tournament) => ({
-          tournament,
-          events: await listEvents(tournament.id),
-        }))
+      await Promise.allSettled(
+        allTournaments
+          .filter((t) => t.status !== 'deleted')
+          .map(async (t) => {
+            try {
+              const events = await listEvents(t.id);
+              await Promise.allSettled(
+                events.map(async (event) => {
+                  try {
+                    const bets = await listBets(t.id, event.id);
+                    await Promise.allSettled(
+                      bets.map(async (bet) => {
+                        // APUESTAS ABIERTAS = only truly open bets (2 sides with picks, market active)
+                        if (bet.status !== 'open') return;
+                        try {
+                          const pick = await getMyPick(t.id, event.id, bet.id, user.uid);
+                          if (!pick) return;
+                          found.push({
+                            eventId: event.id,
+                            betId: bet.id,
+                            eventTitle: event.title,
+                            tournamentName: t.name,
+                            tournamentId: t.id,
+                            status: bet.status,
+                            pickSelection: typeof pick.selection === 'string'
+                              ? pick.selection
+                              : JSON.stringify(pick.selection),
+                            stakeAmount: pick.stakeAmount,
+                            eventStartsAt: event.startsAt ? event.startsAt.toMillis() : undefined,
+                          });
+                        } catch { /* no pick for this bet, skip */ }
+                      }),
+                    );
+                  } catch { /* no bets for this event, skip */ }
+                }),
+              );
+            } catch { /* no events for this tournament, skip */ }
+          }),
       );
 
-      // Fetch bets for first 3 events of each tournament in parallel
-      const betTasks = eventsByTournament
-        .filter(
-          (r): r is PromiseFulfilledResult<{ tournament: any; events: any[] }> =>
-            r.status === 'fulfilled'
-        )
-        .flatMap(({ value: { tournament, events } }) =>
-          events.slice(0, 3).map(async (event) => ({
-            tournament,
-            event,
-            bets: await listBets(tournament.id, event.id),
-          }))
-        );
-
-      const betResults = await Promise.allSettled(betTasks);
-
-      // Fetch picks for all open/locked bets in parallel
-      const pickTasks = betResults
-        .filter(
-          (r): r is PromiseFulfilledResult<{ tournament: any; event: any; bets: any[] }> =>
-            r.status === 'fulfilled'
-        )
-        .flatMap(({ value: { tournament, event, bets } }) =>
-          bets
-            .filter((b) => b.status === 'open' || b.status === 'pending')
-            .map(async (bet) => {
-              const pick = await getMyPick(tournament.id, event.id, bet.id, uid);
-              if (!pick) return null;
-              return {
-                eventId: event.id,
-                betId: bet.id,
-                eventTitle: event.title,
-                tournamentName: tournament.name,
-                tournamentId: tournament.id,
-                status: bet.status,
-                pickSelection:
-                  typeof pick.selection === 'string'
-                    ? pick.selection
-                    : JSON.stringify(pick.selection),
-              } as UserBetInfo;
-            })
-        );
-
-      const pickResults = await Promise.allSettled(pickTasks);
-      const found = pickResults
-        .filter(
-          (r): r is PromiseFulfilledResult<UserBetInfo> =>
-            r.status === 'fulfilled' && r.value !== null
-        )
-        .map((r) => r.value);
+      // Sort by soonest event first so the most immediate open bets appear first
+      found.sort((a, b) => {
+        if (a.eventStartsAt && b.eventStartsAt) return a.eventStartsAt - b.eventStartsAt;
+        if (a.eventStartsAt) return -1;
+        if (b.eventStartsAt) return 1;
+        return 0;
+      });
 
       setUserBets(found.slice(0, 3));
     } catch (error) {
@@ -340,32 +335,31 @@ const HomeScreen = ({ navigation }: any) => {
     }
   };
 
-  const handleOddPress = (event: EventWithTournament, option: string, betId: string, oddValue: string) => {
+  const handleOddPress = (event: EventWithTournament, option: string, bet: Bet, oddValue: string) => {
     setSelectedEvent(event);
     setSelectedOption(option);
-    setSelectedBetId(betId);
+    setModalBet(bet);
     setSelectedOdd(oddValue);
     setBetFeedback('');
     setBetAmount('');
-    const existingBet = userBets.find((b) => b.eventId === event.id && b.betId === betId);
+    const existingBet = userBets.find((b) => b.eventId === event.id && b.betId === bet.id);
     setSelectedCurrentPick(existingBet?.pickSelection ?? null);
+    setModalCurrentPickStake(existingBet?.stakeAmount ?? 0);
     setShowQuickBetModal(true);
   };
 
   const handleConfirmBet = async () => {
-    if (!user || !selectedEvent || !selectedBetId || !selectedOption) return;
+    if (!user || !selectedEvent || !modalBet || !selectedOption) return;
     setConfirmingBet(true);
     setBetFeedback('');
     try {
-      const bet = selectedEvent.primaryBet;
-      // Si es fixed usar stakeAmount del bet, si es free usar el monto ingresado
-      const stakeAmount = (bet?.stakeType === 'fixed')
-        ? (bet?.stakeAmount ?? 0)
+      const stakeAmount = (modalBet.stakeType === 'fixed')
+        ? (modalBet.stakeAmount ?? 0)
         : (parseFloat(betAmount) || 0);
       await upsertMyPick(
         selectedEvent.tournamentId,
         selectedEvent.id,
-        selectedBetId,
+        modalBet.id,
         user.uid,
         selectedOption,
         stakeAmount
@@ -490,7 +484,7 @@ const HomeScreen = ({ navigation }: any) => {
               borderColor: isSelected ? colors.primary : colors.border,
             }
           ]}
-          onPress={() => canPress && handleOddPress(item, option, primaryBet!.id, oddVal)}
+          onPress={() => canPress && handleOddPress(item, option, primaryBet!, oddVal)}
           activeOpacity={canPress ? 0.7 : 1}
           disabled={!canPress}
         >
@@ -586,17 +580,18 @@ const HomeScreen = ({ navigation }: any) => {
               snapToInterval={CARD_WIDTH + CARD_GAP}
               snapToAlignment="start"
               decelerationRate="fast"
+              extraData={userBets}
             />
           )}
 
-          {/* BLOQUE 2: APUESTAS ACTIVAS */}
+          {/* BLOQUE 2: APUESTAS ABIERTAS */}
           {userBets.length > 0 && (
             <>
               <View style={[styles.sectionHeader, { marginTop: 32 }]}>
                 <View style={styles.sectionTitleContainer}>
                   <Ionicons name="stats-chart" size={20} color={colors.primary} />
                   <Text style={[styles.sectionTitleCaps, { color: colors.foreground }]}>
-                    APUESTAS ACTIVAS
+                    APUESTAS ABIERTAS
                   </Text>
                 </View>
                 <TouchableOpacity 
@@ -647,12 +642,17 @@ const HomeScreen = ({ navigation }: any) => {
                       </View>
                       <View style={[
                         styles.betStatusBadge,
-                        { backgroundColor:
-                          bet.status === 'pending' ? '#8B8D9720' :
-                          bet.status === 'open' ? colors.success : colors.warning  }
+                        { backgroundColor: bet.status === 'pending'
+                            ? colors.warning
+                            : bet.status === 'locked'
+                            ? colors.muted
+                            : colors.success }
                       ]}>
-                        <Text style={styles.betStatusText}>
-                          {bet.status === 'pending' ? 'PENDIENTE' : bet.status === 'open' ? 'ABIERTA' : 'CERRADA'}
+                        <Text style={[
+                          styles.betStatusText,
+                          bet.status === 'locked' && { color: colors.mutedForeground }
+                        ]}>
+                          {bet.status === 'pending' ? 'PENDIENTE' : bet.status === 'locked' ? 'CERRADA' : 'ABIERTA'}
                         </Text>
                       </View>
                     </View>
@@ -802,161 +802,29 @@ const HomeScreen = ({ navigation }: any) => {
         </View>
       </ScrollView>
 
-      {/* Quick Bet Modal */}
-      <Modal
+      {/* Bet confirmation modal — uses calculateEstimatedOdds internally */}
+      <BetModal
         visible={showQuickBetModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowQuickBetModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalBackground}
-            activeOpacity={1}
-            onPress={() => setShowQuickBetModal(false)}
-          />
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                Confirmar apuesta
-              </Text>
-              <TouchableOpacity 
-                onPress={() => setShowQuickBetModal(false)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={24} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-
-            {selectedEvent && (() => {
-              const amountNum = parseFloat(betAmount) || 0;
-              const estimatedGain = amountNum * (parseFloat(selectedOdd) || 0);
-              const isFreeStake = selectedEvent.primaryBet?.stakeType !== 'fixed';
-              const alreadySelected = !!selectedCurrentPick && selectedCurrentPick === selectedOption;
-
-              return (
-                <>
-                  {/* Evento info */}
-                  <View style={styles.modalEventInfo}>
-                    <Text style={[styles.modalEventTitle, { color: colors.foreground }]} numberOfLines={1}>
-                      {selectedEvent.homeTeam && selectedEvent.awayTeam
-                        ? `${selectedEvent.homeTeam} vs ${selectedEvent.awayTeam}`
-                        : selectedEvent.title}
-                    </Text>
-                    <Text style={[styles.modalBetType, { color: colors.mutedForeground }]} numberOfLines={1}>
-                      {selectedEvent.primaryBet?.title ?? 'Apuesta'}
-                    </Text>
-                    <Text style={[styles.modalEventTournament, { color: colors.mutedForeground }]} numberOfLines={1}>
-                      {selectedEvent.tournamentName}
-                    </Text>
-                  </View>
-
-                  {/* Opción + cuota seleccionada */}
-                  <View style={[styles.modalOddContainer, { backgroundColor: colors.muted }]}>
-                    <View style={styles.modalOddRow}>
-                      <View>
-                        <Text style={[styles.modalOddLabel, { color: colors.mutedForeground }]}>
-                          Tu selección
-                        </Text>
-                        <Text style={[styles.modalOptionText, { color: colors.foreground }]}>
-                          {selectedOption}
-                        </Text>
-                      </View>
-                      <Text style={[styles.modalOddValue, { color: colors.foreground }]}>
-                        {selectedOdd}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Input de monto (solo si stakeType es libre) */}
-                  {isFreeStake ? (
-                    <View style={styles.modalAmountSection}>
-                      <Text style={[styles.modalAmountLabel, { color: colors.mutedForeground }]}>
-                        Monto a apostar
-                      </Text>
-                      <View style={[styles.modalAmountInputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                        <Text style={[styles.modalAmountCurrency, { color: colors.mutedForeground }]}>$</Text>
-                        <TextInput
-                          style={[styles.modalAmountInput, { color: colors.foreground }]}
-                          value={betAmount}
-                          onChangeText={setBetAmount}
-                          keyboardType="numeric"
-                          placeholder="0"
-                          placeholderTextColor={colors.mutedForeground}
-                          maxLength={10}
-                        />
-                      </View>
-                      {/* Ganancia estimada */}
-                      {amountNum > 0 && (
-                        <View style={styles.modalGainRow}>
-                          <Text style={[styles.modalGainLabel, { color: colors.mutedForeground }]}>
-                            Ganancia estimada
-                          </Text>
-                          <Text style={[styles.modalGainValue, { color: colors.success }]}>
-                            ${estimatedGain.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  ) : (
-                    /* Stake fijo: solo mostrar monto y ganancia */
-                    <View style={styles.modalAmountSection}>
-                      <View style={styles.modalGainRow}>
-                        <Text style={[styles.modalGainLabel, { color: colors.mutedForeground }]}>
-                          Monto fijo
-                        </Text>
-                        <Text style={[styles.modalGainValue, { color: colors.foreground }]}>
-                          ${(selectedEvent.primaryBet?.stakeAmount ?? 0).toLocaleString('es-AR')}
-                        </Text>
-                      </View>
-                      {(selectedEvent.primaryBet?.stakeAmount ?? 0) > 0 && (
-                        <View style={styles.modalGainRow}>
-                          <Text style={[styles.modalGainLabel, { color: colors.mutedForeground }]}>
-                            Ganancia estimada
-                          </Text>
-                          <Text style={[styles.modalGainValue, { color: colors.success }]}>
-                            ${((selectedEvent.primaryBet?.stakeAmount ?? 0) * (parseFloat(selectedOdd) || 0)).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* Feedback */}
-                  {betFeedback !== '' && (
-                    <Text style={[
-                      styles.betFeedbackText,
-                      { color: betFeedback.startsWith('¡') ? colors.success : colors.destructive }
-                    ]}>
-                      {betFeedback}
-                    </Text>
-                  )}
-
-                  {/* Botón rojo primary */}
-                  <TouchableOpacity
-                    style={[styles.modalConfirmButton, { backgroundColor: colors.primary, opacity: (confirmingBet || alreadySelected) ? 0.45 : 1 }]}
-                    onPress={handleConfirmBet}
-                    activeOpacity={0.8}
-                    disabled={confirmingBet || alreadySelected}
-                  >
-                    {confirmingBet ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : alreadySelected ? (
-                      <Text style={styles.modalConfirmText}>Ya apostaste esta opción</Text>
-                    ) : (
-                      <Text style={styles.modalConfirmText}>Apostar ahora</Text>
-                    )}
-                  </TouchableOpacity>
-                </>
-              );
-            })()}
-          </View>
-        </View>
-      </Modal>
+        bet={modalBet}
+        event={selectedEvent}
+        option={selectedOption}
+        odd={selectedOdd}
+        betAmount={betAmount}
+        setBetAmount={setBetAmount}
+        confirmingBet={confirmingBet}
+        betFeedback={betFeedback}
+        onClose={() => { setShowQuickBetModal(false); setBetFeedback(''); }}
+        onConfirm={handleConfirmBet}
+        currentPick={selectedCurrentPick}
+        currentPickStake={modalCurrentPickStake}
+      />
       {/* Create Tournament Sheet */}
       <SheetModal visible={showCreateTournamentSheet} onClose={() => setShowCreateTournamentSheet(false)}>
         <CreateTournamentForm
-          onSuccess={() => { setShowCreateTournamentSheet(false); refresh(); }}
+          onSuccess={(result) => {
+            setShowCreateTournamentSheet(false);
+            navigation.navigate('Tournament', { tournamentId: result.tournamentId, openInviteSheet: true });
+          }}
         />
       </SheetModal>
       {/* Join Code Sheet */}

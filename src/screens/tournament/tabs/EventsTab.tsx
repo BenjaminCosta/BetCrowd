@@ -9,9 +9,9 @@ import {
   Text,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing } from '../../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
-import { Chip, EmptyState } from '../../../components/CommonComponents';
+import { EmptyState } from '../../../components/CommonComponents';
 import { EventCard, SwipeableRow } from '../../../components/BetanoComponents';
 import { Event } from '../../../services/eventService';
 
@@ -77,18 +77,29 @@ const EventsTab: React.FC<EventsTabProps> = ({
         />
       }
     >
-      {/* Filter chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+      {/* Filter tabs */}
+      <View style={styles.filterRow}>
         {EVENT_FILTERS.map((f) => (
-          <Chip
+          <TouchableOpacity
             key={f.key}
-            label={f.label}
-            selected={eventFilter === f.key}
+            style={[
+              styles.filterTab,
+              { backgroundColor: eventFilter === f.key ? colors.primary + '26' : colors.muted },
+            ]}
             onPress={() => onFilterChange(f.key)}
-            style={styles.filterChip}
-          />
+          >
+            <Text
+              style={[
+                styles.filterTabText,
+                { color: eventFilter === f.key ? colors.primary : colors.mutedForeground },
+                eventFilter === f.key && { fontWeight: '700' },
+              ]}
+            >
+              {f.label}
+            </Text>
+          </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       {eventsLoading ? (
         <View style={styles.centeredLoader}>
@@ -175,8 +186,20 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   tabScroll: { flex: 1 },
   tabContent: { padding: Spacing.lg, paddingBottom: 100 },
-  chipRow: { marginBottom: Spacing.lg, height: 40 },
-  filterChip: { marginRight: Spacing.sm },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: Spacing.lg,
+  },
+  filterTab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.full,
+  },
+  filterTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   centeredLoader: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64 },
   adminActionBtn: {
     flexDirection: 'row',

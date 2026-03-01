@@ -78,9 +78,10 @@ const NotificationCenterScreen = ({ navigation }: any) => {
         navigation.navigate('Friends');
         break;
       case 'tournament_invite':
-        if (notification.tournamentId) {
-          navigation.navigate('Tournament', { tournamentId: notification.tournamentId });
-        }
+        // Navigate to InvitationsScreen — the user is NOT a tournament member
+        // yet, so going directly to TournamentScreen would trigger Firestore
+        // "Missing or insufficient permissions" on getTournament / getMemberCount.
+        navigation.navigate('Invitations');
         break;
     }
   };

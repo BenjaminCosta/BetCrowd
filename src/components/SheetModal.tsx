@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Modal,
   Animated,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView, PanGestureHandler, State } from 'react-native-gesture-handler';
@@ -14,7 +14,6 @@ import { useTheme } from '../context/ThemeContext';
 
 // ─── Shared swipe-to-close hook ───────────────────────────────────────────────
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SWIPE_CLOSE_THRESHOLD = 80;
 const VELOCITY_CLOSE_THRESHOLD = 600;
 
@@ -29,8 +28,10 @@ const VELOCITY_CLOSE_THRESHOLD = 600;
  * exit animation plays exactly once.
  */
 export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
+  // Reactive screen height — updates on orientation and foldable device changes.
+  const { height: screenHeight } = useWindowDimensions();
   // Starts off-screen so the entry spring looks natural on first render.
-  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const translateY = useRef(new Animated.Value(screenHeight)).current;
   const isClosingRef = useRef(false);
 
   // Keep a stable ref to avoid stale closures in doClose / onHandlerStateChange.
@@ -41,7 +42,11 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
   useEffect(() => {
     if (visible) {
       isClosingRef.current = false;
-      // Spring in — feels snappy but not bouncy.
+      // Always hard-reset to off-screen BEFORE starting the spring.
+      // Without this, if translateY was left at an intermediate value by a
+      // previous swipe gesture that didn't complete, the sheet would appear
+      // to spring in from that halfway position instead of from the bottom.
+      translateY.setValue(screenHeight);
       Animated.spring(translateY, {
         toValue: 0,
         useNativeDriver: true,
@@ -49,10 +54,12 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
         friction: 12,
       }).start();
     } else {
-      // visible went false externally (form success, etc.) — reset silently.
-      translateY.setValue(SCREEN_HEIGHT);
+      // visible went false — reset position AND closing flag so the NEXT
+      // open starts from a clean state (no "stuck closed" bug).
+      translateY.setValue(screenHeight);
+      isClosingRef.current = false;
     }
-  }, [visible]);
+  }, [visible, screenHeight]);
 
   // ── Programmatic close (backdrop tap, X button, hardware back) ─────────────
   /** Animate the sheet out, then call onClose. Use for ALL user-triggered closes. */
@@ -60,14 +67,15 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
     if (isClosingRef.current) return; // guard against double-calls
     isClosingRef.current = true;
     Animated.timing(translateY, {
-      toValue: SCREEN_HEIGHT,
+      toValue: screenHeight,
       duration: 260,
       useNativeDriver: true,
     }).start(() => {
-      translateY.setValue(SCREEN_HEIGHT);
+      translateY.setValue(screenHeight);
+      isClosingRef.current = false; // reset so a future open on the same instance works
       onCloseRef.current();
     });
-  }, [translateY]);
+  }, [translateY, screenHeight]);
 
   // ── Swipe gesture ──────────────────────────────────────────────────────────
   const onGestureEvent = Animated.event(
@@ -84,11 +92,12 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
         // Velocity-aware duration so fast flicks feel instant.
         const duration = Math.max(100, 220 - Math.floor(velocityY / 10));
         Animated.timing(translateY, {
-          toValue: SCREEN_HEIGHT,
+          toValue: screenHeight,
           duration,
           useNativeDriver: true,
         }).start(() => {
-          translateY.setValue(SCREEN_HEIGHT);
+          translateY.setValue(screenHeight);
+          isClosingRef.current = false; // reset so a future open on the same instance works
           onCloseRef.current();
         });
       } else {
@@ -107,8 +116,8 @@ export const useSwipeToClose = (visible: boolean, onClose: () => void) => {
     transform: [
       {
         translateY: translateY.interpolate({
-          inputRange: [-50, 0, SCREEN_HEIGHT],
-          outputRange: [0, 0, SCREEN_HEIGHT],
+          inputRange: [-50, 0, screenHeight],
+          outputRange: [0, 0, screenHeight],
           extrapolate: 'clamp',
         }),
       },

@@ -281,7 +281,7 @@ export default EditBetForm;
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: Spacing.lg, paddingBottom: 60 },
+  content: { padding: Spacing.lg, paddingBottom: 120 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
   pageHeader: { marginBottom: Spacing.xl },
   pageTitle: { fontSize: 24, fontWeight: '800' },

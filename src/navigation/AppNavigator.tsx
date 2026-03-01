@@ -16,14 +16,9 @@ import HomeScreen from '../screens/main/HomeScreen';
 import TorneosScreen from '../screens/main/TorneosScreen';
 import TournamentPredictionsScreen from '../screens/main/TournamentPredictionsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
-// Screens — create
-import CreateTournamentScreen from '../screens/create/CreateTournamentScreen';
-import CreateEventScreen from '../screens/create/CreateEventScreen';
-import CreateBetScreen from '../screens/create/CreateBetScreen';
 // Screens — edit
 import EditProfileScreen from '../screens/edit/EditProfileScreen';
 import TournamentSettingsScreen from '../screens/edit/TournamentSettingsScreen';
-import EditBetScreen from '../screens/edit/EditBetScreen';
 // Screens — tournament
 import TournamentScreen from '../screens/tournament/TournamentScreen';
 // Screens — other
@@ -32,12 +27,10 @@ import HelpSupportScreen from '../screens/HelpSupportScreen';
 import JoinCodeScreen from '../screens/JoinCodeScreen';
 import NotFoundScreen from '../screens/NotFoundScreen';
 import SearchScreen from '../screens/SearchScreen';
-import EventDetailsScreen from '../screens/EventDetailsScreen';
-import BetsListScreen from '../screens/BetsListScreen';
-import BetDetailsScreen from '../screens/BetDetailsScreen';
-import LoadResultsScreen from '../screens/LoadResultsScreen';
+import BetsListScreen from '../screens/unused/BetsListScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import NotificationCenterScreen from '../screens/NotificationCenterScreen';
+import InvitationsScreen from '../screens/InvitationsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -101,21 +94,15 @@ const AppStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen name="CreateTournament" component={CreateTournamentScreen} />
       <Stack.Screen name="Tournament" component={TournamentScreen} />
       <Stack.Screen name="TournamentSettings" component={TournamentSettingsScreen} />
-      <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
-      <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
       <Stack.Screen name="BetsList" component={BetsListScreen} />
-      <Stack.Screen name="CreateBet" component={CreateBetScreen} />
-      <Stack.Screen name="EditBet" component={EditBetScreen} />
-      <Stack.Screen name="BetDetails" component={BetDetailsScreen} />
-      <Stack.Screen name="LoadResults" component={LoadResultsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
       <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
       <Stack.Screen name="Friends" component={FriendsScreen} />
+      <Stack.Screen name="Invitations" component={InvitationsScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />
       <Stack.Screen name="JoinCode" component={JoinCodeScreen} />
       <Stack.Screen name="NotFound" component={NotFoundScreen} />

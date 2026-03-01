@@ -325,6 +325,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
         contentContainerStyle={{ paddingBottom: Spacing.xl }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
       >
       <View style={styles.content}>
         <View style={styles.header}>

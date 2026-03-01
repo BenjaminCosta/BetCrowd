@@ -8,7 +8,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getPublicProfile, PublicProfile } from './publicProfileService';
-import { getUserProfile } from './userService';
 
 export interface UserBalance {
   uid: string;
@@ -163,30 +162,7 @@ export const calculateTournamentBalances = async (
 
     // Fetch public profiles for all members in parallel
     const profilesPromises = memberUids.map(uid => getPublicProfile(uid));
-    const rawProfiles = await Promise.all(profilesPromises);
-
-    // Fallback: for members without a publicProfile doc, try users/{uid}
-    const profiles = await Promise.all(
-      rawProfiles.map(async (profile, i) => {
-        if (profile) return profile;
-        try {
-          const userDoc = await getUserProfile(memberUids[i]);
-          if (userDoc) {
-            return {
-              uid: memberUids[i],
-              username: userDoc.username ?? '',
-              usernameLower: (userDoc.username ?? '').toLowerCase(),
-              displayName: userDoc.displayName ?? userDoc.fullName ?? userDoc.username ?? '',
-              email: userDoc.email ?? '',
-              photoURL: userDoc.photoURL,
-              createdAt: null,
-              updatedAt: null,
-            } as PublicProfile;
-          }
-        } catch { /* ignore */ }
-        return null;
-      })
-    );
+    const profiles = await Promise.all(profilesPromises);
 
     // Build final user balances array
     const userBalances: UserBalance[] = memberUids.map((uid, index) => {

@@ -89,7 +89,8 @@ export const getPublicProfile = async (uid: string): Promise<PublicProfile | nul
     }
     return null;
   } catch (error) {
-    console.error('Error getting public profile:', error);
-    throw error;
+    // Non-throwing — callers must handle null gracefully
+    console.warn('[getPublicProfile] Could not load profile for', uid, error);
+    return null;
   }
 };

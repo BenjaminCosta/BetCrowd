@@ -7,7 +7,7 @@ import {
   serverTimestamp,
   runTransaction 
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { upsertPublicProfile } from './publicProfileService';
 
 export interface UserProfile {
@@ -194,5 +194,92 @@ export const updateFullProfile = async (
   } catch (error) {
     console.error('Error updating full profile:', error);
     throw error;
+  }
+};
+
+/**
+ * Bootstrap / migration helper — called once on login (fire-and-forget).
+ * Ensures the current user has:
+ *   1. A valid /users/{uid} document with all fields needed by the app.
+ *   2. A /publicProfiles/{uid} document so they appear in search.
+ * Never throws — any failure is logged and silently ignored so login is never blocked.
+ */
+export const ensureUserProfile = async (uid: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userSnap = await getDoc(userRef);
+    const authUser = auth.currentUser;
+
+    const authDisplayName = authUser?.displayName || 'Usuario';
+    const authPhotoURL = authUser?.photoURL ?? null;
+    const authEmail = authUser?.email || '';
+
+    let displayName = authDisplayName;
+    let username: string | null = null;
+
+    if (!userSnap.exists()) {
+      // Create missing user document
+      await setDoc(userRef, {
+        uid,
+        email: authEmail,
+        displayName: authDisplayName,
+        username: null,
+        photoURL: authPhotoURL,
+        displayNameLower: authDisplayName.toLowerCase(),
+        usernameLower: '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } else {
+      const data = userSnap.data() as any;
+      displayName = data.displayName || data.fullName || authDisplayName;
+      username = data.username ?? null;
+
+      // Patch any missing fields needed by search / UI
+      const patch: Record<string, any> = {};
+      if (!data.displayNameLower)
+        patch.displayNameLower = displayName.toLowerCase();
+      if (data.usernameLower === undefined)
+        patch.usernameLower = (username || '').toLowerCase();
+      if (!data.updatedAt)
+        patch.updatedAt = serverTimestamp();
+
+      if (Object.keys(patch).length > 0) {
+        await updateDoc(userRef, patch);
+      }
+    }
+
+    // Ensure publicProfiles doc exists so this user is discoverable in search
+    if (username) {
+      const pubRef = doc(db, 'publicProfiles', uid);
+      const pubSnap = await getDoc(pubRef);
+
+      if (!pubSnap.exists()) {
+        await setDoc(pubRef, {
+          uid,
+          username,
+          usernameLower: username.toLowerCase(),
+          displayName,
+          email: authEmail,
+          photoURL: authPhotoURL || '',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        const pubData = pubSnap.data() as any;
+        const pubPatch: Record<string, any> = {};
+        if (!pubData.usernameLower)
+          pubPatch.usernameLower = username.toLowerCase();
+        if (!pubData.displayName)
+          pubPatch.displayName = displayName;
+        if (Object.keys(pubPatch).length > 0) {
+          pubPatch.updatedAt = serverTimestamp();
+          await setDoc(pubRef, pubPatch, { merge: true });
+        }
+      }
+    }
+  } catch (error) {
+    // Never block login — non-fatal
+    console.warn('[ensureUserProfile] Non-blocking migration error:', error);
   }
 };

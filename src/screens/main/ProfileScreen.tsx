@@ -22,7 +22,7 @@ const ProfileScreen = ({ navigation }: any) => {
   const { theme, toggleTheme } = useTheme();
   const colors = Colors[theme];
   const { user, signOut } = useAuth();
-  const { friends, incomingRequests } = useSocial();
+  const { friends, incomingRequests, pendingInviteCount } = useSocial();
   const [photoURL, setPhotoURL] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
 
@@ -138,7 +138,40 @@ const ProfileScreen = ({ navigation }: any) => {
               <View style={styles.friendsRight}>
                 {incomingRequests.length > 0 && (
                   <View style={[styles.requestsBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.requestsBadgeText}>{incomingRequests.length}</Text>
+                    <Text style={styles.requestsBadgeText}>
+                      {incomingRequests.length}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* Invitaciones */}
+          <TouchableOpacity
+            style={[styles.friendsCard, { backgroundColor: colors.card, marginTop: 10 }]}
+            onPress={() => navigation.navigate('Invitations')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.friendsRow}>
+              <View style={styles.friendsLeft}>
+                <View style={[styles.friendsIconContainer, { backgroundColor: colors.primary + '20' }]}>
+                  <Ionicons name="trophy" size={24} color={colors.primary} />
+                </View>
+                <View style={styles.friendsInfo}>
+                  <Text style={[styles.friendsTitle, { color: colors.foreground }]}>
+                    Invitaciones
+                  </Text>
+                  <Text style={[styles.friendsSubtitle, { color: colors.mutedForeground }]}>
+                    Torneos
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.friendsRight}>
+                {pendingInviteCount > 0 && (
+                  <View style={[styles.requestsBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.requestsBadgeText}>{pendingInviteCount}</Text>
                   </View>
                 )}
                 <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />

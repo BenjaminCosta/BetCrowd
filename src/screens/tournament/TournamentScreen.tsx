@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Keyboard,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -46,6 +48,7 @@ import RankingTab from './tabs/RankingTab';
 import InfoTab from './tabs/InfoTab';
 import EventBottomSheet from './components/EventBottomSheet';
 import ParticipantSheet from './components/ParticipantSheet';
+import InviteFriendsSheet from './components/InviteFriendsSheet';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,7 +86,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const { tournamentId, openEventId } = route.params ?? {};
+  const { tournamentId, openEventId, openInviteSheet } = route.params ?? {};
 
   // ── Shared state ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('events');
@@ -100,6 +103,9 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const isFirstFocusRef = useRef(true);
   const eventsUnsubRef = useRef<(() => void) | null>(null);
   const autoOpenDoneRef = useRef(false);
+  // Captured once at mount time from route.params so the ref is stable
+  // even if setParams clears the value later.
+  const openInviteSheetRef = useRef(openInviteSheet === true);
 
   // ── Bottom sheet state ───────────────────────────────────────────────────────
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -132,7 +138,9 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const [showParticipantSheet, setShowParticipantSheet] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<UserBalance | null>(null);
   const [selectedParticipantIndex, setSelectedParticipantIndex] = useState(0);
-
+  // ── Invite sheet state ─────────────────────────────────────────────────────
+  const [showInviteSheet, setShowInviteSheet] = useState(false);
+  const [isInvitePostCreation, setIsInvitePostCreation] = useState(false);
   // ── Info tab state ───────────────────────────────────────────────────────────
   const [savingInfo, setSavingInfo] = useState(false);
 
@@ -155,6 +163,21 @@ const TournamentScreen = ({ navigation, route }: any) => {
       subscribeEvents();
     }, [tournamentId])
   );
+
+  // Auto-open InviteFriendsSheet when arriving from CreateTournamentScreen.
+  // Using useEffect (mount-only) + InteractionManager ensures we wait for the
+  // full navigation slide-in animation before presenting the Modal, avoiding
+  // the iOS “cannot present while transitioning” silent failure.
+  useEffect(() => {
+    if (!openInviteSheetRef.current) return;
+    openInviteSheetRef.current = false; // fire exactly once
+    Keyboard.dismiss();
+    const task = InteractionManager.runAfterInteractions(() => {      setIsInvitePostCreation(true);      setShowInviteSheet(true);
+      // Clear param so Back→Forward doesn’t re-open the sheet
+      navigation.setParams({ openInviteSheet: undefined });
+    });
+    return () => task.cancel();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadHeaderData = useCallback(async () => {
     try {
@@ -316,14 +339,19 @@ const TournamentScreen = ({ navigation, route }: any) => {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Block if no bets exist — nothing to lock
+              const bets = await listBets(tournamentId, event.id);
+              const lockable = bets.filter((b) => b.status === 'open' || b.status === 'pending');
+              if (lockable.length === 0) {
+                Alert.alert(
+                  'Sin apuestas',
+                  'Este evento no tiene apuestas abiertas para cerrar.',
+                );
+                return;
+              }
               // Lock individual bets first — if this fails, the event status
               // won't be changed, preventing a partially-locked state.
-              const bets = await listBets(tournamentId, event.id);
-              await Promise.all(
-                bets
-                  .filter((b) => b.status === 'open' || b.status === 'pending')
-                  .map((b) => lockBet(tournamentId, event.id, b.id)),
-              );
+              await Promise.all(lockable.map((b) => lockBet(tournamentId, event.id, b.id)));
               await updateEvent(tournamentId, event.id, { status: 'locked' });
             } catch (e: any) {
               Alert.alert('Error', e.message || 'No se pudo cerrar el evento');
@@ -447,13 +475,25 @@ const TournamentScreen = ({ navigation, route }: any) => {
               <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={2}>
                 {tournament?.name ?? '—'}
               </Text>
-              {tournament && (
-                <View style={[styles.statusBadge, { backgroundColor: getTournamentStatusBadgeColor(tournament.status) }]}>
-                  <Text style={styles.statusBadgeText}>
-                    {getTournamentStatusLabel(tournament.status)}
-                  </Text>
-                </View>
-              )}
+              <View style={styles.headerRight}>
+                {isAdmin && (
+                  <TouchableOpacity
+                    style={[styles.inviteBtn, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+                    onPress={() => setShowInviteSheet(true)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="person-add-outline" size={14} color={colors.primary} />
+                    <Text style={[styles.inviteBtnText, { color: colors.primary }]}>Invitar</Text>
+                  </TouchableOpacity>
+                )}
+                {tournament && (
+                  <View style={[styles.statusBadge, { backgroundColor: getTournamentStatusBadgeColor(tournament.status) }]}>
+                    <Text style={styles.statusBadgeText}>
+                      {getTournamentStatusLabel(tournament.status)}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         )}
@@ -557,6 +597,15 @@ const TournamentScreen = ({ navigation, route }: any) => {
           tournamentId={tournamentId}
         />
 
+        {/* Invite Friends Sheet */}
+        <InviteFriendsSheet
+          visible={showInviteSheet}
+          onClose={() => { setShowInviteSheet(false); setIsInvitePostCreation(false); }}
+          tournamentId={tournamentId}
+          tournamentName={tournament?.name ?? ''}
+          isPostCreation={isInvitePostCreation}
+        />
+
       </View>
     </GestureHandlerRootView>
   );
@@ -570,10 +619,21 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   headerSkeleton: { height: 72, justifyContent: 'center', alignItems: 'center' },
   header: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg },
-  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.md },
+  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.md },
   headerTitle: { flex: 1, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'flex-start' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusBadge: { height: 28, paddingHorizontal: 10, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   statusBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  inviteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 28,
+    gap: 4,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+  },
+  inviteBtnText: { fontSize: 12, fontWeight: '700' },
   segmentedControl: {
     flexDirection: 'row',
     marginHorizontal: Spacing.lg,

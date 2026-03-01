@@ -77,10 +77,6 @@ const InfoTab: React.FC<InfoTabProps> = ({
   const handleFormArchived = () => setShowSettingsSheet(false);
   const handleFormDeleted = () => setShowSettingsSheet(false);
 
-  const contribution = tournament.contribution || 0;
-  const totalPool = contribution * memberCount;
-  const currency = tournament.currency || 'ARS';
-
   // We receive isOwner info from parent through isAdmin; check by comparing ownerId is handled in parent.
   // isAdmin prop covers admin actions; separate isOwner passed if needed.
   // For simplicity, show all admin actions when isAdmin = true.
@@ -126,24 +122,6 @@ const InfoTab: React.FC<InfoTabProps> = ({
           </Text>
         </View>
       ) : null}
-
-      {/* Balance summary */}
-      <View style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <SectionHeader title="Balance del torneo" />
-        <View style={styles.balanceRow}>
-          <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>Aporte</Text>
-          <Text style={[styles.balanceValue, { color: colors.foreground }]}>
-            ${contribution.toLocaleString()} {currency}
-          </Text>
-        </View>
-        <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-        <View style={styles.balanceRow}>
-          <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>Pozo total</Text>
-          <Text style={[styles.balanceValue, { color: colors.foreground }]}>
-            ${totalPool.toLocaleString()} {currency}
-          </Text>
-        </View>
-      </View>
 
       {/* Invite code */}
       <TouchableOpacity
