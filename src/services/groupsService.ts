@@ -14,7 +14,7 @@ export interface UserBalance {
   username: string;
   displayName: string;
   photoURL?: string;
-  role?: 'owner' | 'admin' | 'member';
+  role?: 'admin' | 'member';
   netBalance: number; // positive = gana, negative = pierde
   totalWon: number;
   totalLost: number;
@@ -44,11 +44,16 @@ export const calculateTournamentBalances = async (
       return [];
     }
 
-    const memberUids = membersSnapshot.docs.map(doc => doc.id);
-    const memberRoles = new Map<string, 'owner' | 'admin' | 'member'>();
-    membersSnapshot.docs.forEach(d => {
+    // Exclude removed members from rankings
+    const activeMemberDocs = membersSnapshot.docs.filter(
+      (d) => d.data().status !== 'removed',
+    );
+    const memberUids = activeMemberDocs.map((d) => d.id);
+    const memberRoles = new Map<string, 'admin' | 'member'>();
+    activeMemberDocs.forEach((d) => {
       const r = (d.data() as any).role;
-      memberRoles.set(d.id, r === 'owner' ? 'owner' : r === 'admin' ? 'admin' : 'member');
+      // Normalize legacy 'owner' role → 'admin' for display
+      memberRoles.set(d.id, r === 'owner' || r === 'admin' ? 'admin' : 'member');
     });
     
     // Initialize balances map
@@ -77,6 +82,9 @@ export const calculateTournamentBalances = async (
         const result = bet.result;
         
         if (!result) continue;
+        // Bets that were never activated (only 1 side had picks) are void:
+        // they don't affect anyone's won/lost stats.
+        if (result.void) continue;
 
         // Get all picks for this bet
         const picksRef = collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks');

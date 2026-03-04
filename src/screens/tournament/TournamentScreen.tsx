@@ -27,7 +27,11 @@ import {
   getMyTournamentRole,
   isUserAdmin,
   archiveTournament,
+  finishTournament,
   deleteTournamentSoft,
+  migrateOwnerToAdmin,
+  isMemberRemoved,
+  removeMemberFromTournament,
   Tournament,
 } from '../../services/tournamentService';
 import { listenEvents, deleteEvent, updateEvent, Event } from '../../services/eventService';
@@ -56,7 +60,7 @@ type Tab = 'events' | 'ranking' | 'info';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'events', label: 'Eventos' },
-  { key: 'ranking', label: 'Ranking' },
+  { key: 'ranking', label: 'Tabla' },
   { key: 'info', label: 'Info' },
 ];
 
@@ -65,16 +69,16 @@ const TABS: { key: Tab; label: string }[] = [
 const getTournamentStatusBadgeColor = (status: string): string => {
   switch (status) {
     case 'active': return Colors.dark.success;
-    case 'archived':
-    case 'locked':
-    default: return Colors.dark.warning;
+    case 'finished': return Colors.dark.primary;
+    case 'locked': return Colors.dark.warning;
+    default: return Colors.dark.mutedForeground;
   }
 };
 
 const getTournamentStatusLabel = (status: string): string => {
   switch (status) {
     case 'active': return 'ACTIVO';
-    case 'archived': return 'FINALIZADO';
+    case 'finished': return 'FINALIZADO';
     case 'locked': return 'BLOQUEADO';
     default: return status.toUpperCase();
   }
@@ -183,14 +187,25 @@ const TournamentScreen = ({ navigation, route }: any) => {
 
   const loadHeaderData = useCallback(async () => {
     try {
-      const [data, count, adminStatus] = await Promise.all([
+      const [data, count, adminStatus, removed] = await Promise.all([
         getTournament(tournamentId),
         getTournamentMemberCount(tournamentId),
         user ? isUserAdmin(tournamentId, user.uid) : Promise.resolve(false),
+        user ? isMemberRemoved(tournamentId, user.uid) : Promise.resolve(false),
       ]);
+
+      if (removed) {
+        Alert.alert('Acceso revocado', 'Has sido removido de este torneo.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+        return;
+      }
+
       setTournament(data);
       setMemberCount(count);
       setIsAdmin(adminStatus);
+      // Incremental migration: legacy 'owner' role → 'admin' (best-effort, no await)
+      if (user) migrateOwnerToAdmin(tournamentId, user.uid);
     } catch (e) {
       console.error('TournamentScreen loadHeaderData:', e);
     } finally {
@@ -391,21 +406,32 @@ const TournamentScreen = ({ navigation, route }: any) => {
   // INFO HANDLERS
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const handleArchiveTournament = () => {
-    Alert.alert('Archivar torneo', '¿Archivar este torneo?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Archivar', style: 'destructive',
-        onPress: async () => {
-          try {
-            setSavingInfo(true);
-            await archiveTournament(tournamentId);
-            await loadHeaderData();
-          } catch (e: any) { Alert.alert('Error', e.message); }
-          finally { setSavingInfo(false); }
+  const handleFinishTournament = () => {
+    Alert.alert(
+      'Finalizar torneo',
+      '\u00bfQuer\u00e9s finalizar este torneo? Asegurate de que todos los eventos est\u00e9n resueltos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Finalizar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSavingInfo(true);
+              await finishTournament(tournamentId);
+              await loadHeaderData();
+            } catch (e: any) {
+              Alert.alert(
+                'No se puede finalizar',
+                e.message || 'Error al finalizar el torneo',
+              );
+            } finally {
+              setSavingInfo(false);
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const handleDeleteTournament = () => {
@@ -527,11 +553,34 @@ const TournamentScreen = ({ navigation, route }: any) => {
             rankingLoading={rankingLoading}
             rankingRefreshing={rankingRefreshing}
             currentUserId={user?.uid ?? ''}
+            isAdmin={isAdmin}
             onRefresh={() => loadRanking(true)}
             onParticipantPress={(balance, index) => {
               setSelectedParticipant(balance);
               setSelectedParticipantIndex(index);
               setShowParticipantSheet(true);
+            }}
+            onRemoveMember={(balance) => {
+              const name = balance.username ? `@${balance.username}` : balance.displayName;
+              Alert.alert(
+                'Quitar del torneo',
+                `¿Quitar a ${name} del torneo?`,
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Quitar',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await removeMemberFromTournament(tournamentId, balance.uid);
+                        loadRanking();
+                      } catch (e: any) {
+                        Alert.alert('No se puede quitar', e.message || 'Error al quitar miembro');
+                      }
+                    },
+                  },
+                ],
+              );
             }}
           />
         )}
@@ -543,13 +592,13 @@ const TournamentScreen = ({ navigation, route }: any) => {
             isAdmin={isAdmin}
             savingInfo={savingInfo}
             tournamentId={tournamentId}
-            onArchive={handleArchiveTournament}
+            onFinish={handleFinishTournament}
             onDelete={handleDeleteTournament}
           />
         )}
 
         {/* FAB for creating events */}
-        {activeTab === 'events' && isAdmin && (
+        {activeTab === 'events' && isAdmin && tournament?.status !== 'finished' && (
           <FloatingActionButton
             onPress={() => {
               setCreateEventId(undefined);
@@ -584,7 +633,13 @@ const TournamentScreen = ({ navigation, route }: any) => {
 
         {/* Load Results Sheet */}
         <SheetModal visible={showLoadResultsSheet} onClose={() => setShowLoadResultsSheet(false)}>
-          <LoadResultsForm tournamentId={tournamentId} />
+          <LoadResultsForm
+            tournamentId={tournamentId}
+            onOpenEvent={(ev) => {
+              setShowLoadResultsSheet(false);
+              handleEventPress(ev);
+            }}
+          />
         </SheetModal>
 
         {/* Participant detail sheet */}
@@ -597,6 +652,12 @@ const TournamentScreen = ({ navigation, route }: any) => {
           participant={selectedParticipant}
           position={selectedParticipantIndex + 1}
           tournamentId={tournamentId}
+          isAdmin={isAdmin}
+          onMemberRemoved={() => {
+            setShowParticipantSheet(false);
+            setSelectedParticipant(null);
+            loadRanking();
+          }}
         />
 
         {/* Invite Friends Sheet */}

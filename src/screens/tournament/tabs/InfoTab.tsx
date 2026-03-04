@@ -54,7 +54,7 @@ interface InfoTabProps {
   isAdmin: boolean;
   savingInfo: boolean;
   tournamentId: string;
-  onArchive: () => void;
+  onFinish: () => void;
   onDelete: () => void;
 }
 
@@ -66,7 +66,7 @@ const InfoTab: React.FC<InfoTabProps> = ({
   isAdmin,
   savingInfo,
   tournamentId,
-  onArchive,
+  onFinish,
   onDelete,
 }) => {
   const { theme } = useTheme();
@@ -76,6 +76,12 @@ const InfoTab: React.FC<InfoTabProps> = ({
 
   const handleFormArchived = () => setShowSettingsSheet(false);
   const handleFormDeleted = () => setShowSettingsSheet(false);
+
+  const today = new Date().toISOString().split('T')[0];
+  const isOverdue =
+    !!tournament.endDate &&
+    tournament.endDate < today &&
+    tournament.status === 'active';
 
   // We receive isOwner info from parent through isAdmin; check by comparing ownerId is handled in parent.
   // isAdmin prop covers admin actions; separate isOwner passed if needed.
@@ -164,17 +170,32 @@ const InfoTab: React.FC<InfoTabProps> = ({
             <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.adminRow, { backgroundColor: colors.secondary }]}
-            onPress={onArchive}
-            disabled={savingInfo}
-          >
-            <View style={[styles.adminIconCircle, { backgroundColor: colors.warning + '20' }]}>
-              <Ionicons name="archive-outline" size={18} color={colors.warning} />
+          {isOverdue && (
+            <View
+              style={[
+                styles.overdueBanner,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Ionicons name="time-outline" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.overdueText, { color: colors.mutedForeground }]}>
+                La fecha de cierre ya pasó. Podés finalizar el torneo manualmente.
+              </Text>
             </View>
-            <Text style={[styles.adminRowText, { color: colors.foreground }]}>Archivar torneo</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
+          )}
+          {tournament.status !== 'finished' && (
+            <TouchableOpacity
+              style={[styles.adminRow, { backgroundColor: colors.primary + '12' }]}
+              onPress={onFinish}
+              disabled={savingInfo}
+            >
+              <View style={[styles.adminIconCircle, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="flag-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.adminRowText, { color: colors.foreground }]}>Finalizar torneo</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.adminRow, { backgroundColor: colors.destructive + '15' }]}
@@ -230,4 +251,14 @@ const styles = StyleSheet.create({
   adminRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, borderRadius: BorderRadius.md, marginBottom: Spacing.sm },
   adminIconCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   adminRowText: { flex: 1, fontSize: 15, fontWeight: '600' },
+  overdueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.sm,
+  },
+  overdueText: { flex: 1, fontSize: 13, lineHeight: 18 },
 });

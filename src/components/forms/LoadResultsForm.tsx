@@ -21,11 +21,12 @@ import { listenBets, settleBet, Bet } from '../../services/betService';
 
 interface LoadResultsFormProps {
   tournamentId: string;
+  onOpenEvent?: (event: Event) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
+const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId, onOpenEvent }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
@@ -33,8 +34,11 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
   const [tournament, setTournament] = useState<any>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [eventBets, setEventBets] = useState<Record<string, Bet[]>>({});
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const eventIds = events.map((e) => e.id).join(',');
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -56,6 +60,18 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
     });
     return () => unsub();
   }, [expandedEventId, tournamentId]);
+
+  // Subscribe to bets for ALL events to track pending counts for dot badges
+  useEffect(() => {
+    if (!events.length || !tournamentId) return;
+    const unsubs = events.map((event) =>
+      listenBets(tournamentId, event.id, (bets) => {
+        const count = bets.filter((b) => b.status === 'locked' || b.status === 'open').length;
+        setPendingCounts((prev) => ({ ...prev, [event.id]: count }));
+      })
+    );
+    return () => unsubs.forEach((u) => { u(); });
+  }, [eventIds, tournamentId]);
 
   const loadTournament = async () => {
     try {
@@ -138,7 +154,12 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
               <TouchableOpacity onPress={() => toggleEvent(event.id)} activeOpacity={0.7}>
                 <View style={styles.eventHeader}>
                   <View style={styles.eventInfo}>
-                    <Text style={[styles.eventTitle, { color: colors.foreground }]}>{event.title}</Text>
+                    <View style={styles.eventTitleRow}>
+                      <Text style={[styles.eventTitle, { color: colors.foreground }]}>{event.title}</Text>
+                      {(pendingCounts[event.id] ?? 0) > 0 && (
+                        <View style={[styles.pendingDot, { backgroundColor: colors.primary }]} />
+                      )}
+                    </View>
                     {(event.homeTeam || event.awayTeam) && (
                       <Text style={[styles.eventTeams, { color: colors.mutedForeground }]}>
                         {event.homeTeam || 'TBD'} vs {event.awayTeam || 'TBD'}
@@ -161,9 +182,23 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId }) => {
               {isExpanded && (
                 <View style={styles.betsSection}>
                   {bets.length === 0 ? (
-                    <Text style={[styles.noBetsText, { color: colors.mutedForeground }]}>
-                      Todas las apuestas están resueltas
-                    </Text>
+                    <View style={styles.allSettledWrapper}>
+                      <Text style={[styles.noBetsText, { color: colors.mutedForeground }]}>
+                        Todas las apuestas están resueltas
+                      </Text>
+                      {onOpenEvent && (
+                        <TouchableOpacity
+                          style={[styles.adjustBtn, { borderColor: colors.primary + '40' }]}
+                          onPress={() => onOpenEvent(event)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="options-outline" size={14} color={colors.primary} />
+                          <Text style={[styles.adjustBtnText, { color: colors.primary }]}>
+                            Ajustar resultado
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   ) : (
                     <>
                       <View style={[styles.betsSectionHeader, { borderBottomColor: colors.border }]}>
@@ -235,7 +270,12 @@ const styles = StyleSheet.create({
   eventCard: { marginBottom: Spacing.md },
   eventHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   eventInfo: { flex: 1 },
-  eventTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  eventTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  pendingDot: { width: 7, height: 7, borderRadius: 3.5 },
+  eventTitle: { fontSize: 15, fontWeight: '700' },
+  allSettledWrapper: { alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
+  adjustBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 },
+  adjustBtnText: { fontSize: 12, fontWeight: '600' },
   eventTeams: { fontSize: 12, marginBottom: 2 },
   eventDate: { fontSize: 11 },
   betsSection: { marginTop: Spacing.md },

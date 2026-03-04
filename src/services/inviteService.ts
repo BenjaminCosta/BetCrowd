@@ -8,6 +8,7 @@ import {
   addDoc,
   updateDoc,
   setDoc,
+  deleteDoc,
   writeBatch,
   onSnapshot,
   serverTimestamp,
@@ -242,6 +243,26 @@ export const cancelTournamentInvite = async (inviteId: string): Promise<void> =>
     status: 'cancelled',
     updatedAt: serverTimestamp(),
   });
+};
+
+// ─── Dismiss (sender) ────────────────────────────────────────────────────────
+
+/**
+ * Permanently delete a sent invite that is already rejected or cancelled.
+ * Only the sender (fromUid) can dismiss it.
+ */
+export const dismissSentInvite = async (inviteId: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión');
+
+  const inviteRef = doc(db, 'tournamentInvites', inviteId);
+  const snap = await getDoc(inviteRef);
+  if (!snap.exists()) return; // already gone
+  const data = snap.data();
+  if (data?.fromUid !== user.uid) throw new Error('No autorizado');
+  if (data?.status === 'pending') throw new Error('No se puede eliminar una invitación pendiente');
+
+  await deleteDoc(inviteRef);
 };
 
 // ─── Listeners ────────────────────────────────────────────────────────────────

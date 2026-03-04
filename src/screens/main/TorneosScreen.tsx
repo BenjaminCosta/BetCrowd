@@ -141,11 +141,19 @@ const TorneosScreen = ({ navigation }: any) => {
 
   // ── Filtered list ─────────────────────────────────────────────────────────
 
-  const filteredTournaments = tournaments.filter((t) => {
-    if (filter === 'active') return t.status === 'active' || t.status === 'locked';
-    if (filter === 'finished') return t.status === 'archived';
-    return false;
-  });
+  const filteredTournaments = (() => {
+    const list = tournaments.filter((t) => {
+      if (filter === 'active') return t.status === 'active' || t.status === 'locked';
+      if (filter === 'finished') return t.status === 'finished';
+      return false;
+    });
+    list.sort((a, b) => {
+      const aTime = (a as any).lastActivityAt?.toMillis?.() ?? (a as any).createdAt?.toMillis?.() ?? 0;
+      const bTime = (b as any).lastActivityAt?.toMillis?.() ?? (b as any).createdAt?.toMillis?.() ?? 0;
+      return bTime - aTime;
+    });
+    return list;
+  })();
 
   // ── Swipe actions ─────────────────────────────────────────────────────────
 
@@ -183,7 +191,7 @@ const TorneosScreen = ({ navigation }: any) => {
     const activeCount = tournaments.filter(
       (t) => t.status === 'active' || t.status === 'locked',
     ).length;
-    const finishedCount = tournaments.filter((t) => t.status === 'archived').length;
+    const finishedCount = tournaments.filter((t) => t.status === 'finished').length;
     const counts: Record<TorneoFilter, number> = { active: activeCount, finished: finishedCount };
 
     return (
@@ -217,9 +225,9 @@ const TorneosScreen = ({ navigation }: any) => {
   const getRoleInfo = (tournamentId: string, ownerId: string) => {
     const role = myRoles[tournamentId] || (ownerId === user?.uid ? 'owner' : 'member');
     switch (role) {
-      case 'owner':  return { label: 'Propietario', icon: 'ribbon-outline' as const,          color: colors.mutedForeground };
-      case 'admin':  return { label: 'Admin',        icon: 'shield-checkmark-outline' as const, color: colors.mutedForeground };
-      default:       return { label: 'Miembro',      icon: 'person-outline' as const,    color: colors.mutedForeground };
+      case 'owner':
+      case 'admin':  return { label: 'Admin',    icon: 'shield-checkmark-outline' as const, color: colors.mutedForeground };
+      default:       return { label: 'Miembro',  icon: 'person-outline' as const,           color: colors.mutedForeground };
     }
   };
 
@@ -274,9 +282,21 @@ const TorneosScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
-            <View style={[styles.cardRoleBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-              <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
-              <Text style={[styles.cardRoleText, { color: roleInfo.color }]}>{roleInfo.label}</Text>
+            <View style={styles.cardBadgeStack}>
+              {t.status === 'finished' && (
+                <View
+                  style={[
+                    styles.cardFinishedBadge,
+                    { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' },
+                  ]}
+                >
+                  <Text style={[styles.cardFinishedText, { color: colors.primary }]}>FINALIZADO</Text>
+                </View>
+              )}
+              <View style={[styles.cardRoleBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
+                <Text style={[styles.cardRoleText, { color: roleInfo.color }]}>{roleInfo.label}</Text>
+              </View>
             </View>
           </View>
 
@@ -308,7 +328,7 @@ const TorneosScreen = ({ navigation }: any) => {
         message={
           filter === 'active'
             ? 'Crea un torneo o únete a uno con un código de invitación'
-            : 'Los torneos archivados aparecerán aquí'
+            : 'Los torneos finalizados aparecer\u00e1n aqu\u00ed'
         }
       />
       {filter === 'active' && (
@@ -465,14 +485,13 @@ const styles = StyleSheet.create({
 
   // FlatList
   listContent: { padding: 14, paddingBottom: 100 },
-  listContentEmpty: { flex: 1 },
+  listContentEmpty: { flex: 1, justifyContent: 'center' as const },
 
   // Empty state
   emptyWrapper: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.xxl,
   },
   ctaButton: {
     marginTop: Spacing.lg,
@@ -486,7 +505,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     padding: 14,
-    marginBottom: Spacing.md,
+    marginBottom: 13,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -517,6 +536,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cardRoleText: { fontSize: 11, fontWeight: '500' },
+  cardBadgeStack: { alignItems: 'flex-end', gap: 4 },
+  cardFinishedBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  cardFinishedText: { fontSize: 10, fontWeight: '700' },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',

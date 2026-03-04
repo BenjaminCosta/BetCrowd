@@ -15,6 +15,13 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 
+// ─── Internal helpers ────────────────────────────────────────────────────────
+/** Touch lastActivityAt on the parent tournament (best-effort, non-blocking). */
+const _touchTournamentActivity = (tournamentId: string): void => {
+  const ref = doc(db, 'tournaments', tournamentId);
+  setDoc(ref, { lastActivityAt: serverTimestamp(), hasActivity: true }, { merge: true }).catch(() => {});
+};
+
 export interface Event {
   id: string;
   title: string;
@@ -138,6 +145,7 @@ export const createEvent = async (
     };
     
     await setDoc(eventRef, eventData);
+    _touchTournamentActivity(tournamentId);
     return eventRef.id;
   } catch (error: any) {
     console.error('Error creating event:', error);

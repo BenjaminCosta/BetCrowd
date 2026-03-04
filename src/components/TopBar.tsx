@@ -145,7 +145,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
 const styles = StyleSheet.create({
   container: {
     paddingTop: 50,
-    paddingBottom: 12,
+    paddingBottom: 2,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
   },
@@ -197,16 +197,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   avatarGradient: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   avatarText: {
     color: '#FFFFFF',

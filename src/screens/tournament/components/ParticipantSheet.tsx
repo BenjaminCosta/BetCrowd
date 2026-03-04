@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
   Modal,
   Image,
   Animated,
@@ -16,9 +17,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
+import { useAuth } from '../../../context/AuthContext';
 import { Card } from '../../../components/CommonComponents';
 import { UserBalance, getUserPickHistory, UserPickHistory } from '../../../services/groupsService';
-import { getMyTournamentRole } from '../../../services/tournamentService';
+import { getMyTournamentRole, removeMemberFromTournament } from '../../../services/tournamentService';
 import { listEvents } from '../../../services/eventService';
 import { listBets, getMyPick, Bet } from '../../../services/betService';
 import { getInitials, formatBalance } from '../../../utils/formatters';
@@ -36,6 +38,8 @@ interface ParticipantSheetProps {
   participant: UserBalance | null;
   position: number; // 1-based rank
   tournamentId: string;
+  isAdmin?: boolean;
+  onMemberRemoved?: () => void;
 }
 
 // ─── Local helpers ──────────────────────────────────────────────────────────────────
@@ -44,8 +48,8 @@ const formatAmount = (n: number) => `$${n.toFixed(0)}`;
 
 const getRoleInfo = (role: string | null) => {
   switch (role) {
-    case 'owner': return { label: 'Organizador', color: '#D7263D' };
-    case 'admin':  return { label: 'Admin',        color: '#D7263D' };
+    case 'owner':
+    case 'admin':  return { label: 'Admin', color: '#D7263D' };
     default:       return null;
   }
 };
@@ -58,9 +62,12 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
   participant,
   position,
   tournamentId,
+  isAdmin = false,
+  onMemberRemoved,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { user } = useAuth();
   const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } = useSwipeToClose(
     visible,
     onClose,
@@ -75,6 +82,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
   const [roleLoading, setRoleLoading] = useState(false);
   const [activeBets, setActiveBets] = useState<Array<{ bet: Bet; eventTitle: string }>>([]);
   const [activeBetsLoading, setActiveBetsLoading] = useState(false);
+  const [removingMember, setRemovingMember] = useState(false);
 
   // ── Reset when sheet closes / participant changes ────────────────────────────────────────────
   useEffect(() => {
@@ -85,8 +93,36 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
       setMemberRole(null);
       setHistoryError(false);
       setActiveBets([]);
+      setRemovingMember(false);
     }
   }, [visible]);
+
+  const handleRemoveMember = () => {
+    if (!participant) return;
+    const name = participant.username ? `@${participant.username}` : participant.displayName;
+    Alert.alert(
+      'Quitar del torneo',
+      `¿Quitar a ${name} del torneo? Esta acción no puede deshacerse si ya tiene apuestas activas.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Quitar',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingMember(true);
+            try {
+              await removeMemberFromTournament(tournamentId, participant.uid);
+              onMemberRemoved?.();
+            } catch (e: any) {
+              Alert.alert('No se puede quitar', e.message || 'Error al quitar miembro');
+            } finally {
+              setRemovingMember(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   // ── Load role + pick history when sheet opens ────────────────────────────────
   useEffect(() => {
@@ -391,6 +427,29 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                     </View>
                   ))}
                 </Card>
+
+                {isAdmin && participant && participant.uid !== user?.uid && (
+                  <TouchableOpacity
+                    style={[
+                      styles.removeBtn,
+                      {
+                        backgroundColor: colors.destructive + '12',
+                        borderColor: colors.destructive + '40',
+                      },
+                    ]}
+                    onPress={handleRemoveMember}
+                    disabled={removingMember}
+                    activeOpacity={0.7}
+                  >
+                    {removingMember
+                      ? <ActivityIndicator size="small" color={colors.destructive} />
+                      : <Ionicons name="person-remove-outline" size={16} color={colors.destructive} />}
+                    <Text style={[styles.removeBtnText, { color: colors.destructive }]}>
+                      {removingMember ? 'Quitando...' : 'Quitar del torneo'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
               </ScrollView>
             )}
 
@@ -597,6 +656,19 @@ const styles = StyleSheet.create({
   activeBetTitle: { fontSize: 13, fontWeight: '600' },
   activeBetBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   activeBetStatus: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+
+  // Remove member
+  removeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginTop: Spacing.xs,
+  },
+  removeBtnText: { fontSize: 14, fontWeight: '600' },
 
   // History
   segControl: {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
@@ -27,6 +28,104 @@ interface CreateBetFormProps {
   /** Called after the bet is successfully created */
   onSuccess: () => void;
 }
+
+// ─── Quick Amounts & Live Preview ───────────────────────────────────────────
+
+const QUICK_AMOUNTS = [500, 1000, 5000, 10000];
+
+const previewCardStyles = StyleSheet.create({
+  container: { borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.lg, overflow: 'hidden' },
+  headerGradient: { padding: Spacing.md },
+  previewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: Spacing.xs },
+  title: { fontSize: 16, fontWeight: '700', marginBottom: Spacing.sm },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  typeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.sm },
+  typeBadgeText: { fontSize: 11, fontWeight: '700' },
+  amountText: { fontSize: 12 },
+  optionsRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, paddingTop: Spacing.xs },
+  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, paddingTop: Spacing.xs },
+  optionPill: { borderRadius: BorderRadius.sm, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  optionText: { fontWeight: '600', textAlign: 'center' },
+});
+
+interface BetPreviewCardProps {
+  theme: 'light' | 'dark';
+  title: string;
+  type: string;
+  options: string[];
+  amount: string;
+}
+
+const BetPreviewCard: React.FC<BetPreviewCardProps> = ({ theme, title, type, options, amount }) => {
+  const colors = Colors[theme];
+  const cleanOpts = options.filter((o) => o.trim() !== '');
+  const useColumns = cleanOpts.length >= 4;
+  const optFontSize = cleanOpts.length >= 6 ? 11 : cleanOpts.length >= 4 ? 12 : 13;
+  const optPadding = cleanOpts.length >= 4 ? 6 : 8;
+  const typeLabels: Record<string, string> = {
+    winner: 'Ganador',
+    over_under: 'Más/Menos',
+    score: 'Resultado exacto',
+    custom: 'Personalizada',
+  };
+  return (
+    <View style={[previewCardStyles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <LinearGradient
+        colors={['rgba(215, 38, 61, 0.12)', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={previewCardStyles.headerGradient}
+      >
+        <Text style={[previewCardStyles.previewLabel, { color: colors.mutedForeground }]}>PREVIEW</Text>
+        <Text
+          style={[previewCardStyles.title, { color: title ? colors.foreground : colors.mutedForeground }]}
+          numberOfLines={2}
+        >
+          {title || 'Título de la apuesta...'}
+        </Text>
+        <View style={previewCardStyles.metaRow}>
+          <View style={[previewCardStyles.typeBadge, { backgroundColor: colors.primary + '20' }]}>
+            <Text style={[previewCardStyles.typeBadgeText, { color: colors.primary }]}>
+              {typeLabels[type] || type}
+            </Text>
+          </View>
+          {!!amount && parseFloat(amount) > 0 && (
+            <Text style={[previewCardStyles.amountText, { color: colors.mutedForeground }]}>
+              ${parseFloat(amount).toLocaleString()}
+            </Text>
+          )}
+        </View>
+      </LinearGradient>
+      {cleanOpts.length > 0 && (
+        <View style={useColumns ? previewCardStyles.optionsGrid : previewCardStyles.optionsRow}>
+          {cleanOpts.map((opt, i) => (
+            <View
+              key={i}
+              style={[
+                previewCardStyles.optionPill,
+                {
+                  backgroundColor: colors.secondary,
+                  borderColor: colors.border,
+                  paddingHorizontal: optPadding,
+                  paddingVertical: optPadding - 2,
+                  flex: useColumns ? undefined : 1,
+                  width: useColumns ? '48%' : undefined,
+                },
+              ]}
+            >
+              <Text
+                style={[previewCardStyles.optionText, { color: colors.mutedForeground, fontSize: optFontSize }]}
+                numberOfLines={1}
+              >
+                {opt}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -46,6 +145,8 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
   const [options, setOptions] = useState<string[]>(['']);
   const [stakeAmount, setStakeAmount] = useState('');
   const [line, setLine] = useState('');
+
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadData();
@@ -86,6 +187,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
     } else {
       setOptions(['Local', 'Empate', 'Visitante']);
     }
+    setTimeout(() => scrollViewRef.current?.scrollTo({ y: 400, animated: true }), 150);
   };
 
   const applyOverUnderTemplate = () => {
@@ -93,12 +195,22 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
     setTitle('Total de goles');
     setLine('2.5');
     setOptions(['Más de 2.5', 'Menos de 2.5']);
+    setTimeout(() => scrollViewRef.current?.scrollTo({ y: 400, animated: true }), 150);
   };
 
   const applyScoreTemplate = () => {
     setSelectedType('score');
     setTitle('Resultado exacto');
-    setOptions(['Formato: Local X - X Visitante']);
+    setOptions(['1-0', '2-0', '2-1', '1-1', '0-0', 'Otro']);
+    setTimeout(() => scrollViewRef.current?.scrollTo({ y: 400, animated: true }), 150);
+  };
+
+  const handleTypeSelect = (type: 'winner' | 'score' | 'over_under' | 'custom') => {
+    setSelectedType(type);
+    if (type === 'score' && options.every((o) => o.trim() === '')) {
+      setTitle((prev) => prev || 'Resultado exacto');
+      setOptions(['1-0', '2-0', '2-1', '1-1', '0-0', 'Otro']);
+    }
   };
 
   const addOption = () => setOptions([...options, '']);
@@ -160,7 +272,20 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {/* Sticky live preview — stays pinned while user scrolls the form */}
+      <View style={[styles.stickyPreviewContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <View style={styles.stickyPreviewInner}>
+          <BetPreviewCard
+            theme={theme}
+            title={title}
+            type={selectedType}
+            options={options}
+            amount={stakeAmount}
+          />
+        </View>
+      </View>
     <ScrollView
+      ref={scrollViewRef}
       style={{ flex: 1 }}
       contentContainerStyle={{ paddingBottom: Spacing.xl }}
       showsVerticalScrollIndicator={false}
@@ -212,7 +337,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
               onPress={applyScoreTemplate}
             >
               <Ionicons name="calculator-outline" size={16} color={colors.foreground} />
-              <Text style={[styles.templateChipText, { color: colors.foreground }]}>Resultado</Text>
+              <Text style={[styles.templateChipText, { color: colors.foreground }]}>Resultado exacto</Text>
             </TouchableOpacity>
           </View>
         </Card>
@@ -249,7 +374,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
               {[
                 { value: 'winner', label: 'Ganador', icon: 'trophy-outline' },
                 { value: 'over_under', label: 'Más/Menos', icon: 'trending-up-outline' },
-                { value: 'score', label: 'Resultado', icon: 'calculator-outline' },
+                { value: 'score', label: 'Resultado exacto', icon: 'calculator-outline' },
                 { value: 'custom', label: 'Personalizada', icon: 'create-outline' },
               ].map((type) => (
                 <TouchableOpacity
@@ -262,7 +387,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
                       backgroundColor: colors.primary + '10',
                     },
                   ]}
-                  onPress={() => setSelectedType(type.value as any)}
+                  onPress={() => handleTypeSelect(type.value as any)}
                 >
                   <Ionicons
                     name={type.icon as any}
@@ -289,31 +414,29 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
             </View>
           )}
 
-          {selectedType !== 'score' && (
-            <View style={styles.formGroup}>
-              <View style={styles.optionsHeader}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>Opciones *</Text>
-                <TouchableOpacity onPress={addOption}>
-                  <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              {options.map((option, index) => (
-                <View key={index} style={styles.optionRow}>
-                  <Input
-                    value={option}
-                    onChangeText={(value) => updateOption(index, value)}
-                    placeholder={`Opción ${index + 1}`}
-                    style={{ flex: 1 }}
-                  />
-                  {options.length > 1 && (
-                    <TouchableOpacity onPress={() => removeOption(index)}>
-                      <Ionicons name="close-circle" size={24} color={colors.destructive} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
+          <View style={styles.formGroup}>
+            <View style={styles.optionsHeader}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Opciones *</Text>
+              <TouchableOpacity onPress={addOption}>
+                <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+              </TouchableOpacity>
             </View>
-          )}
+            {options.map((option, index) => (
+              <View key={index} style={styles.optionRow}>
+                <Input
+                  value={option}
+                  onChangeText={(value) => updateOption(index, value)}
+                  placeholder={`Opción ${index + 1}`}
+                  style={{ flex: 1 }}
+                />
+                {options.length > 1 && (
+                  <TouchableOpacity onPress={() => removeOption(index)}>
+                    <Ionicons name="close-circle" size={24} color={colors.destructive} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </View>
 
           <View style={[styles.stakeGroup, { backgroundColor: colors.secondary, borderColor: colors.primary + '40' }]}>
             <View style={styles.stakeLabelRow}>
@@ -329,6 +452,30 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
               placeholder="Ej: 500"
               keyboardType="numeric"
             />
+            <View style={styles.quickAmountsRow}>
+              {QUICK_AMOUNTS.map((amt) => (
+                <TouchableOpacity
+                  key={amt}
+                  style={[
+                    styles.quickAmountChip,
+                    {
+                      backgroundColor: stakeAmount === String(amt) ? colors.primary + '20' : colors.muted,
+                      borderColor: stakeAmount === String(amt) ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setStakeAmount(String(amt))}
+                >
+                  <Text
+                    style={[
+                      styles.quickAmountText,
+                      { color: stakeAmount === String(amt) ? colors.primary : colors.mutedForeground },
+                    ]}
+                  >
+                    ${amt.toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -416,4 +563,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   blockedText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  stickyPreviewContainer: { borderBottomWidth: 1, paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm },
+  stickyPreviewInner: { marginBottom: 0 },
+  quickAmountsRow: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.xs, flexWrap: 'wrap' },
+  quickAmountChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.sm, borderWidth: 1 },
+  quickAmountText: { fontSize: 12, fontWeight: '700' },
 });

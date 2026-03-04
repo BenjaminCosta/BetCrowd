@@ -16,6 +16,13 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 
+// ─── Internal helpers ────────────────────────────────────────────────────────
+/** Touch lastActivityAt on the parent tournament (best-effort, non-blocking). */
+const _touchTournamentActivity = (tournamentId: string): void => {
+  const ref = doc(db, 'tournaments', tournamentId);
+  setDoc(ref, { lastActivityAt: serverTimestamp(), hasActivity: true }, { merge: true }).catch(() => {});
+};
+
 // Bet interface with odds calculation fields
 export interface Bet {
   id: string;
@@ -200,6 +207,7 @@ export const createBet = async (
   };
 
   await setDoc(betRef, betData);
+  _touchTournamentActivity(tournamentId);
   return betRef.id;
 };
 
@@ -274,10 +282,82 @@ export const settleBet = async (
   result: any
 ): Promise<void> => {
   const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
-  
+
+  // Detect bets that were never activated (fewer than 2 sides had picks).
+  // These must be voided regardless of the result the admin chose.
+  const betSnap = await getDoc(betRef);
+  const betData = betSnap.exists() ? (betSnap.data() as Bet) : null;
+  const activeSides = Object.values(betData?.optionTotals ?? {}).filter((v) => v > 0).length;
+  const isNeverActivated = activeSides < 2;
+
+  const finalResult = isNeverActivated ? { ...result, void: true } : result;
+
   await updateDoc(betRef, {
     status: 'settled',
-    result,
+    result: finalResult,
+    updatedAt: serverTimestamp(),
+  });
+  _touchTournamentActivity(tournamentId);
+
+  // Auto-finish the event if every bet is now settled or cancelled
+  try {
+    const allBetsRef = collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets');
+    const allBetsSnap = await getDocs(allBetsRef);
+    const hasPending = allBetsSnap.docs.some((d) => {
+      const s = d.data().status;
+      return s === 'open' || s === 'locked';
+    });
+    if (!hasPending) {
+      const eventRef = doc(db, 'tournaments', tournamentId, 'events', eventId);
+      const eventSnap = await getDoc(eventRef);
+      const eventStatus = eventSnap.data()?.status;
+      if (eventStatus === 'locked' || eventStatus === 'upcoming') {
+        await updateDoc(eventRef, { status: 'finished', updatedAt: serverTimestamp() });
+      }
+    }
+  } catch {
+    // Best-effort — non-critical
+  }
+};
+
+/**
+ * Adjust the result of an already-settled bet (admin only).
+ *
+ * Rules:
+ * - Only allowed when bet.status === 'settled'.
+ * - Not allowed when bet.status === 'cancelled'.
+ *
+ * The function stores a minimal audit trail and overwrites the result field.
+ * Winners/losers are recalculated on the next call to calculateTournamentBalances
+ * (which is always a fresh read), so the adjustment is idempotent.
+ */
+export const adjustBetResult = async (
+  tournamentId: string,
+  eventId: string,
+  betId: string,
+  newResult: any,
+): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión');
+
+  const betRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId);
+  const betDoc = await getDoc(betRef);
+  if (!betDoc.exists()) throw new Error('Apuesta no encontrada');
+
+  const bet = betDoc.data() as Bet;
+  if (bet.status === 'cancelled') {
+    throw new Error('No se puede ajustar una apuesta cancelada');
+  }
+  if (bet.status !== 'settled') {
+    throw new Error('Solo se puede ajustar el resultado de apuestas liquidadas');
+  }
+
+  const prevRevision = (bet as any).resultRevision ?? 0;
+  await updateDoc(betRef, {
+    result: newResult,
+    resultUpdatedAt: serverTimestamp(),
+    resultUpdatedBy: user.uid,
+    resultRevision: prevRevision + 1,
     updatedAt: serverTimestamp(),
   });
 };

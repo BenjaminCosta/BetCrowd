@@ -14,7 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
-import { BetCardCompact } from '../../components/BetanoComponents';
+import { SwipeableRow, BetCardCompact } from '../../components/BetanoComponents';
 import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -39,6 +39,8 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   // ── Pick lists ────────────────────────────────────────────────────────────
   const [openPicks, setOpenPicks] = useState<any[]>([]);
   const [settledPicks, setSettledPicks] = useState<any[]>([]);
+  // Keys of settled picks the user has swiped away locally (tournamentId-betId)
+  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set());
 
   // ── Loading ───────────────────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -90,6 +92,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     try {
       const allOpenPicks: any[] = [];
       const allSettledPicks: any[] = [];
+      setDismissedKeys(new Set()); // clear local dismissals on refresh
 
       const allTournaments = await listMyTournaments();
       const tournamentsToLoad = allTournaments.filter(
@@ -273,7 +276,9 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   };
 
   // Must be declared before any early returns to satisfy Rules of Hooks
-  const currentPicks = activeTab === 'open' ? openPicks : settledPicks;
+  const currentPicks = activeTab === 'open'
+    ? openPicks
+    : settledPicks.filter(p => !dismissedKeys.has(`${p.tournamentId}-${p.betId}`));
 
   // Group picks by event so the event header shows only once per event
   const groupedPicks = useMemo(() => {
@@ -419,9 +424,11 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                       const mergedBet = liveTotals[pickData.betId]
                         ? { ...bet, ...liveTotals[pickData.betId] }
                         : bet;
-                      return (
+                      const isSettled = bet.status === 'settled' || bet.status === 'cancelled';
+                      const pickKey = `${pickData.tournamentId}-${pickData.betId}-${idx}`;
+                      const betCard = (
                         <View
-                          key={`${pickData.tournamentId}-${pickData.betId}-${idx}`}
+                          key={pickKey}
                           style={styles.pickWrapper}
                         >
                           <BetCardCompact
@@ -439,6 +446,28 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                           />
                         </View>
                       );
+                      if (isSettled) {
+                        return (
+                          <SwipeableRow
+                            key={pickKey}
+                            actions={[
+                              {
+                                label: 'Borrar',
+                                icon: 'trash-outline',
+                                color: colors.destructive,
+                                onPress: () => setDismissedKeys(prev => {
+                                  const s = new Set(prev);
+                                  s.add(`${pickData.tournamentId}-${pickData.betId}`);
+                                  return s;
+                                }),
+                              },
+                            ]}
+                          >
+                            {betCard}
+                          </SwipeableRow>
+                        );
+                      }
+                      return betCard;
                     })}
                   </View>
                 );

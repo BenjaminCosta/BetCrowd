@@ -6,6 +6,7 @@ import {
   getDocs,
   serverTimestamp,
   runTransaction,
+  writeBatch,
   query,
   where,
   orderBy,
@@ -36,11 +37,13 @@ export interface Tournament {
   endDate?: string;
   ownerId: string;
   inviteCode: string;
-  status: string; // active, archived, deleted, locked
+  status: string; // active | finished | deleted
   hasActivity: boolean; // true if events/bets exist
   currency?: string;
   createdAt: any;
   updatedAt: any;
+  lastActivityAt?: any;
+  finishedAt?: any;
   deletedAt?: any;
   deletedBy?: string;
 }
@@ -120,17 +123,17 @@ export const createTournament = async (input: CreateTournamentInput): Promise<{ 
 
         transaction.set(tournamentRef, tournamentData);
 
-        // Create member entry for owner
+        // Create member entry for creator (role: admin)
         const memberRef = doc(db, 'tournaments', tournamentId, 'members', user.uid);
         transaction.set(memberRef, {
-          role: 'owner',
+          role: 'admin',
           joinedAt: serverTimestamp(),
         });
 
         // Create user tournament reference with denormalized data
         const userTournamentRef = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
         transaction.set(userTournamentRef, {
-          role: 'owner',
+          role: 'admin',
           joinedAt: serverTimestamp(),
           // Denormalized fields for fast loading
           name: input.name,
@@ -291,6 +294,15 @@ export const listMyTournaments = async (): Promise<Tournament[]> => {
       }
     }
 
+    // Sort: active first (by lastActivityAt DESC, fallback createdAt), then finished
+    tournaments.sort((a, b) => {
+      const aOrder = a.status === 'active' ? 0 : 1;
+      const bOrder = b.status === 'active' ? 0 : 1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      const aTime = a.lastActivityAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
+      const bTime = b.lastActivityAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
+      return bTime - aTime;
+    });
     return tournaments;
   } catch (error: any) {
     throw error;
@@ -628,6 +640,71 @@ export const archiveTournament = async (tournamentId: string): Promise<void> => 
 };
 
 /**
+ * Touch lastActivityAt on a tournament.
+ * Call after creating events, bets, or resolving results.
+ */
+export const touchLastActivity = async (tournamentId: string): Promise<void> => {
+  try {
+    const tournamentRef = doc(db, 'tournaments', tournamentId);
+    await setDoc(tournamentRef, {
+      lastActivityAt: serverTimestamp(),
+      hasActivity: true,
+    }, { merge: true });
+  } catch {
+    // Silent — non-critical
+  }
+};
+
+/**
+ * Finish a tournament (admin only).
+ * Validates that ALL events are finished or cancelled first.
+ */
+export const finishTournament = async (tournamentId: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión para finalizar el torneo');
+
+  // Read events directly from Firestore (avoids circular import with eventService)
+  const eventsRef = collection(db, 'tournaments', tournamentId, 'events');
+  const eventsSnap = await getDocs(eventsRef);
+
+  // Block on upcoming/live (not yet happened).
+  // For locked events: block only if they still have unsettled bets.
+  const hardBlockers = eventsSnap.docs.filter((d) => {
+    const s = d.data().status;
+    return s === 'upcoming' || s === 'live';
+  });
+  if (hardBlockers.length > 0) {
+    throw new Error(
+      'No pod\u00e9s finalizar el torneo porque todav\u00eda hay eventos sin resolver.',
+    );
+  }
+
+  // Check locked events for unsettled bets
+  const lockedEvents = eventsSnap.docs.filter((d) => d.data().status === 'locked');
+  for (const ev of lockedEvents) {
+    const betsSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'events', ev.id, 'bets'));
+    const hasPending = betsSnap.docs.some((b) => {
+      const s = b.data().status;
+      return s === 'open' || s === 'locked';
+    });
+    if (hasPending) {
+      throw new Error(
+        'No pod\u00e9s finalizar el torneo porque todav\u00eda hay apuestas sin resolver en algunos eventos.',
+      );
+    }
+  }
+
+  const tournamentRef = doc(db, 'tournaments', tournamentId);
+  await setDoc(tournamentRef, {
+    status: 'finished',
+    finishedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  await syncDenormalizedData(tournamentId, { status: 'finished' });
+};
+
+/**
  * Soft delete a tournament (status=deleted)
  * Also syncs status to all members
  */
@@ -748,4 +825,159 @@ export const syncTournamentRefsFromMain = async (tournamentId: string): Promise<
     console.error('Error syncing tournament refs:', error);
     throw error;
   }
+};
+
+/**
+ * Migrate a member's role from 'owner' to 'admin' in a tournament.
+ * Idempotent — no-op if role is already 'admin' or something else.
+ * Called on TournamentScreen load for incremental, zero-downtime migration.
+ */
+export const migrateOwnerToAdmin = async (tournamentId: string, uid: string): Promise<void> => {
+  try {
+    const memberRef = doc(db, 'tournaments', tournamentId, 'members', uid);
+    const memberDoc = await getDoc(memberRef);
+    if (!memberDoc.exists() || memberDoc.data().role !== 'owner') return;
+    await setDoc(memberRef, { role: 'admin' }, { merge: true });
+    await setDoc(doc(db, 'users', uid, 'tournamentRefs', tournamentId), { role: 'admin' }, { merge: true });
+    if (__DEV__) console.log(`[migrateOwnerToAdmin] uid=${uid} migrated in tournament ${tournamentId}`);
+  } catch (e) {
+    if (__DEV__) console.warn('[migrateOwnerToAdmin] Failed (best-effort):', e);
+  }
+};
+
+/**
+ * Check if the current user has been removed from a tournament.
+ */
+export const isMemberRemoved = async (tournamentId: string, uid: string): Promise<boolean> => {
+  try {
+    const memberDoc = await getDoc(doc(db, 'tournaments', tournamentId, 'members', uid));
+    if (!memberDoc.exists()) return false;
+    return memberDoc.data().status === 'removed';
+  } catch {
+    return false;
+  }
+};
+
+/** Internal helper: recompute bet status from optionTotals (pending ↔ open only). */
+const _computeBetStatus = (
+  currentStatus: string,
+  optionTotals: Record<string, number>,
+): string => {
+  if (currentStatus !== 'pending' && currentStatus !== 'open') return currentStatus;
+  return Object.values(optionTotals).filter((v) => v > 0).length >= 2 ? 'open' : 'pending';
+};
+
+/**
+ * Remove a member from a tournament (admin only).
+ *
+ * Rules:
+ * - Target must not be admin/owner.
+ * - Target must not have picks in locked/settled bets.
+ * - Picks in pending/open bets are deleted and bet aggregates reverted atomically.
+ * - Member doc is soft-removed: status='removed' (not hard-deleted).
+ */
+export const removeMemberFromTournament = async (
+  tournamentId: string,
+  targetUid: string,
+): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión');
+  if (targetUid === user.uid) throw new Error('No puedes quitarte a ti mismo');
+
+  const targetMemberRef = doc(db, 'tournaments', tournamentId, 'members', targetUid);
+  const targetMemberDoc = await getDoc(targetMemberRef);
+  if (!targetMemberDoc.exists()) throw new Error('El usuario no es miembro de este torneo');
+
+  const { role: targetRole, status: targetStatus } = targetMemberDoc.data() as {
+    role: string;
+    status?: string;
+  };
+  if (targetRole === 'admin' || targetRole === 'owner') {
+    throw new Error('No se puede quitar a un administrador del torneo');
+  }
+  if (targetStatus === 'removed') {
+    throw new Error('El usuario ya fue removido de este torneo');
+  }
+
+  // ── Scan all events / bets for this target's picks ─────────────────────────
+  type PickEntry = {
+    betRef: any;
+    betData: any;
+    pickRef: any;
+    pickData: any;
+  };
+
+  const eventsSnapshot = await getDocs(
+    collection(db, 'tournaments', tournamentId, 'events'),
+  );
+
+  const picksToDelete: PickEntry[] = [];
+
+  for (const eventDoc of eventsSnapshot.docs) {
+    const eventId = eventDoc.id;
+    const betsSnapshot = await getDocs(
+      collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets'),
+    );
+    for (const betDoc of betsSnapshot.docs) {
+      const betData = betDoc.data();
+      if (betData.status === 'cancelled') continue;
+
+      const pickRef = doc(
+        db,
+        'tournaments', tournamentId,
+        'events', eventId,
+        'bets', betDoc.id,
+        'picks', targetUid,
+      );
+      const pickDoc = await getDoc(pickRef);
+      if (!pickDoc.exists()) continue;
+
+      if (betData.status === 'locked' || betData.status === 'settled') {
+        throw new Error('No se puede quitar: ya participó en apuestas cerradas.');
+      }
+
+      picksToDelete.push({
+        betRef: doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betDoc.id),
+        betData,
+        pickRef,
+        pickData: pickDoc.data(),
+      });
+    }
+  }
+
+  // ── Build and commit write batch ────────────────────────────────────────────
+  const batch = writeBatch(db);
+
+  for (const { betRef, betData, pickRef, pickData } of picksToDelete) {
+    batch.delete(pickRef);
+
+    const stake = pickData.stakeAmount || 0;
+    const selectionKey =
+      typeof pickData.selection === 'object'
+        ? JSON.stringify(pickData.selection)
+        : String(pickData.selection);
+
+    const newTotalPot = Math.max(0, (betData.totalPot || 0) - stake);
+    const newTotalPicks = Math.max(0, (betData.totalPicks || 0) - 1);
+    const newOptionTotals: Record<string, number> = { ...(betData.optionTotals || {}) };
+    newOptionTotals[selectionKey] = Math.max(0, (newOptionTotals[selectionKey] || 0) - stake);
+
+    const newStatus = _computeBetStatus(betData.status, newOptionTotals);
+    batch.update(betRef, {
+      ...(newStatus !== betData.status ? { status: newStatus } : {}),
+      totalPot: newTotalPot,
+      totalPicks: newTotalPicks,
+      optionTotals: newOptionTotals,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  // Soft-remove the member (never hard-delete)
+  batch.set(
+    targetMemberRef,
+    { status: 'removed', removedAt: serverTimestamp(), removedBy: user.uid },
+    { merge: true },
+  );
+
+  await batch.commit();
 };

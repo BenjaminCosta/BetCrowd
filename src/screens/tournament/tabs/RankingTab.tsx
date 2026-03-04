@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,10 @@ import {
   ActivityIndicator,
   Image,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Modal,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +22,10 @@ import { UserBalance } from '../../../services/groupsService';
 
 import { getInitials, formatBalance } from '../../../utils/formatters';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+const SCREEN_H = Dimensions.get('window').height;
+const SCREEN_W = Dimensions.get('window').width;
+const TOOLTIP_WIDTH = 200;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -27,9 +34,20 @@ interface RankingTabProps {
   rankingLoading: boolean;
   rankingRefreshing: boolean;
   currentUserId?: string;
+  isAdmin?: boolean;
   onRefresh: () => void;
   onParticipantPress: (balance: UserBalance, index: number) => void;
+  onRemoveMember?: (balance: UserBalance) => void;
 }
+
+// ─── Tooltip state ───────────────────────────────────────────────────────────────────
+type TooltipState = {
+  visible: boolean;
+  balance: UserBalance | null;
+  index: number;
+  pageY: number;
+  pageX: number;
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -38,16 +56,79 @@ const RankingTab: React.FC<RankingTabProps> = ({
   rankingLoading,
   rankingRefreshing,
   currentUserId,
+  isAdmin = false,
   onRefresh,
   onParticipantPress,
+  onRemoveMember,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(8)).current;
+  const [tooltip, setTooltip] = useState<TooltipState>({
+    visible: false, balance: null, index: 0, pageY: 0, pageX: 0,
+  });
+  const rowRefs = useRef<Record<string, any>>({});
+  const usernameRefs = useRef<Record<string, any>>({});
+
+  const showTooltip = (balance: UserBalance, index: number, uid: string) => {
+    const nodeRef = rowRefs.current[uid];
+    if (!nodeRef?.measure) {
+      onParticipantPress(balance, index);
+      return;
+    }
+    nodeRef.measure((_x: number, _y: number, _w: number, h: number, _px: number, py: number) => {
+      const tooltipH =
+        isAdmin && balance.uid !== currentUserId &&
+        balance.role !== 'admin' && balance.role !== 'owner'
+          ? 104 : 56;
+      const clampedY = Math.max(60, Math.min(py + h / 2 - tooltipH / 2, SCREEN_H - tooltipH - 60));
+
+      const doOpen = (pageX: number) => {
+        setTooltip({ visible: true, balance, index, pageY: clampedY, pageX });
+        fadeAnim.setValue(0);
+        slideAnim.setValue(8);
+        Animated.parallel([
+          Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+          Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+        ]).start();
+      };
+
+      const uRef = usernameRefs.current[uid];
+      if (uRef?.measureInWindow) {
+        uRef.measureInWindow((ux: number) => {
+          doOpen(Math.min(ux, SCREEN_W - TOOLTIP_WIDTH - Spacing.lg));
+        });
+      } else {
+        doOpen(Spacing.lg);
+      }
+    });
+  };
+
+  const hideTooltip = (cb?: () => void) => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 110, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 4, duration: 110, useNativeDriver: true }),
+    ]).start(() => {
+      setTooltip((prev) => ({ ...prev, visible: false }));
+      cb?.();
+    });
+  };
+
+  const tooltipBalance = tooltip.balance;
+  const canRemove =
+    isAdmin && !!tooltipBalance &&
+    tooltipBalance.uid !== currentUserId &&
+    tooltipBalance.role !== 'admin' && tooltipBalance.role !== 'owner';
+
+  const tooltipBg = theme === 'dark' ? '#1C1C1E' : '#2C2C2E';
 
   const getBalanceColor = (b: number) =>
     b > 0 ? colors.success : b < 0 ? colors.destructive : colors.mutedForeground;
 
   return (
+    <>
     <ScrollView
       style={styles.tabScroll}
       contentContainerStyle={styles.tabContent}
@@ -77,8 +158,9 @@ const RankingTab: React.FC<RankingTabProps> = ({
           return (
             <TouchableOpacity
               key={balance.uid}
+              ref={(ref) => { if (ref) rowRefs.current[balance.uid] = ref as any; }}
               activeOpacity={0.75}
-              onPress={() => onParticipantPress(balance, index)}
+              onPress={() => showTooltip(balance, index, balance.uid)}
             >
               <Card
                 style={[
@@ -116,6 +198,7 @@ const RankingTab: React.FC<RankingTabProps> = ({
                   <View style={styles.rankUserInfo}>
                     <View style={styles.rankUsernameRow}>
                       <Text
+                        ref={(ref) => { if (ref) usernameRefs.current[balance.uid] = ref as any; }}
                         style={[styles.rankUsername, { color: colors.foreground }]}
                         numberOfLines={1}
                       >
@@ -144,7 +227,6 @@ const RankingTab: React.FC<RankingTabProps> = ({
                   >
                     {formatBalance(balance.netBalance)}
                   </Text>
-                  <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
                 </View>
               </Card>
             </TouchableOpacity>
@@ -152,7 +234,65 @@ const RankingTab: React.FC<RankingTabProps> = ({
         })
       )}
     </ScrollView>
-  );
+    {/* ── Tooltip Modal ──────────────────────────────────────────────────────────────── */}
+    <Modal
+      visible={tooltip.visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={() => hideTooltip()}
+    >
+      <TouchableWithoutFeedback onPress={() => hideTooltip()}>
+        <View style={styles.tooltipBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <Animated.View
+              style={[
+                styles.tooltipCard,
+                {
+                  top: tooltip.pageY,
+                  left: tooltip.pageX,
+                  backgroundColor: tooltipBg,
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              {/* Ver info */}
+              <TouchableOpacity
+                style={styles.tooltipItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const { balance, index } = tooltip;
+                  hideTooltip(() => { if (balance) onParticipantPress(balance, index); });
+                }}
+              >
+                <Ionicons name="person-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.tooltipLabel}>Ver info</Text>
+              </TouchableOpacity>
+
+              {/* Quitar del torneo — admin only */}
+              {canRemove && (
+                <>
+                  <View style={styles.tooltipSep} />
+                  <TouchableOpacity
+                    style={styles.tooltipItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const { balance } = tooltip;
+                      hideTooltip(() => { if (balance) onRemoveMember?.(balance); });
+                    }}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color="#FF453A" />
+                    <Text style={[styles.tooltipLabel, { color: '#FF453A' }]}>Quitar del torneo</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </Animated.View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+    </>  );
 };
 
 export default RankingTab;
@@ -163,15 +303,15 @@ const styles = StyleSheet.create({
   tabScroll: { flex: 1 },
   tabContent: { padding: Spacing.lg, paddingBottom: 100 },
   centeredLoader: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
-  rankingCard: { marginBottom: Spacing.xs, paddingVertical: Spacing.xs },
+  rankingCard: { marginBottom: Spacing.sm, paddingVertical: Spacing.sm },
   rankingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   rankNumber: { fontSize: 14, width: 22, textAlign: 'center', fontWeight: '600' },
   rankAvatarWrapper: { position: 'relative' },
   rankAvatar: { width: 40, height: 40, borderRadius: 20 },
   rankAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -186,4 +326,27 @@ const styles = StyleSheet.create({
   wlSep: { fontSize: 12 },
   wlLoss: { fontSize: 12, fontWeight: '700' },
   rankBalance: { fontSize: 16, fontWeight: '700' },
+
+  // Tooltip
+  tooltipBackdrop: { flex: 1 },
+  tooltipCard: {
+    position: 'absolute',
+    width: TOOLTIP_WIDTH,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 14,
+  },
+  tooltipItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 13,
+  },
+  tooltipLabel: { fontSize: 14, fontWeight: '600' as const, color: '#FFFFFF' },
+  tooltipSep: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.12)' },
 });

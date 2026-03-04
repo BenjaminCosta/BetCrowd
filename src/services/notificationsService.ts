@@ -8,6 +8,7 @@ import {
   getDocs,
   onSnapshot,
   updateDoc,
+  deleteDoc,
   writeBatch,
   serverTimestamp,
   Unsubscribe,
@@ -127,6 +128,22 @@ export const markAllAsRead = async (uid: string): Promise<void> => {
     await batch.commit();
   } catch (error) {
     console.error('Error marking all notifications as read:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a single notification permanently
+ */
+export const deleteNotification = async (
+  uid: string,
+  notificationId: string
+): Promise<void> => {
+  try {
+    const notificationRef = doc(db, 'users', uid, 'notifications', notificationId);
+    await deleteDoc(notificationRef);
+  } catch (error) {
+    console.error('Error deleting notification:', error);
     throw error;
   }
 };

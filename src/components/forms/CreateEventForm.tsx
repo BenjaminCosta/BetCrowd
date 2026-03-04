@@ -106,49 +106,8 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
     }
   };
 
-  const handleQuickCreate = async (template: string) => {
-    try {
-      setCreating(true);
-      if (!tournament) {
-        Alert.alert('Error', 'Torneo no cargado');
-        return;
-      }
-      const events = await listEvents(tournamentId);
-      const nextRound = events.length + 1;
-
-      let eventTitle = '';
-      let type: 'match' | 'round' | 'custom' = 'custom';
-      const format = tournament.format;
-
-      switch (format) {
-        case 'liga':
-          eventTitle = `Fecha ${nextRound}`;
-          type = 'round';
-          break;
-        case 'eliminatoria':
-        case 'grupos-eliminatoria':
-          eventTitle = template;
-          type = 'match';
-          break;
-        case 'serie':
-          eventTitle = `Juego ${nextRound}`;
-          type = 'match';
-          break;
-        case 'evento-unico':
-          eventTitle = template || 'Evento principal';
-          type = 'match';
-          break;
-        default:
-          eventTitle = template;
-      }
-
-      await createEvent(tournamentId, { title: eventTitle, type, startsAt: null, status: 'upcoming' });
-      Alert.alert('Éxito', `Evento "${eventTitle}" creado`, [{ text: 'OK', onPress: () => onSuccess() }]);
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setCreating(false);
-    }
+  const handleQuickTemplate = (template: string) => {
+    setTitle(template);
   };
 
   const handleBulkCreate = async () => {
@@ -248,7 +207,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
               <TouchableOpacity
                 key={template}
                 style={[styles.templateChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-                onPress={() => handleQuickCreate(template)}
+                onPress={() => handleQuickTemplate(template)}
                 disabled={creating}
               >
                 <Text style={[styles.templateChipText, { color: colors.foreground }]}>{template}</Text>
@@ -296,7 +255,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
               <TouchableOpacity
                 key={template}
                 style={[styles.templateChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-                onPress={() => handleQuickCreate(template)}
+                onPress={() => handleQuickTemplate(template)}
                 disabled={creating}
               >
                 <Text style={[styles.templateChipText, { color: colors.foreground }]}>{template}</Text>
@@ -353,17 +312,18 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Equipo/Participante Local (opcional)
-            </Text>
-            <Input value={homeTeam} onChangeText={setHomeTeam} placeholder="Ej: River Plate" />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Equipo/Participante Visitante (opcional)
-            </Text>
-            <Input value={awayTeam} onChangeText={setAwayTeam} placeholder="Ej: Boca Juniors" />
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>Equipos (opcional)</Text>
+            <View style={styles.teamsRow}>
+              <View style={{ flex: 1 }}>
+                <Input value={homeTeam} onChangeText={setHomeTeam} placeholder="Local" />
+              </View>
+              <View style={[styles.vsContainer, { backgroundColor: colors.muted }]}>
+                <Text style={[styles.vsText, { color: colors.mutedForeground }]}>VS</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Input value={awayTeam} onChangeText={setAwayTeam} placeholder="Visitante" />
+              </View>
+            </View>
           </View>
 
           <View style={styles.formGroup}>
@@ -373,6 +333,36 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
 
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: colors.foreground }]}>Fecha del evento *</Text>
+            <View style={styles.dateChipsRow}>
+              {[
+                { label: 'Hoy', offset: 0 },
+                { label: 'Mañana', offset: 1 },
+                { label: '+2 días', offset: 2 },
+              ].map(({ label, offset }) => {
+                const d = new Date();
+                d.setDate(d.getDate() + offset);
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const val = `${d.getFullYear()}-${mm}-${dd}`;
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    style={[
+                      styles.dateChip,
+                      {
+                        backgroundColor: eventDate === val ? colors.primary + '20' : colors.secondary,
+                        borderColor: eventDate === val ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => setEventDate(val)}
+                  >
+                    <Text style={[styles.dateChipText, { color: eventDate === val ? colors.primary : colors.mutedForeground }]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <TouchableOpacity
               style={[
                 styles.dateButton,
@@ -473,6 +463,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
   },
   dateText: { fontSize: 14, fontWeight: '600' },
+  teamsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  vsContainer: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.sm, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center' },
+  vsText: { fontSize: 13, fontWeight: '900' },
+  dateChipsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
+  dateChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.sm, borderWidth: 1 },
+  dateChipText: { fontSize: 13, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.lg },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },

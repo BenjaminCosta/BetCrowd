@@ -9,9 +9,11 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, EmptyState } from '../components/CommonComponents';
+import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useSocial } from '../context/SocialContext';
 import { Notification } from '../services/notificationsService';
@@ -24,6 +26,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
     notificationsLoading,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
   } = useSocial();
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -101,8 +104,20 @@ const NotificationCenterScreen = ({ navigation }: any) => {
     const isUnread = !notification.readAt;
 
     return (
-      <TouchableOpacity
+      <SwipeableRow
         key={notification.id}
+        actions={[
+          {
+            label: 'Borrar',
+            icon: 'trash-outline',
+            color: colors.destructive,
+            onPress: () => deleteNotification(notification.id).catch(() => {
+              Alert.alert('Error', 'No se pudo eliminar la notificación');
+            }),
+          },
+        ]}
+      >
+      <TouchableOpacity
         onPress={() => handleNotificationPress(notification)}
         activeOpacity={0.7}
       >
@@ -161,12 +176,14 @@ const NotificationCenterScreen = ({ navigation }: any) => {
           </View>
         </Card>
       </TouchableOpacity>
+      </SwipeableRow>
     );
   };
 
   const unreadCount = notifications.filter(n => !n.readAt).length;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar showBackButton />
 
@@ -215,6 +232,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
         )}
       </ScrollView>
     </View>
+    </GestureHandlerRootView>
   );
 };
 

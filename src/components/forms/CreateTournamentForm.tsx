@@ -21,12 +21,12 @@ import { createTournament } from '../../services/tournamentService';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const formatOptions = [
-  { id: 'liga', label: 'Liga', icon: 'trophy' },
-  { id: 'eliminatoria', label: 'Eliminatoria', icon: 'git-network' },
-  { id: 'grupos-eliminatoria', label: 'Grupos + Eliminatoria', icon: 'grid' },
-  { id: 'evento-unico', label: 'Evento único', icon: 'flash' },
-  { id: 'serie', label: 'Serie (Bo3/Bo5)', icon: 'layers' },
-  { id: 'otro', label: 'Otro', icon: 'ellipsis-horizontal' },
+  { id: 'liga', label: 'Liga', icon: 'trophy', description: 'Jornadas regulares' },
+  { id: 'eliminatoria', label: 'Eliminatoria', icon: 'git-network', description: 'Rondas hasta la final' },
+  { id: 'grupos-eliminatoria', label: 'Grupos + Elim.', icon: 'grid', description: 'Fase grupal y eliminatoria' },
+  { id: 'evento-unico', label: 'Evento único', icon: 'flash', description: 'Un evento principal' },
+  { id: 'serie', label: 'Serie (Bo3/Bo5)', icon: 'layers', description: 'Al mejor de 3 o 5' },
+  { id: 'otro', label: 'Otro', icon: 'ellipsis-horizontal', description: 'Formato libre' },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
               <Text style={[styles.title, { color: colors.foreground }]}>Nuevo Torneo</Text>
             </View>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              Configura tu torneo privado y compite con amigos
+              Invitá a tus amigos y empezá a competir.
             </Text>
           </View>
 
@@ -155,34 +155,34 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
             <SectionHeader title="Formato del torneo" />
             <View style={styles.formatGrid}>
               {formatOptions.map((format) => (
-                <TouchableOpacity
+              <TouchableOpacity
                   key={format.id}
                   style={[
                     styles.formatCard,
                     {
-                      backgroundColor: colors.secondary,
+                      backgroundColor: selectedFormat === format.id ? colors.primary + '12' : colors.secondary,
                       borderColor: selectedFormat === format.id ? colors.primary : colors.border,
                     },
                   ]}
                   onPress={() => setSelectedFormat(format.id)}
                 >
-                  <Ionicons
-                    name={format.icon as any}
-                    size={32}
-                    color={selectedFormat === format.id ? colors.primary : colors.mutedForeground}
-                  />
-                  <Text
-                    style={[
-                      styles.formatLabel,
-                      { color: selectedFormat === format.id ? colors.foreground : colors.mutedForeground },
-                    ]}
-                  >
-                    {format.label}
-                  </Text>
+                  <View style={[styles.formatIconBox, { backgroundColor: selectedFormat === format.id ? colors.primary + '20' : colors.muted }]}>
+                    <Ionicons
+                      name={format.icon as any}
+                      size={20}
+                      color={selectedFormat === format.id ? colors.primary : colors.mutedForeground}
+                    />
+                  </View>
+                  <View style={styles.formatTextBox}>
+                    <Text style={[styles.formatLabel, { color: selectedFormat === format.id ? colors.foreground : colors.foreground }]}>
+                      {format.label}
+                    </Text>
+                    <Text style={[styles.formatDescription, { color: colors.mutedForeground }]} numberOfLines={1}>
+                      {format.description}
+                    </Text>
+                  </View>
                   {selectedFormat === format.id && (
-                    <View style={styles.selectedBadge}>
-                      <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-                    </View>
+                    <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -233,6 +233,46 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
               />
             </View>
           </Card>
+
+          {/* Dynamic Summary */}
+          {(!!selectedFormat || !!startDate || !!endDate) && (
+            <View style={[styles.summaryBlock, { backgroundColor: colors.secondary, borderColor: colors.border, borderLeftColor: colors.primary }]}>
+              <View style={styles.summaryBlockHeader}>
+                <Ionicons name="document-text-outline" size={15} color={colors.primary} />
+                <Text style={[styles.summaryBlockTitle, { color: colors.foreground }]}>Resumen</Text>
+              </View>
+              {!!selectedFormat && (
+                <View style={styles.summaryBlockItem}>
+                  <Text style={[styles.summaryBlockKey, { color: colors.mutedForeground }]}>Formato</Text>
+                  <Text style={[styles.summaryBlockVal, { color: colors.foreground }]}>
+                    {formatOptions.find((f) => f.id === selectedFormat)?.label || selectedFormat}
+                  </Text>
+                </View>
+              )}
+              {!!startDate && !!endDate ? (
+                <View style={styles.summaryBlockItem}>
+                  <Text style={[styles.summaryBlockKey, { color: colors.mutedForeground }]}>Duración</Text>
+                  <Text style={[styles.summaryBlockVal, { color: colors.foreground }]}>
+                    {(() => {
+                      const days = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
+                      return `${days} ${days === 1 ? 'día' : 'días'}`;
+                    })()}
+                  </Text>
+                </View>
+              ) : !!startDate ? (
+                <View style={styles.summaryBlockItem}>
+                  <Text style={[styles.summaryBlockKey, { color: colors.mutedForeground }]}>Inicio</Text>
+                  <Text style={[styles.summaryBlockVal, { color: colors.foreground }]}>{formatDate(startDate)}</Text>
+                </View>
+              ) : null}
+              {!!participants && parseInt(participants) > 0 && (
+                <View style={styles.summaryBlockItem}>
+                  <Text style={[styles.summaryBlockKey, { color: colors.mutedForeground }]}>Participantes</Text>
+                  <Text style={[styles.summaryBlockVal, { color: colors.foreground }]}>{participants}</Text>
+                </View>
+              )}
+            </View>
+          )}
 
           <TouchableOpacity
             onPress={handleCreate}
@@ -299,12 +339,16 @@ const styles = StyleSheet.create({
   section: { marginBottom: Spacing.lg },
   formGroup: { marginBottom: Spacing.lg },
   label: { fontSize: 14, fontWeight: '600', marginBottom: Spacing.sm },
-  formatGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
+  formatGrid: { gap: Spacing.sm },
   formatCard: {
-    width: '47%', padding: Spacing.lg, borderRadius: BorderRadius.md,
-    borderWidth: 2, alignItems: 'center', gap: Spacing.sm, position: 'relative',
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.md, borderWidth: 1.5,
   },
-  formatLabel: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  formatIconBox: { width: 36, height: 36, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center' },
+  formatTextBox: { flex: 1 },
+  formatLabel: { fontSize: 14, fontWeight: '700' },
+  formatDescription: { fontSize: 11, marginTop: 1 },
   selectedBadge: { position: 'absolute', top: Spacing.sm, right: Spacing.sm },
   dateRow: { flexDirection: 'row', gap: Spacing.md },
   dateColumn: { flex: 1 },
@@ -338,4 +382,11 @@ const styles = StyleSheet.create({
   modalContent: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.lg },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
   modalTitle: { fontSize: 20, fontWeight: '700' },
+  summaryBlock: { marginBottom: Spacing.lg, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, borderLeftWidth: 3, gap: Spacing.sm },
+  summaryBlockHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: Spacing.xs },
+  summaryBlockTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
+  summaryBlockItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  summaryBlockKey: { fontSize: 12, fontWeight: '500' },
+  summaryBlockVal: { fontSize: 13, fontWeight: '700' },
+  summaryBlockRow: { fontSize: 13, lineHeight: 20 },
 });

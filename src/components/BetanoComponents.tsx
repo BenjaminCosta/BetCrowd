@@ -93,6 +93,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
 
   const isWinningOption = (b: typeof bet, option: string): boolean => {
     if (b.status !== 'settled') return false;
+    if (b.result?.void) return false;
     if (b.type === 'score') {
       const score = b.result?.score;
       if (!score) return false;
@@ -105,9 +106,12 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
     return !!b.result?.winner && b.result.winner === option;
   };
 
-  const userWon = userSelection ? isWinningOption(bet, userSelection) : false;
+  const hasNoWinner = bet.status === 'settled' && !bet.options.some((o) => isWinningOption(bet, o));
+  const isVoid = !!bet.result?.void;
+  const userWon = !hasNoWinner && (userSelection ? isWinningOption(bet, userSelection) : false);
   const userLost = (() => {
     if (bet.status !== 'settled' || !userSelection) return false;
+    if (bet.result?.void) return false;
     if (bet.type === 'score') {
       const score = bet.result?.score;
       if (!score) return false;
@@ -119,7 +123,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
     }
     return !!bet.result?.winner && bet.result.winner !== userSelection;
   })();
-  const badgeColor = userWon ? '#10B981' : userLost ? '#DC2E4B' : getStatusColor(bet.status);
+  const badgeColor = hasNoWinner ? '#8B8D97' : userWon ? '#10B981' : userLost ? '#DC2E4B' : getStatusColor(bet.status);
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -166,9 +170,9 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
             ]}>
               {userWon && <Ionicons name="checkmark" size={10} color="#FFF" />}
               {userLost && <Ionicons name="close" size={10} color="#FFF" />}
-              <Text style={styles.statusText}>{getStatusLabel(bet.status)}</Text>
+              <Text style={styles.statusText}>{isVoid ? 'RESUELTA' : getStatusLabel(bet.status)}</Text>
             </View>
-            {bet.status === 'pending' && (
+            {(bet.status === 'pending' || isVoid) && (
               <TouchableOpacity
                 ref={infoButtonRef}
                 onPress={() => showPendingTip ? handleHideTooltip() : handleShowTooltip()}
@@ -287,8 +291,8 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
         })}
       </View>
 
-      {/* Floating tooltip for pending state */}
-      {bet.status === 'pending' && (
+      {/* Floating tooltip for pending / void-settled state */}
+      {(bet.status === 'pending' || isVoid) && (
         <Modal
           transparent
           visible={showPendingTip}
@@ -312,7 +316,9 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
             ]}
           >
             <Text style={styles.floatingTooltipText}>
-              Esperando apuestas para activar el mercado.
+              {isVoid
+                ? 'Esta apuesta no llegó a activarse porque solo un lado tuvo participantes.'
+                : 'Esperando apuestas para activar el mercado.'}
             </Text>
           </Animated.View>
         </Modal>
@@ -542,9 +548,21 @@ const styles = StyleSheet.create({
   eventTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     marginBottom: Spacing.sm,
     zIndex: 1,
+  },
+  eventTopRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  eventTopDate: {
+    fontSize: 11,
+    fontWeight: '500',
+    flexShrink: 0,
   },
   eventStatusBadge: {
     flexDirection: 'row',
@@ -673,21 +691,32 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
         />
       </View>
 
-      {/* Top row: status badge + "ya apostaste" */}
+      {/* Top row: status badge + “ya apostaste” + date */}
       <View style={styles.eventTopRow}>
-        <View style={[styles.eventStatusBadge, { backgroundColor: statusColor + '20' }]}>
-          {isEventToday(event) && (
-            <View style={[styles.eventLiveDot, { backgroundColor: statusColor }]} />
-          )}
-          <Text style={[styles.eventStatusText, { color: statusColor }]}>
-            {getEventBadgeLabel(event)}
-          </Text>
-        </View>
-        {userHasPick && (
-          <View style={[styles.eventPickBadge, { backgroundColor: colors.success + '20' }]}>
-            <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-            <Text style={[styles.eventPickText, { color: colors.success }]}>Ya apostaste</Text>
+        <View style={styles.eventTopRowLeft}>
+          <View style={[styles.eventStatusBadge, { backgroundColor: statusColor + '20' }]}>
+            {isEventToday(event) && (
+              <View style={[styles.eventLiveDot, { backgroundColor: statusColor }]} />
+            )}
+            <Text style={[styles.eventStatusText, { color: statusColor }]}>
+              {getEventBadgeLabel(event)}
+            </Text>
           </View>
+          {userHasPick && (
+            <View style={[styles.eventPickBadge, { backgroundColor: colors.success + '20' }]}>
+              <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+              <Text style={[styles.eventPickText, { color: colors.success }]}>Ya apostaste</Text>
+            </View>
+          )}
+        </View>
+        {!!event.date && (
+          <Text style={[styles.eventTopDate, { color: colors.mutedForeground }]}>
+            {(() => {
+              const [y, m, d] = event.date!.split('-');
+              const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+              return dt.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+            })()}
+          </Text>
         )}
       </View>
 

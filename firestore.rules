@@ -191,7 +191,7 @@ service cloud.firestore {
               && (
                 request.resource.data.role == "member"
                 || (
-                  request.resource.data.role == "owner"
+                  (request.resource.data.role == "owner" || request.resource.data.role == "admin")
                   // Either the tournament exists and this user owns it,
                   // OR the tournament doesn't exist yet (created in same batch)
                   && (
@@ -253,11 +253,21 @@ service cloud.firestore {
             // ✅ read: cualquier miembro (necesario para listenBetPicks y calcular pool client-side)
             allow read: if isTournamentMember(tournamentId);
 
-            // ✅ write: el usuario solo puede escribir su propio pick y solo si el bet está open o pending
-            allow create, update, delete: if isTournamentMember(tournamentId)
+            // ✅ create/update: el usuario solo puede escribir su propio pick y solo si el bet está open o pending
+            allow create, update: if isTournamentMember(tournamentId)
               && request.auth.uid == uid
               && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId))
               && get(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId)).data.status in ["pending", "open"];
+
+            // ✅ delete: el usuario borra su propio pick (solo si bet abierto/pendiente)
+            //    o un admin elimina picks de cualquier usuario (ej. al quitar un miembro)
+            allow delete: if isTournamentAdmin(tournamentId)
+              || (
+                isTournamentMember(tournamentId)
+                && request.auth.uid == uid
+                && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId))
+                && get(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId)).data.status in ["pending", "open"]
+              );
           }
         }
       }

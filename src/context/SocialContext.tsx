@@ -20,6 +20,7 @@ import {
   listenUnreadCount,
   markAsRead as markAsReadService,
   markAllAsRead as markAllAsReadService,
+  deleteNotification as deleteNotificationService,
 } from '../services/notificationsService';
 import {
   TournamentInvite,
@@ -28,6 +29,7 @@ import {
   acceptTournamentInvite as acceptInviteService,
   rejectTournamentInvite as rejectInviteService,
   cancelTournamentInvite as cancelInviteService,
+  dismissSentInvite as dismissInviteService,
 } from '../services/inviteService';
 import { PublicProfile, getPublicProfile } from '../services/publicProfileService';
 import { getUserProfile } from '../services/userService';
@@ -66,10 +68,12 @@ interface SocialContextType {
   getFriendshipStatus: (targetUid: string) => Promise<FriendshipStatus>;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
   // Invite actions
   acceptInvite: (inviteId: string) => Promise<string>;
   rejectInvite: (inviteId: string) => Promise<void>;
   cancelInvite: (inviteId: string) => Promise<void>;
+  dismissSentInvite: (inviteId: string) => Promise<void>;
 
   // Refresh
   refreshFriends: () => void;
@@ -255,6 +259,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     await markAllAsReadService(user.uid);
   };
 
+  const deleteNotification = async (notificationId: string) => {
+    if (!user) throw new Error('User not authenticated');
+    await deleteNotificationService(user.uid, notificationId);
+  };
+
   const acceptInvite = async (inviteId: string): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
     return acceptInviteService(inviteId);
@@ -268,6 +277,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
   const cancelInvite = async (inviteId: string): Promise<void> => {
     if (!user) throw new Error('User not authenticated');
     return cancelInviteService(inviteId);
+  };
+
+  const dismissSentInvite = async (inviteId: string): Promise<void> => {
+    if (!user) throw new Error('User not authenticated');
+    return dismissInviteService(inviteId);
   };
 
   const refreshFriends = () => {
@@ -298,9 +312,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         getFriendshipStatus: checkFriendshipStatus,
         markAsRead,
         markAllAsRead,
+        deleteNotification,
         acceptInvite,
         rejectInvite,
         cancelInvite,
+        dismissSentInvite,
         refreshFriends,
       }}
     >

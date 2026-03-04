@@ -18,7 +18,7 @@ import { isEventToday, getEventBadgeLabel } from '../../../utils/formatters';
 import { useTheme } from '../../../context/ThemeContext';
 import { FloatingActionButton } from '../../../components/FloatingActionButton';
 import { SwipeableRow, BetCardCompact } from '../../../components/BetanoComponents';
-import { deleteBet, deleteMyPick, upsertMyPick, calculateOdds, Bet, Pick } from '../../../services/betService';
+import { deleteBet, deleteMyPick, upsertMyPick, calculateOdds, adjustBetResult, Bet, Pick } from '../../../services/betService';
 import { Event } from '../../../services/eventService';
 import { useAuth } from '../../../context/AuthContext';
 import CreateBetForm from '../../../components/forms/CreateBetForm';
@@ -135,6 +135,39 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
         },
       },
     ]);
+  };
+
+  const handleAdjustResult = (bet: Bet) => {
+    if (!event) return;
+    Alert.alert(
+      'Ajustar resultado',
+      'Esto recalculará ganadores y estadísticas. ¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Ajustar',
+          onPress: () =>
+            Alert.alert(
+              'Nuevo resultado',
+              `¿Cuál es el resultado correcto de "${bet.title}"?`,
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                ...bet.options.map((option) => ({
+                  text: option,
+                  onPress: async () => {
+                    try {
+                      await adjustBetResult(tournamentId, event.id, bet.id, { winner: option });
+                      Alert.alert('Listo', 'Resultado actualizado correctamente');
+                    } catch (e: any) {
+                      Alert.alert('Error', e.message || 'No se pudo ajustar');
+                    }
+                  },
+                })),
+              ],
+            ),
+        },
+      ],
+    );
   };
 
   const openBetModal = (bet: Bet, option: string) => {
@@ -369,6 +402,26 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
                           showOdds
                           onCancel={canInteract && mySelection ? () => handleCancelPick(bet) : undefined}
                         />
+                        {bet.status === 'settled' && !bet.result?.winner && (
+                          <View style={[styles.noWinnerRow, { borderTopColor: colors.border }]}>
+                            <Ionicons name="information-circle" size={14} color={colors.warning} />
+                            <Text style={[styles.noWinnerText, { color: colors.warning }]}>
+                              Mercado no activado. Apuesta sin ganador.
+                            </Text>
+                          </View>
+                        )}
+                        {isAdmin && bet.status === 'settled' && (
+                          <TouchableOpacity
+                            style={[styles.adjustResultBtn, { borderTopColor: colors.border }]}
+                            onPress={() => handleAdjustResult(bet)}
+                            activeOpacity={0.75}
+                          >
+                            <Ionicons name="refresh-circle-outline" size={14} color={colors.primary} />
+                            <Text style={[styles.adjustResultBtnText, { color: colors.primary }]}>
+                              Ajustar resultado
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </SwipeableRow>
                   );
@@ -441,6 +494,26 @@ const styles = StyleSheet.create({
   sheetScroll: { marginBottom: Spacing.lg },
   sheetNoBets: { textAlign: 'center', paddingVertical: Spacing.xl, fontSize: 14 },
   sheetBetWrapper: { marginBottom: Spacing.md },
+  adjustResultBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: -Spacing.md,
+  },
+  adjustResultBtnText: { fontSize: 12, fontWeight: '600' },
+  noWinnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: -Spacing.md,
+  },
+  noWinnerText: { fontSize: 12, fontWeight: '500' },
   centeredLoader: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
   backHeader: {
     flexDirection: 'row', alignItems: 'center',

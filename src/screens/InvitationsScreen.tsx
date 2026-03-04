@@ -10,9 +10,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, EmptyState } from '../components/CommonComponents';
+import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useSocial } from '../context/SocialContext';
 import { TournamentInvite } from '../services/inviteService';
@@ -30,10 +32,12 @@ const InvitationsScreen = ({ navigation }: any) => {
     acceptInvite,
     rejectInvite,
     cancelInvite,
+    dismissSentInvite,
   } = useSocial();
 
   const [activeTab, setActiveTab] = useState<TabType>('received');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [previewInvite, setPreviewInvite] = useState<TournamentInvite | null>(null);
   const [showPreviewSheet, setShowPreviewSheet] = useState(false);
 
@@ -200,9 +204,10 @@ const InvitationsScreen = ({ navigation }: any) => {
     const statusInfo = getStatusInfo(invite.status);
     const isPending = invite.status === 'pending';
     const isCancelling = actionLoading === `cancel-${invite.id}`;
+    const isDismissable = !isPending; // rejected or cancelled
 
-    return (
-      <Card key={invite.id} style={styles.inviteCard}>
+    const cardContent = (
+      <Card style={styles.inviteCard}>
         <View style={styles.inviteRow}>
           {/* Icon */}
           <LinearGradient
@@ -257,6 +262,31 @@ const InvitationsScreen = ({ navigation }: any) => {
         </View>
       </Card>
     );
+
+    if (isDismissable) {
+      return (
+        <SwipeableRow
+          key={invite.id}
+          actions={[
+            {
+              label: 'Borrar',
+              icon: 'trash-outline',
+              color: colors.destructive,
+              onPress: () => {
+                setDismissedIds(prev => new Set(prev).add(invite.id));
+                dismissSentInvite(invite.id).catch(() =>
+                  setDismissedIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; })
+                );
+              },
+            },
+          ]}
+        >
+          {cardContent}
+        </SwipeableRow>
+      );
+    }
+
+    return cardContent;
   };
 
   const renderContent = () => {
@@ -282,10 +312,21 @@ const InvitationsScreen = ({ navigation }: any) => {
         />
       );
     }
-    return sentInvites.map(renderSentItem);
+    const visibleSentInvites = sentInvites.filter(inv => !dismissedIds.has(inv.id));
+    if (visibleSentInvites.length === 0) {
+      return (
+        <EmptyState
+          iconName="paper-plane-outline"
+          title="Sin invitaciones enviadas"
+          message="No has enviado invitaciones a torneos"
+        />
+      );
+    }
+    return visibleSentInvites.map(renderSentItem);
   };
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar showBackButton />
 
@@ -366,6 +407,7 @@ const InvitationsScreen = ({ navigation }: any) => {
         }}
       />
     </View>
+    </GestureHandlerRootView>
   );
 };
 
