@@ -30,6 +30,7 @@ import {
   rejectTournamentInvite as rejectInviteService,
   cancelTournamentInvite as cancelInviteService,
   dismissSentInvite as dismissInviteService,
+  dismissReceivedInvite as dismissReceivedInviteService,
 } from '../services/inviteService';
 import { PublicProfile, getPublicProfile } from '../services/publicProfileService';
 import { getUserProfile } from '../services/userService';
@@ -74,6 +75,7 @@ interface SocialContextType {
   rejectInvite: (inviteId: string) => Promise<void>;
   cancelInvite: (inviteId: string) => Promise<void>;
   dismissSentInvite: (inviteId: string) => Promise<void>;
+  dismissReceivedInvite: (inviteId: string) => Promise<void>;
 
   // Refresh
   refreshFriends: () => void;
@@ -284,6 +286,11 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     return dismissInviteService(inviteId);
   };
 
+  const dismissReceivedInvite = async (inviteId: string): Promise<void> => {
+    if (!user) throw new Error('User not authenticated');
+    return dismissReceivedInviteService(inviteId);
+  };
+
   const refreshFriends = () => {
     // The listeners will automatically refresh, but this can be used to force a manual check
     setFriendsLoading(true);
@@ -317,6 +324,7 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
         rejectInvite,
         cancelInvite,
         dismissSentInvite,
+        dismissReceivedInvite,
         refreshFriends,
       }}
     >

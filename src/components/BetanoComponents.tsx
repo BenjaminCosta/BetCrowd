@@ -7,6 +7,7 @@ import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { isEventToday, getEventBadgeLabel } from '../utils/formatters';
 import { Bet, calculateOdds, calculateEstimatedOdds } from '../services/betService';
 import { Event } from '../services/eventService';
+import { ResultInfoSheet } from './ResultInfoSheet';
 
 const { width } = Dimensions.get('window');
 
@@ -53,6 +54,7 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, btnW: 0 });
   const tooltipFadeAnim = useRef(new Animated.Value(0)).current;
   const tooltipSlideAnim = useRef(new Animated.Value(4)).current;
+  const [showResultSheet, setShowResultSheet] = useState(false);
 
   const handleShowTooltip = () => {
     infoButtonRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
@@ -145,7 +147,11 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
   const isOptionDisabled = disabled || (bet.status !== 'open' && bet.status !== 'pending');
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card }]}>
+    <TouchableOpacity
+      style={[styles.container, { backgroundColor: colors.card }]}
+      activeOpacity={bet.status === 'settled' && !!userSelection ? 0.92 : 1}
+      onPress={bet.status === 'settled' && !!userSelection ? () => setShowResultSheet(true) : undefined}
+    >
       {/* Header with gradient accent */}
       <LinearGradient
         colors={['rgba(220, 46, 75, 0.1)', 'transparent']}
@@ -252,8 +258,14 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
                     : 0.6,
                 },
               ]}
-              onPress={() => !isOptionDisabled && onOptionPress(option)}
-              disabled={isOptionDisabled}
+              onPress={() => {
+                if (isSettled && isSelected) {
+                  setShowResultSheet(true);
+                } else if (!isOptionDisabled) {
+                  onOptionPress(option);
+                }
+              }}
+              disabled={isSettled && isSelected ? false : isOptionDisabled}
               activeOpacity={0.7}
             >
               <View style={styles.optionContent}>
@@ -273,12 +285,6 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
                 </Text>
                 {isWinner && (
                   <Ionicons name="checkmark-circle" size={14} color={colors.foreground} style={{ opacity: 0.7 }} />
-                )}
-                {/* Subtle "Tu pick" label when user picked this but it didn't win */}
-                {isSelected && isSettled && !isWinner && (
-                  <Text style={{ fontSize: 9, color: colors.mutedForeground, fontWeight: '700', opacity: 0.65 }}>
-                    TU PICK
-                  </Text>
                 )}
                 {showOdds && optionOdds && (
                   <Text style={[styles.oddsText, { color: colors.foreground }]}>
@@ -323,7 +329,18 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
           </Animated.View>
         </Modal>
       )}
-    </View>
+
+      {/* Result info sheet – shown when tapping a settled card or its selection */}
+      {showResultSheet && (
+        <ResultInfoSheet
+          visible={showResultSheet}
+          onClose={() => setShowResultSheet(false)}
+          bet={bet}
+          userSelection={userSelection ?? null}
+          theme={theme}
+        />
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -548,21 +565,10 @@ const styles = StyleSheet.create({
   eventTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
     marginBottom: Spacing.sm,
     zIndex: 1,
-  },
-  eventTopRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 1,
-  },
-  eventTopDate: {
-    fontSize: 11,
-    fontWeight: '500',
-    flexShrink: 0,
+    flex: 1,
   },
   eventStatusBadge: {
     flexDirection: 'row',
@@ -593,6 +599,16 @@ const styles = StyleSheet.create({
   eventPickText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  eventDateInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto' as any,
+  },
+  eventDateInlineText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
   eventDateRow: {
     flexDirection: 'row',
@@ -629,7 +645,85 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '600',
-  },});
+  },
+  // ── ResultInfoSheet ──────────────────────────────────────────────────────────────────────────────
+  resultSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
+    gap: 12,
+  },
+  resultSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center' as const,
+    marginBottom: 4,
+  },
+  resultStatusBlock: {
+    alignItems: 'center' as const,
+    padding: 16,
+    borderRadius: 16,
+    gap: 6,
+  },
+  resultStatusText: {
+    fontSize: 22,
+    fontWeight: '800' as const,
+  },
+  resultBetTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    textAlign: 'center' as const,
+  },
+  resultSelectionRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    borderRadius: 12,
+    padding: 14,
+  },
+  resultRowLabel: {
+    fontSize: 11,
+    fontWeight: '500' as const,
+    marginBottom: 3,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  resultRowValue: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  resultMoneyRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  resultMoneyLabel: {
+    fontSize: 13,
+  },
+  resultMoneyValue: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  resultMoneyValueLarge: {
+    fontSize: 20,
+    fontWeight: '800' as const,
+  },
+  resultCloseBtn: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginTop: 4,
+  },
+  resultCloseBtnText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+});
 
 // ========================================
 // EVENT CARD COMPACT
@@ -649,7 +743,8 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
 
   const getStatusColor = (): string => {
     if (event.status === 'cancelled') return colors.mutedForeground;
-    if (event.status === 'finished' || event.status === 'locked') return colors.warning;
+    if (event.status === 'finished')return colors.mutedForeground;
+    if (event.status === 'locked') return colors.warning;
     return isEventToday(event) ? colors.success : '#DC2E4B';
   };
 
@@ -664,6 +759,16 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
     });
   };
 
+  const formatDateString = (d: string) => {
+    const [y, m, day] = d.split('-');
+    const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(day));
+      if (isNaN(date.getTime())) return null;
+    return date.toLocaleDateString('es-AR', {
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
   // Primary display: "Home vs Away" if teams exist, otherwise title
   const primaryTitle =
     event.homeTeam && event.awayTeam
@@ -673,7 +778,11 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
   const subtitle =
     event.homeTeam && event.awayTeam ? event.title : event.notes ?? null;
 
-  const dateStr = event.startsAt ? formatDate(event.startsAt) : null;
+  const dateStr = event.startsAt
+    ? formatDate(event.startsAt)
+    : event.date
+    ? formatDateString(event.date)
+    : null;
   const statusColor = getStatusColor();
 
   return (
@@ -691,33 +800,28 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
         />
       </View>
 
-      {/* Top row: status badge + “ya apostaste” + date */}
+      {/* Top row: status badge + date on right + "ya apostaste" */}
       <View style={styles.eventTopRow}>
-        <View style={styles.eventTopRowLeft}>
-          <View style={[styles.eventStatusBadge, { backgroundColor: statusColor + '20' }]}>
-            {isEventToday(event) && (
-              <View style={[styles.eventLiveDot, { backgroundColor: statusColor }]} />
-            )}
-            <Text style={[styles.eventStatusText, { color: statusColor }]}>
-              {getEventBadgeLabel(event)}
-            </Text>
-          </View>
-          {userHasPick && (
-            <View style={[styles.eventPickBadge, { backgroundColor: colors.success + '20' }]}>
-              <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-              <Text style={[styles.eventPickText, { color: colors.success }]}>Ya apostaste</Text>
-            </View>
+        <View style={[styles.eventStatusBadge, { backgroundColor: statusColor + '20' }]}>
+          {isEventToday(event) && (
+            <View style={[styles.eventLiveDot, { backgroundColor: statusColor }]} />
           )}
-        </View>
-        {!!event.date && (
-          <Text style={[styles.eventTopDate, { color: colors.mutedForeground }]}>
-            {(() => {
-              const [y, m, d] = event.date!.split('-');
-              const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-              return dt.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
-            })()}
+          <Text style={[styles.eventStatusText, { color: statusColor }]}>
+            {getEventBadgeLabel(event)}
           </Text>
+        </View>
+        {userHasPick && (
+          <View style={[styles.eventPickBadge, { backgroundColor: colors.success + '20' }]}>
+            <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+            <Text style={[styles.eventPickText, { color: colors.success }]}>Ya apostaste</Text>
+          </View>
         )}
+        {dateStr ? (
+          <View style={styles.eventDateInline}>
+            <Ionicons name="calendar-outline" size={11} color={colors.mutedForeground} />
+            <Text style={[styles.eventDateInlineText, { color: colors.mutedForeground }]}>{dateStr}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.eventHeader}>
@@ -732,13 +836,6 @@ export const EventCard: React.FC<EventCardProps> = ({ event, theme, onPress, use
           ) : null}
         </View>
       </View>
-
-      {dateStr ? (
-        <View style={styles.eventDateRow}>
-          <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
-          <Text style={[styles.eventDate, { color: colors.mutedForeground }]}>{dateStr}</Text>
-        </View>
-      ) : null}
 
       {/* Admin action button — absolutely positioned at bottom-right, no height change */}
       {adminActionBar ? (

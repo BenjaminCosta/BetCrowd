@@ -20,7 +20,7 @@ import { useTheme } from '../../../context/ThemeContext';
 import { Card, EmptyState } from '../../../components/CommonComponents';
 import { UserBalance } from '../../../services/groupsService';
 
-import { getInitials, formatBalance } from '../../../utils/formatters';
+import { getInitials, formatBalance, splitBalance } from '../../../utils/formatters';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SCREEN_H = Dimensions.get('window').height;
@@ -81,7 +81,7 @@ const RankingTab: React.FC<RankingTabProps> = ({
     nodeRef.measure((_x: number, _y: number, _w: number, h: number, _px: number, py: number) => {
       const tooltipH =
         isAdmin && balance.uid !== currentUserId &&
-        balance.role !== 'admin' && balance.role !== 'owner'
+        balance.role !== 'admin'
           ? 104 : 56;
       const clampedY = Math.max(60, Math.min(py + h / 2 - tooltipH / 2, SCREEN_H - tooltipH - 60));
 
@@ -120,7 +120,7 @@ const RankingTab: React.FC<RankingTabProps> = ({
   const canRemove =
     isAdmin && !!tooltipBalance &&
     tooltipBalance.uid !== currentUserId &&
-    tooltipBalance.role !== 'admin' && tooltipBalance.role !== 'owner';
+    tooltipBalance.role !== 'admin';
 
   const tooltipBg = theme === 'dark' ? '#1C1C1E' : '#2C2C2E';
 
@@ -154,6 +154,13 @@ const RankingTab: React.FC<RankingTabProps> = ({
       ) : (
         balances.map((balance, index) => {
           const isCurrentUser = balance.uid === currentUserId;
+          const balanceNum = balance.netBalance;
+          const { sign: balSign, formatted: balFormatted } = splitBalance(balanceNum);
+
+          // Medal for top 3
+          const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+          const medalColors = ['#F59E0B', '#9CA3AF', '#CD7F32'];
+          const hasMedal = index < 3;
 
           return (
             <TouchableOpacity
@@ -165,20 +172,25 @@ const RankingTab: React.FC<RankingTabProps> = ({
               <Card
                 style={[
                   styles.rankingCard,
-                  index < 3 && {
-                    backgroundColor: colors.muted,
+                  index < 3 && { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 },
+                  isCurrentUser && {
+                    backgroundColor: colors.primary + '07',
                   },
                 ]}
               >
                 <View style={styles.rankingRow}>
-                  <Text
-                    style={[
-                      styles.rankNumber,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    {index + 1}
-                  </Text>
+                  {/* Position */}
+                  <View style={styles.rankPositionCol}>
+                    {hasMedal ? (
+                      <Text style={styles.medalEmoji}>{medals[index]}</Text>
+                    ) : (
+                      <Text style={[styles.rankNumber, { color: colors.mutedForeground }]}>
+                        {index + 1}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Avatar */}
                   <View style={styles.rankAvatarWrapper}>
                     {balance.photoURL ? (
                       <Image source={{ uri: balance.photoURL }} style={styles.rankAvatar} />
@@ -195,6 +207,8 @@ const RankingTab: React.FC<RankingTabProps> = ({
                       </LinearGradient>
                     )}
                   </View>
+
+                  {/* User info */}
                   <View style={styles.rankUserInfo}>
                     <View style={styles.rankUsernameRow}>
                       <Text
@@ -209,23 +223,31 @@ const RankingTab: React.FC<RankingTabProps> = ({
                           <Text style={[styles.youText, { color: colors.primary }]}>Tú</Text>
                         </View>
                       )}
+                      {balance.role === 'admin' && (
+                        <View style={[styles.adminBadge, { backgroundColor: colors.mutedForeground + '18' }]}>
+                          <Text style={[styles.adminText, { color: colors.mutedForeground }]}>Admin</Text>
+                        </View>
+                      )}
                     </View>
                     {(balance.wonCount > 0 || balance.lostCount > 0) && (
                       <View style={styles.wlMicro}>
-                        <Text style={[styles.wlWins, { color: colors.success }]}>
+                        <Text style={[styles.wlWins, { color: colors.mutedForeground }]}>
                           {balance.wonCount}W
                         </Text>
                         <Text style={[styles.wlSep, { color: colors.mutedForeground }]}> – </Text>
-                        <Text style={[styles.wlLoss, { color: colors.destructive }]}>
+                        <Text style={[styles.wlLoss, { color: colors.mutedForeground }]}>
                           {balance.lostCount}L
                         </Text>
                       </View>
                     )}
                   </View>
-                  <Text
-                    style={[styles.rankBalance, { color: getBalanceColor(balance.netBalance) }]}
-                  >
-                    {formatBalance(balance.netBalance)}
+
+                  {/* Balance — primary visual element */}
+                  <Text style={[
+                    styles.rankBalance,
+                    { color: balanceNum > 0 ? colors.success : balanceNum < 0 ? colors.destructive : colors.mutedForeground },
+                  ]}>
+                    {balSign}{balFormatted}
                   </Text>
                 </View>
               </Card>
@@ -303,29 +325,33 @@ const styles = StyleSheet.create({
   tabScroll: { flex: 1 },
   tabContent: { padding: Spacing.lg, paddingBottom: 100 },
   centeredLoader: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
-  rankingCard: { marginBottom: Spacing.sm, paddingVertical: Spacing.sm },
-  rankingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  rankNumber: { fontSize: 14, width: 22, textAlign: 'center', fontWeight: '600' },
+  rankingCard: { marginBottom: Spacing.sm, paddingVertical: Spacing.md },
+  rankingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  rankPositionCol: { width: 28, alignItems: 'center' },
+  rankNumber: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  medalEmoji: { fontSize: 18, textAlign: 'center' },
   rankAvatarWrapper: { position: 'relative' },
-  rankAvatar: { width: 40, height: 40, borderRadius: 20 },
+  rankAvatar: { width: 42, height: 42, borderRadius: 21 },
   rankAvatarPlaceholder: {
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rankAvatarText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  rankAvatarText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
   rankUserInfo: { flex: 1, gap: 3 },
   rankUsernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rankUsername: { fontSize: 15, fontWeight: '600' },
   youBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
   youText: { fontSize: 11, fontWeight: '700' },
+  adminBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  adminText: { fontSize: 10, fontWeight: '500' },
   wlMicro: { flexDirection: 'row', alignItems: 'center' },
-  wlWins: { fontSize: 12, fontWeight: '700' },
-  wlSep: { fontSize: 12 },
-  wlLoss: { fontSize: 12, fontWeight: '700' },
-  rankBalance: { fontSize: 16, fontWeight: '700' },
+  wlWins: { fontSize: 11, fontWeight: '400' },
+  wlSep: { fontSize: 11 },
+  wlLoss: { fontSize: 11, fontWeight: '400' },
+  rankBalance: { fontSize: 18, fontWeight: '800', textAlign: 'right', minWidth: 72 },
 
   // Tooltip
   tooltipBackdrop: { flex: 1 },

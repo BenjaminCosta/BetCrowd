@@ -34,7 +34,7 @@ import {
   removeMemberFromTournament,
   Tournament,
 } from '../../services/tournamentService';
-import { listenEvents, deleteEvent, updateEvent, Event } from '../../services/eventService';
+import { listenEvents, deleteEvent, updateEvent, lockPastEvents, Event } from '../../services/eventService';
 import {
   listenBets,
   listenBetPicks,
@@ -204,6 +204,8 @@ const TournamentScreen = ({ navigation, route }: any) => {
       setTournament(data);
       setMemberCount(count);
       setIsAdmin(adminStatus);
+      // Lock past-due events — admin client only, best-effort
+      if (adminStatus) lockPastEvents(tournamentId).catch(() => {});
       // Incremental migration: legacy 'owner' role → 'admin' (best-effort, no await)
       if (user) migrateOwnerToAdmin(tournamentId, user.uid);
     } catch (e) {
@@ -506,7 +508,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               <View style={styles.headerRight}>
                 {isAdmin && (
                   <TouchableOpacity
-                    style={[styles.inviteBtn, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+                    style={[styles.inviteBtn, { backgroundColor: colors.primary + '07', borderColor: colors.primary + '40' }]}
                     onPress={() => setShowInviteSheet(true)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >

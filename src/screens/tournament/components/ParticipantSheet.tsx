@@ -23,7 +23,7 @@ import { UserBalance, getUserPickHistory, UserPickHistory } from '../../../servi
 import { getMyTournamentRole, removeMemberFromTournament } from '../../../services/tournamentService';
 import { listEvents } from '../../../services/eventService';
 import { listBets, getMyPick, Bet } from '../../../services/betService';
-import { getInitials, formatBalance } from '../../../utils/formatters';
+import { getInitials, formatBalance, splitBalance } from '../../../utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -319,8 +319,16 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                   <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>
                     Balance del torneo
                   </Text>
-                  <Text style={[styles.balanceValue, { color: balanceColor }]}>
-                    {formatBalance(participant.netBalance)}
+                  <Text style={styles.balanceValue}>
+                    {(() => {
+                      const bal = splitBalance(participant.netBalance);
+                      return (
+                        <>
+                          {!bal.isZero && <Text style={{ color: balanceColor }}>{bal.sign}</Text>}
+                          <Text style={{ color: colors.foreground }}>{bal.formatted}</Text>
+                        </>
+                      );
+                    })()}
                   </Text>
                   {(participant.totalWon > 0 || participant.totalLost > 0) && (
                     <View style={styles.balanceSubRow}>

@@ -21,6 +21,12 @@ import { db, auth } from '../lib/firebase';
 const _touchTournamentActivity = (tournamentId: string): void => {
   const ref = doc(db, 'tournaments', tournamentId);
   setDoc(ref, { lastActivityAt: serverTimestamp(), hasActivity: true }, { merge: true }).catch(() => {});
+  // Also update current user's ref so home-screen sort stays fresh
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    const userRef = doc(db, 'users', uid, 'tournamentRefs', tournamentId);
+    setDoc(userRef, { lastActivityAt: serverTimestamp() }, { merge: true }).catch(() => {});
+  }
 };
 
 // Bet interface with odds calculation fields

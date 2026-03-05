@@ -705,7 +705,7 @@ const HomeScreen = ({ navigation }: any) => {
           ) : (
             <View style={styles.tournamentsList}>
               {tournaments
-                .filter((t) => t.status !== 'deleted')
+                .filter((t) => t.status === 'active' || t.status === 'locked')
                 .slice(0, 2)
                 .map((tournament) => {
                   const isAdmin = adminStatuses[tournament.id] || false;

@@ -119,12 +119,24 @@ export const calculateTournamentBalances = async (
             return !(pickScore.home === correctScore.home && pickScore.away === correctScore.away);
           });
         } else if (bet.type === 'over_under') {
-          // Over/Under
-          const actualTotal = result.total || 0;
-          const line = bet.line || 0;
-          const winningOption = actualTotal > line ? 'Over' : 'Under';
-          winners = picks.filter(p => p.selection === winningOption);
-          losers = picks.filter(p => p.selection !== winningOption);
+          // Settlement stores { winner: optionString } via LoadResultsForm.
+          // Fall back to { total, line } logic only for legacy data.
+          if (result.winner) {
+            winners = picks.filter(p => p.selection === result.winner);
+            losers = picks.filter(p => p.selection !== result.winner);
+          } else {
+            const actualTotal = result.total || 0;
+            const line = bet.line || 0;
+            if (actualTotal === line) {
+              // Push/void – no winners, no losers
+              winners = [];
+              losers = [];
+            } else {
+              const winningOption = actualTotal > line ? 'Over' : 'Under';
+              winners = picks.filter(p => p.selection === winningOption);
+              losers = picks.filter(p => p.selection !== winningOption);
+            }
+          }
         }
 
         // If no winners, still count picks as losses (pickers were wrong)
@@ -319,8 +331,21 @@ export const getUserPickHistory = async (
           pickScore.home === correctScore.home &&
           pickScore.away === correctScore.away;
       } else if (bet.type === 'over_under') {
-        const winningOption = (result.total || 0) > (bet.line || 0) ? 'Over' : 'Under';
-        isWinner = selection === winningOption;
+        // Settlement stores { winner: optionString } via LoadResultsForm.
+        // Fall back to { total, line } logic only for legacy data.
+        if (result.winner) {
+          isWinner = selection === result.winner;
+        } else {
+          // Legacy fallback: handle push (exact line match = void/no winner)
+          const actualTotal = result.total || 0;
+          const line = bet.line || 0;
+          if (actualTotal === line) {
+            isWinner = false; // Push: treat as no win
+          } else {
+            const winningOption = actualTotal > line ? 'Over' : 'Under';
+            isWinner = selection === winningOption;
+          }
+        }
       } else {
         // 'winner' | 'custom' and any unknown type
         const winningOption = result.winner ?? result;

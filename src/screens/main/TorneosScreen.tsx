@@ -8,11 +8,13 @@ import {
   FlatList,
   RefreshControl,
   Alert,
+  Animated,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Spacing } from '../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
 import { EmptyState } from '../../components/CommonComponents';
@@ -86,6 +88,11 @@ const TorneosScreen = ({ navigation }: any) => {
   const isFirstFocusRef = useRef(true);
   const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
+  const tooltipFade = useRef(new Animated.Value(0)).current;
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overdueButtonRefs = useRef<Record<string, any>>({});
 
   // ── Initial load ──────────────────────────────────────────────────────────
 
@@ -222,6 +229,25 @@ const TorneosScreen = ({ navigation }: any) => {
     );
   };
 
+  const showOverdueTooltip = (tournamentId: string) => {
+    const ref = overdueButtonRefs.current[tournamentId];
+    if (!ref) return;
+    ref.measureInWindow((x: number, y: number, w: number, _h: number) => {
+      // Tooltip más centrado a la izquierda - reducimos el offset y aseguramos que no se salga
+      const left = Math.max(5, Math.min(x - 200 + w / 2, 120));
+      setTooltipPos({ top: y - 70, left });
+      setTooltipVisible(true);
+      tooltipFade.setValue(0);
+      Animated.timing(tooltipFade, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+      if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+      tooltipTimerRef.current = setTimeout(() => {
+        Animated.timing(tooltipFade, { toValue: 0, duration: 150, useNativeDriver: true }).start(() =>
+          setTooltipVisible(false)
+        );
+      }, 3000);
+    });
+  };
+
   const getRoleInfo = (tournamentId: string, ownerId: string) => {
     const role = myRoles[tournamentId] || (ownerId === user?.uid ? 'owner' : 'member');
     switch (role) {
@@ -237,6 +263,8 @@ const TorneosScreen = ({ navigation }: any) => {
     const count = memberCounts[t.id] ?? 0;
     const max = Math.max(t.participantsEstimated || 1, 1);
     const roleInfo = getRoleInfo(t.id, t.ownerId);
+    const today = new Date().toISOString().split('T')[0];
+    const isOverdue = t.status === 'active' && !!t.endDate && t.endDate < today;
 
     return (
       <SwipeableRow
@@ -269,7 +297,7 @@ const TorneosScreen = ({ navigation }: any) => {
             style={StyleSheet.absoluteFillObject}
           />
 
-          {/* Header: name + format badge + contribution box */}
+          {/* Header: name + format badge */}
           <View style={styles.cardHeader}>
             <View style={styles.cardInfo}>
               <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={2}>
@@ -282,27 +310,15 @@ const TorneosScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
-            <View style={styles.cardBadgeStack}>
-              {t.status === 'finished' && (
-                <View
-                  style={[
-                    styles.cardFinishedBadge,
-                    { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' },
-                  ]}
-                >
-                  <Text style={[styles.cardFinishedText, { color: colors.primary }]}>FINALIZADO</Text>
-                </View>
-              )}
-              <View style={[styles.cardRoleBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
-                <Text style={[styles.cardRoleText, { color: roleInfo.color }]}>{roleInfo.label}</Text>
-              </View>
+            <View style={[styles.cardRoleBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Ionicons name={roleInfo.icon} size={13} color={roleInfo.color} />
+              <Text style={[styles.cardRoleText, { color: roleInfo.color }]}>{roleInfo.label}</Text>
             </View>
           </View>
 
           <View style={[styles.cardDivider, { backgroundColor: colors.border }]} />
 
-          {/* Footer: participants */}
+          {/* Footer: participants + finalizado badge + overdue indicator */}
           <View style={styles.cardFooter}>
             <View style={styles.cardMeta}>
               <View style={styles.cardMetaItem}>
@@ -314,6 +330,25 @@ const TorneosScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
+            {t.status === 'finished' && (
+              <View
+                style={[
+                  styles.cardFinishedBadge,
+                  { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' },
+                ]}
+              >
+                <Text style={[styles.cardFinishedText, { color: colors.primary }]}>FINALIZADO</Text>
+              </View>
+            )}
+            {isOverdue && (
+              <TouchableOpacity
+                ref={(r) => { overdueButtonRefs.current[t.id] = r; }}
+                onPress={() => showOverdueTooltip(t.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="information-circle-outline" size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
       </SwipeableRow>
@@ -370,12 +405,13 @@ const TorneosScreen = ({ navigation }: any) => {
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>Torneos</Text>
           <TouchableOpacity
-            style={[styles.joinBtn, { backgroundColor: colors.primary }]}
+            style={[styles.joinBtn, { backgroundColor: colors.primary + '07', borderColor: colors.primary + '40' , borderWidth: 1 }]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={() => setShowJoinCodeSheet(true)}
             activeOpacity={0.8}
           >
-            <Ionicons name="key-outline" size={14} color="#FFFFFF" />
-            <Text style={styles.joinBtnText}>Unirse con código</Text>
+            <Ionicons name="key-outline" size={14} color={colors.primary} />
+            <Text style={[styles.joinBtnText, { color: colors.primary }]} >Unirse con código</Text>
           </TouchableOpacity>
         </View>
 
@@ -403,6 +439,29 @@ const TorneosScreen = ({ navigation }: any) => {
 
         {/* FAB — Crear torneo */}
         <FloatingActionButton onPress={() => setShowCreateSheet(true)} />
+
+        {/* Floating overdue tooltip - AHORA MÁS CENTRADO A LA IZQUIERDA */}
+        <Modal visible={tooltipVisible} transparent animationType="none" statusBarTranslucent>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setTooltipVisible(false)}>
+            <Animated.View
+              style={[
+                styles.floatingTooltip,
+                {
+                  top: tooltipPos.top,
+                  left: tooltipPos.left,
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  opacity: tooltipFade,
+                },
+              ]}
+            >
+              <Ionicons name="time-outline" size={13} color={colors.mutedForeground} />
+              <Text style={[styles.floatingTooltipText, { color: colors.mutedForeground }]}>
+                Este torneo superó su fecha de cierre. 
+              </Text>
+            </Animated.View>
+          </TouchableOpacity>
+        </Modal>
       </View>
 
       {/* Create Tournament Sheet */}
@@ -464,7 +523,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 20,
   },
-  joinBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+  joinBtnText: { fontSize: 12, fontWeight: '700' },
 
   // Tabs underline (same style as TournamentPredictionsScreen)
   tabsBar: {
@@ -560,5 +619,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardMetaText: { fontSize: 13, fontWeight: '500' },
-
+  floatingTooltip: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    padding: 10,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    maxWidth: 260,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  floatingTooltipText: { flex: 1, fontSize: 12, lineHeight: 16 },
 });

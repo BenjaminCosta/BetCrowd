@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,10 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input, SectionHeader } from '../CommonComponents';
@@ -34,6 +36,124 @@ interface CreateEventFormProps {
   /** Called after the event is successfully created or updated */
   onSuccess: () => void;
 }
+
+// ─── Event Preview Card ─────────────────────────────────────────────────────
+
+const epStyles = StyleSheet.create({
+  container: { borderRadius: BorderRadius.lg, borderWidth: 1, marginBottom: Spacing.lg, overflow: 'hidden' },
+  gradient: { padding: Spacing.md, paddingBottom: Spacing.sm },
+  previewRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: Spacing.sm },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  previewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
+  title: { fontSize: 17, fontWeight: '800', lineHeight: 22, marginBottom: Spacing.sm },
+  subtitle: { fontSize: 12, marginBottom: Spacing.xs },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.sm },
+  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  dateBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.sm, borderWidth: 1 },
+  dateText: { fontSize: 10, fontWeight: '700' },
+});
+
+interface EventPreviewCardProps {
+  theme: 'light' | 'dark';
+  title: string;
+  homeTeam: string;
+  awayTeam: string;
+  eventDate: string;
+}
+
+const EventPreviewCard: React.FC<EventPreviewCardProps> = ({ theme, title, homeTeam, awayTeam, eventDate }) => {
+  const colors = Colors[theme];
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(14)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 75, friction: 11, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const today = new Date().toISOString().split('T')[0];
+  const statusLabel = !eventDate
+    ? 'SIN FECHA'
+    : eventDate === today
+    ? 'HOY'
+    : eventDate < today
+    ? 'PASADO'
+    : 'PRÓXIMO';
+  const statusColor = !eventDate
+    ? colors.mutedForeground
+    : eventDate === today
+    ? colors.success
+    : eventDate < today
+    ? colors.warning
+    : colors.primary;
+
+  const hasTeams = homeTeam.trim() !== '' && awayTeam.trim() !== '';
+
+  const formatShortDate = (d: string) => {
+    const [y, m, day] = d.split('-');
+    return new Date(parseInt(y), parseInt(m) - 1, parseInt(day)).toLocaleDateString('es-AR', {
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
+  return (
+    <Animated.View
+      style={[
+        epStyles.container,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
+      <LinearGradient
+        colors={['rgba(215, 38, 61, 0.12)', 'rgba(215, 38, 61, 0.02)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={epStyles.gradient}
+      >
+        {hasTeams ? (
+          <>
+            {!!title && (
+              <Text style={[epStyles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+                {title}
+              </Text>
+            )}
+            <Text style={[epStyles.title, { color: colors.foreground }]} numberOfLines={1}>
+              {homeTeam} vs {awayTeam}
+            </Text>
+          </>
+        ) : (
+          <Text
+            style={[epStyles.title, { color: title ? colors.foreground : colors.mutedForeground }]}
+            numberOfLines={2}
+          >
+            {title || 'Título del evento...'}
+          </Text>
+        )}
+        <View style={epStyles.metaRow}>
+          <View style={[epStyles.badge, { backgroundColor: statusColor + '20' }]}>
+            <Text style={[epStyles.badgeText, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+          {!!eventDate && (
+            <View style={[epStyles.dateBadge, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
+              <Ionicons name="calendar-outline" size={10} color={colors.mutedForeground} />
+              <Text style={[epStyles.dateText, { color: colors.mutedForeground }]}>
+                {formatShortDate(eventDate)}
+              </Text>
+            </View>
+          )}
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -279,12 +399,20 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <View style={[styles.stickyPreview, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <EventPreviewCard
+          theme={theme}
+          title={title}
+          homeTeam={homeTeam}
+          awayTeam={awayTeam}
+          eventDate={eventDate}
+        />
+      </View>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: Spacing.xl }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={true}
       >
       <View style={styles.content}>
         <View style={styles.header}>
@@ -469,6 +597,7 @@ const styles = StyleSheet.create({
   dateChipsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
   dateChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.sm, borderWidth: 1 },
   dateChipText: { fontSize: 13, fontWeight: '600' },
+  stickyPreview: { borderBottomWidth: 1, paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: 2 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.lg },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },

@@ -59,6 +59,7 @@ export interface TournamentRef {
   participantsEstimated: number;
   inviteCode: string;
   status: string;
+  lastActivityAt?: any;
 }
 
 /**
@@ -294,10 +295,10 @@ export const listMyTournaments = async (): Promise<Tournament[]> => {
       }
     }
 
-    // Sort: active first (by lastActivityAt DESC, fallback createdAt), then finished
+    // Sort: active/locked first (by lastActivityAt DESC, fallback createdAt), then finished
     tournaments.sort((a, b) => {
-      const aOrder = a.status === 'active' ? 0 : 1;
-      const bOrder = b.status === 'active' ? 0 : 1;
+      const aOrder = (a.status === 'active' || a.status === 'locked') ? 0 : 1;
+      const bOrder = (b.status === 'active' || b.status === 'locked') ? 0 : 1;
       if (aOrder !== bOrder) return aOrder - bOrder;
       const aTime = a.lastActivityAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
       const bTime = b.lastActivityAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
@@ -397,6 +398,7 @@ export const listenMyTournamentRefs = (
         participantsEstimated: doc.data().participantsEstimated || 0,
         inviteCode: doc.data().inviteCode || '',
         status: doc.data().status || 'active',
+        lastActivityAt: doc.data().lastActivityAt || null,
       }));
 
       // Check if any refs are missing denormalized data or have mismatched status and fix them
@@ -414,6 +416,7 @@ export const listenMyTournamentRefs = (
                 participantsEstimated: tournamentData.participantsEstimated,
                 inviteCode: tournamentData.inviteCode,
                 status: tournamentData.status || 'active',
+                lastActivityAt: tournamentData.lastActivityAt || null,
               }, { merge: true });
             }
           } catch (error) {

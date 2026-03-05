@@ -10,6 +10,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,16 +35,20 @@ interface CreateBetFormProps {
 const QUICK_AMOUNTS = [500, 1000, 5000, 10000];
 
 const previewCardStyles = StyleSheet.create({
-  container: { borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.lg, overflow: 'hidden' },
-  headerGradient: { padding: Spacing.md },
-  previewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: Spacing.xs },
-  title: { fontSize: 16, fontWeight: '700', marginBottom: Spacing.sm },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  container: { borderRadius: BorderRadius.lg, borderWidth: 1, marginBottom: Spacing.lg, overflow: 'hidden' },
+  gradient: { padding: Spacing.md, paddingBottom: Spacing.sm },
+  previewRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: Spacing.sm },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  previewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
+  title: { fontSize: 17, fontWeight: '800', lineHeight: 22, marginBottom: Spacing.sm },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
   typeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.sm },
-  typeBadgeText: { fontSize: 11, fontWeight: '700' },
-  amountText: { fontSize: 12 },
-  optionsRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, paddingTop: Spacing.xs },
-  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, paddingTop: Spacing.xs },
+  typeBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  amountBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.sm, borderWidth: 1 },
+  amountText: { fontSize: 10, fontWeight: '700' },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: Spacing.md },
+  optionsRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   optionPill: { borderRadius: BorderRadius.sm, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   optionText: { fontWeight: '600', textAlign: 'center' },
 });
@@ -58,25 +63,45 @@ interface BetPreviewCardProps {
 
 const BetPreviewCard: React.FC<BetPreviewCardProps> = ({ theme, title, type, options, amount }) => {
   const colors = Colors[theme];
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(14)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 75, friction: 11, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const cleanOpts = options.filter((o) => o.trim() !== '');
   const useColumns = cleanOpts.length >= 4;
-  const optFontSize = cleanOpts.length >= 6 ? 11 : cleanOpts.length >= 4 ? 12 : 13;
-  const optPadding = cleanOpts.length >= 4 ? 6 : 8;
+  const optFontSize = cleanOpts.length >= 6 ? 10 : cleanOpts.length >= 4 ? 12 : 13;
+  const optPadding = cleanOpts.length >= 4 ? 6 : 9;
   const typeLabels: Record<string, string> = {
-    winner: 'Ganador',
-    over_under: 'Más/Menos',
-    score: 'Resultado exacto',
-    custom: 'Personalizada',
+    winner: 'GANADOR',
+    over_under: 'MÁS/MENOS',
+    score: 'RESULTADO',
+    custom: 'CUSTOM',
   };
+
   return (
-    <View style={[previewCardStyles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <Animated.View
+      style={[
+        previewCardStyles.container,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
       <LinearGradient
-        colors={['rgba(215, 38, 61, 0.12)', 'transparent']}
+        colors={['rgba(215, 38, 61, 0.14)', 'rgba(215, 38, 61, 0.03)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={previewCardStyles.headerGradient}
+        style={previewCardStyles.gradient}
       >
-        <Text style={[previewCardStyles.previewLabel, { color: colors.mutedForeground }]}>PREVIEW</Text>
         <Text
           style={[previewCardStyles.title, { color: title ? colors.foreground : colors.mutedForeground }]}
           numberOfLines={2}
@@ -86,44 +111,50 @@ const BetPreviewCard: React.FC<BetPreviewCardProps> = ({ theme, title, type, opt
         <View style={previewCardStyles.metaRow}>
           <View style={[previewCardStyles.typeBadge, { backgroundColor: colors.primary + '20' }]}>
             <Text style={[previewCardStyles.typeBadgeText, { color: colors.primary }]}>
-              {typeLabels[type] || type}
+              {typeLabels[type] || type.toUpperCase()}
             </Text>
           </View>
           {!!amount && parseFloat(amount) > 0 && (
-            <Text style={[previewCardStyles.amountText, { color: colors.mutedForeground }]}>
-              ${parseFloat(amount).toLocaleString()}
-            </Text>
+            <View style={[previewCardStyles.amountBadge, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
+              <Ionicons name="cash-outline" size={10} color={colors.mutedForeground} />
+              <Text style={[previewCardStyles.amountText, { color: colors.mutedForeground }]}>
+                ${parseFloat(amount).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </Text>
+            </View>
           )}
         </View>
       </LinearGradient>
       {cleanOpts.length > 0 && (
-        <View style={useColumns ? previewCardStyles.optionsGrid : previewCardStyles.optionsRow}>
-          {cleanOpts.map((opt, i) => (
-            <View
-              key={i}
-              style={[
-                previewCardStyles.optionPill,
-                {
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                  paddingHorizontal: optPadding,
-                  paddingVertical: optPadding - 2,
-                  flex: useColumns ? undefined : 1,
-                  width: useColumns ? '48%' : undefined,
-                },
-              ]}
-            >
-              <Text
-                style={[previewCardStyles.optionText, { color: colors.mutedForeground, fontSize: optFontSize }]}
-                numberOfLines={1}
+        <>
+          <View style={[previewCardStyles.divider, { backgroundColor: colors.border }]} />
+          <View style={useColumns ? previewCardStyles.optionsGrid : previewCardStyles.optionsRow}>
+            {cleanOpts.map((opt, i) => (
+              <View
+                key={i}
+                style={[
+                  previewCardStyles.optionPill,
+                  {
+                    backgroundColor: colors.secondary,
+                    borderColor: colors.border,
+                    paddingHorizontal: optPadding,
+                    paddingVertical: optPadding - 2,
+                    flex: useColumns ? undefined : 1,
+                    width: useColumns ? '48%' : undefined,
+                  },
+                ]}
               >
-                {opt}
-              </Text>
-            </View>
-          ))}
-        </View>
+                <Text
+                  style={[previewCardStyles.optionText, { color: colors.mutedForeground, fontSize: optFontSize }]}
+                  numberOfLines={1}
+                >
+                  {opt}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
       )}
-    </View>
+    </Animated.View>
   );
 };
 
@@ -290,7 +321,6 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
       contentContainerStyle={{ paddingBottom: Spacing.xl }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      automaticallyAdjustKeyboardInsets={true}
     >
       <View style={styles.content}>
         <View style={styles.header}>

@@ -265,6 +265,24 @@ export const dismissSentInvite = async (inviteId: string): Promise<void> => {
   await deleteDoc(inviteRef);
 };
 
+/**
+ * Permanently delete a received invite that is already accepted or rejected.
+ * Only the recipient (toUid) can dismiss it.
+ */
+export const dismissReceivedInvite = async (inviteId: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión');
+
+  const inviteRef = doc(db, 'tournamentInvites', inviteId);
+  const snap = await getDoc(inviteRef);
+  if (!snap.exists()) return; // already gone
+  const data = snap.data();
+  if (data?.toUid !== user.uid) throw new Error('No autorizado');
+  if (data?.status === 'pending') throw new Error('No se puede eliminar una invitación pendiente');
+
+  await deleteDoc(inviteRef);
+};
+
 // ─── Listeners ────────────────────────────────────────────────────────────────
 
 /**

@@ -20,6 +20,12 @@ import { db, auth } from '../lib/firebase';
 const _touchTournamentActivity = (tournamentId: string): void => {
   const ref = doc(db, 'tournaments', tournamentId);
   setDoc(ref, { lastActivityAt: serverTimestamp(), hasActivity: true }, { merge: true }).catch(() => {});
+  // Also update current user's ref so home-screen sort stays fresh
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    const userRef = doc(db, 'users', uid, 'tournamentRefs', tournamentId);
+    setDoc(userRef, { lastActivityAt: serverTimestamp() }, { merge: true }).catch(() => {});
+  }
 };
 
 export interface Event {
@@ -89,6 +95,91 @@ export const listenEvents = (
   );
   
   return unsubscribe;
+};
+
+/**
+ * Lock all past-due upcoming events for a tournament.
+ * Call once per session from admin clients when they open the tournament.
+ */
+export const lockPastEvents = async (tournamentId: string): Promise<void> => {
+  try {
+    const eventsRef = collection(db, `tournaments/${tournamentId}/events`);
+    const q = query(eventsRef, orderBy('order', 'asc'));
+    const snapshot = await getDocs(q);
+    const today = new Date().toISOString().split('T')[0];
+    let currentBatch = writeBatch(db);
+    let writeCounter = 0;
+    const lockedEventIds: string[] = [];
+    const eventDocsToLock: typeof snapshot.docs = [];
+
+    // Flush and rotate batch when approaching Firestore's 500-write limit
+    const safeUpdate = async (ref: any, data: any) => {
+      if (writeCounter >= 450) {
+        await currentBatch.commit();
+        currentBatch = writeBatch(db);
+        writeCounter = 0;
+      }
+      currentBatch.update(ref, data);
+      writeCounter++;
+    };
+
+    for (const d of snapshot.docs) {
+      const data = d.data();
+      if ((data.status === 'upcoming' || data.status === 'live') && data.date && data.date < today) {
+        await safeUpdate(d.ref, { status: 'locked', updatedAt: serverTimestamp() });
+        eventDocsToLock.push(d);
+      } else if (data.status === 'locked') {
+        lockedEventIds.push(d.id);
+      }
+    }
+
+    // Also lock all open bets inside each newly-locked event
+    for (const eventDoc of eventDocsToLock) {
+      const betsRef = collection(db, `tournaments/${tournamentId}/events/${eventDoc.id}/bets`);
+      const betsSnap = await getDocs(betsRef);
+      for (const betDoc of betsSnap.docs) {
+        if (betDoc.data().status === 'open') {
+          await safeUpdate(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
+        }
+      }
+    }
+
+    if (writeCounter > 0) {
+      await currentBatch.commit();
+    }
+
+    // For already-locked events: lock any stale open bets, then check auto-finish
+    for (const eventId of lockedEventIds) {
+      try {
+        const betsRef = collection(db, `tournaments/${tournamentId}/events/${eventId}/bets`);
+        const betsSnap = await getDocs(betsRef);
+        if (betsSnap.empty) continue;
+        // Lock open bets that slipped through before the cascade fix
+        const openBetDocs = betsSnap.docs.filter((d) => d.data().status === 'open');
+        if (openBetDocs.length > 0) {
+          const betBatch = writeBatch(db);
+          openBetDocs.forEach((betDoc) => {
+            betBatch.update(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
+          });
+          await betBatch.commit();
+        }
+        // Re-read bets to reflect freshly-locked status before auto-finish check
+        const freshBetsSnap = await getDocs(betsRef);
+        const hasPending = freshBetsSnap.docs.some((d) => {
+          const s = d.data().status;
+          return s === 'open' || s === 'locked';
+        });
+        if (!hasPending) {
+          const eventRef = doc(db, `tournaments/${tournamentId}/events`, eventId);
+          await updateDoc(eventRef, { status: 'finished', updatedAt: serverTimestamp() });
+        }
+      } catch {
+        // skip this event on error
+      }
+    }
+  } catch {
+    // Best-effort — non-critical
+  }
 };
 
 /**
@@ -214,6 +305,20 @@ export const updateEvent = async (
       ...patch,
       updatedAt: serverTimestamp(),
     });
+    // Cascade-lock all open bets when the event is being locked
+    if (patch.status === 'locked') {
+      const betsRef = collection(db, `tournaments/${tournamentId}/events/${eventId}/bets`);
+      const betsSnap = await getDocs(betsRef);
+      const batchLock = writeBatch(db);
+      let hasBets = false;
+      betsSnap.docs.forEach((betDoc) => {
+        if (betDoc.data().status === 'open') {
+          batchLock.update(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
+          hasBets = true;
+        }
+      });
+      if (hasBets) await batchLock.commit();
+    }
   } catch (error: any) {
     console.error('Error updating event:', error);
     throw new Error(error.message || 'No se pudo actualizar el evento');

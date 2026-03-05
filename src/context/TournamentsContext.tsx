@@ -56,9 +56,20 @@ export const TournamentsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         status: ref.status || 'active', // Fallback
         ownerId: '', // Not needed for card display
         hasActivity: false, // Not needed for card display
+        lastActivityAt: ref.lastActivityAt || null,
         createdAt: ref.joinedAt,
         updatedAt: ref.joinedAt,
       }));
+
+      // Sort: active/locked first (by lastActivityAt DESC, fallback joinedAt), then finished
+      tournamentsData.sort((a, b) => {
+        const aOrder = (a.status === 'active' || a.status === 'locked') ? 0 : 1;
+        const bOrder = (b.status === 'active' || b.status === 'locked') ? 0 : 1;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        const aTime = a.lastActivityAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
+        const bTime = b.lastActivityAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
+        return bTime - aTime;
+      });
 
       setTournaments(tournamentsData);
 

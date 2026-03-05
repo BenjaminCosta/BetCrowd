@@ -33,11 +33,13 @@ const InvitationsScreen = ({ navigation }: any) => {
     rejectInvite,
     cancelInvite,
     dismissSentInvite,
+    dismissReceivedInvite,
   } = useSocial();
 
   const [activeTab, setActiveTab] = useState<TabType>('received');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [dismissedReceivedIds, setDismissedReceivedIds] = useState<Set<string>>(new Set());
   const [previewInvite, setPreviewInvite] = useState<TournamentInvite | null>(null);
   const [showPreviewSheet, setShowPreviewSheet] = useState(false);
 
@@ -110,7 +112,7 @@ const InvitationsScreen = ({ navigation }: any) => {
       actionLoading === `accept-${invite.id}` ||
       actionLoading === `reject-${invite.id}`;
 
-    return (
+    const card = (
       <Card key={invite.id} style={styles.inviteCard}>
         <View style={styles.inviteRow}>
           {/* Icon */}
@@ -198,6 +200,32 @@ const InvitationsScreen = ({ navigation }: any) => {
         </View>
       </Card>
     );
+
+    if (!isPending) {
+      return (
+        <SwipeableRow
+          key={invite.id}
+          actions={[
+            {
+              label: 'Borrar',
+              icon: 'trash-outline',
+              color: colors.destructive,
+              onPress: () => {
+                setDismissedReceivedIds(prev => new Set(prev).add(invite.id));
+                dismissReceivedInvite(invite.id).catch(() => {
+                  setDismissedReceivedIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; });
+                  Alert.alert('Error', 'No se pudo eliminar la invitación');
+                });
+              },
+            },
+          ]}
+        >
+          {card}
+        </SwipeableRow>
+      );
+    }
+
+    return card;
   };
 
   const renderSentItem = (invite: TournamentInvite) => {
@@ -207,7 +235,7 @@ const InvitationsScreen = ({ navigation }: any) => {
     const isDismissable = !isPending; // rejected or cancelled
 
     const cardContent = (
-      <Card style={styles.inviteCard}>
+      <Card key={invite.id} style={styles.inviteCard}>
         <View style={styles.inviteRow}>
           {/* Icon */}
           <LinearGradient
@@ -274,9 +302,10 @@ const InvitationsScreen = ({ navigation }: any) => {
               color: colors.destructive,
               onPress: () => {
                 setDismissedIds(prev => new Set(prev).add(invite.id));
-                dismissSentInvite(invite.id).catch(() =>
-                  setDismissedIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; })
-                );
+                dismissSentInvite(invite.id).catch(() => {
+                  setDismissedIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; });
+                  Alert.alert('Error', 'No se pudo eliminar la invitación');
+                });
               },
             },
           ]}
@@ -291,7 +320,8 @@ const InvitationsScreen = ({ navigation }: any) => {
 
   const renderContent = () => {
     if (activeTab === 'received') {
-      if (receivedInvites.length === 0) {
+      const visibleReceived = receivedInvites.filter(inv => !dismissedReceivedIds.has(inv.id));
+      if (visibleReceived.length === 0) {
         return (
           <EmptyState
             iconName="trophy-outline"
@@ -300,7 +330,7 @@ const InvitationsScreen = ({ navigation }: any) => {
           />
         );
       }
-      return receivedInvites.map(renderReceivedItem);
+      return visibleReceived.map(renderReceivedItem);
     }
 
     if (sentInvites.length === 0) {

@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
@@ -77,6 +78,26 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     return () => clearTimeout(timer);
   }, []);
 
+  // Load persisted dismissed keys when user is known
+  useEffect(() => {
+    if (!user) return;
+    const storageKey = `dismissed_picks_${user.uid}`;
+    AsyncStorage.getItem(storageKey).then((val) => {
+      if (val) {
+        try { setDismissedKeys(new Set(JSON.parse(val))); } catch {}
+      }
+    }).catch(() => {});
+  }, [user?.uid]);
+
+  // Persist dismissed keys whenever they change
+  useEffect(() => {
+    if (!user) return;
+    AsyncStorage.setItem(
+      `dismissed_picks_${user.uid}`,
+      JSON.stringify([...dismissedKeys]),
+    ).catch(() => {});
+  }, [dismissedKeys, user]);
+
   useEffect(() => {
     if (user) loadData();
   }, [user]);
@@ -92,7 +113,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     try {
       const allOpenPicks: any[] = [];
       const allSettledPicks: any[] = [];
-      setDismissedKeys(new Set()); // clear local dismissals on refresh
+      // NOTE: do NOT reset dismissedKeys here — they are persisted across reloads
 
       const allTournaments = await listMyTournaments();
       const tournamentsToLoad = allTournaments.filter(
@@ -455,11 +476,14 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                                 label: 'Borrar',
                                 icon: 'trash-outline',
                                 color: colors.destructive,
-                                onPress: () => setDismissedKeys(prev => {
-                                  const s = new Set(prev);
-                                  s.add(`${pickData.tournamentId}-${pickData.betId}`);
-                                  return s;
-                                }),
+                                onPress: () => {
+                                  const key = `${pickData.tournamentId}-${pickData.betId}`;
+                                  setDismissedKeys(prev => {
+                                    const s = new Set(prev);
+                                    s.add(key);
+                                    return s;
+                                  });
+                                },
                               },
                             ]}
                           >

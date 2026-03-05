@@ -13,6 +13,19 @@ export const getInitials = (name: string): string => {
 export const formatBalance = (b: number): string =>
   b === 0 ? '$0' : b > 0 ? `+$${b.toFixed(0)}` : `-$${Math.abs(b).toFixed(0)}`;
 
+/**
+ * Returns balance split into a sign part (colored green/red) and a number part
+ * (foreground color). Uses dots for thousands: e.g., +$20.000.
+ */
+export const splitBalance = (
+  b: number,
+): { sign: string; formatted: string; isPositive: boolean; isZero: boolean } => {
+  if (b === 0) return { sign: '', formatted: '$0', isPositive: false, isZero: true };
+  const sign = b > 0 ? '+' : '−';
+  const num = Math.abs(b).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+  return { sign, formatted: `$${num}`, isPositive: b > 0, isZero: false };
+};
+
 // ─── Event status helpers ─────────────────────────────────────────────────────
 
 type EventStatusInput = { status: string; date?: string };
