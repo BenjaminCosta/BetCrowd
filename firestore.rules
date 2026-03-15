@@ -324,22 +324,52 @@ service cloud.firestore {
         && request.resource.data.status == "pending"
         && exists(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)/members/$(request.auth.uid));
 
-      // toUid can accept/reject; fromUid can cancel
+      // toUid can accept/reject; fromUid can cancel;
+      // each actor can set their own hiddenBy flag to soft-hide the invite.
+      // Security: actor may only flip their own flag and cannot touch the other's.
       allow update: if isSignedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"])
         && (
-          // toUid: pending → accepted | rejected
+          // ── Status transitions (accept / reject / cancel) ─────────────────
           (
-            request.auth.uid == resource.data.toUid
-            && resource.data.status == "pending"
-            && request.resource.data.status in ["accepted", "rejected"]
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"])
+            && (
+              // toUid: pending → accepted | rejected
+              (
+                request.auth.uid == resource.data.toUid
+                && resource.data.status == "pending"
+                && request.resource.data.status in ["accepted", "rejected"]
+              )
+              ||
+              // fromUid: pending → cancelled
+              (
+                request.auth.uid == resource.data.fromUid
+                && resource.data.status == "pending"
+                && request.resource.data.status == "cancelled"
+              )
+            )
           )
           ||
-          // fromUid: pending → cancelled
+          // ── hiddenBy.from: sender soft-hides their sent invite ────────────
+          // Only fromUid may set hiddenBy.from = true; cannot touch hiddenBy.to.
           (
             request.auth.uid == resource.data.fromUid
-            && resource.data.status == "pending"
-            && request.resource.data.status == "cancelled"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["hiddenBy", "updatedAt"])
+            && request.resource.data.hiddenBy.get("from", false) == true
+            && request.resource.data.hiddenBy.get("to", false) == resource.data.get("hiddenBy", {}).get("to", false)
+          )
+          ||
+          // ── hiddenBy.to: recipient soft-hides their received invite ───────
+          // Only toUid may set hiddenBy.to = true; cannot touch hiddenBy.from.
+          (
+            request.auth.uid == resource.data.toUid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["hiddenBy", "updatedAt"])
+            && request.resource.data.hiddenBy.get("to", false) == true
+            // Allow if the stored hiddenBy.from is already true (concurrent sender hide)
+            // OR if the writer is preserving the current value exactly (no-race case).
+            && (
+                 resource.data.get("hiddenBy", {}).get("from", false) == true
+                 || request.resource.data.hiddenBy.get("from", false) == resource.data.get("hiddenBy", {}).get("from", false)
+               )
           )
         );
 

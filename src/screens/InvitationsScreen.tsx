@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +16,7 @@ import { TopBar } from '../components/TopBar';
 import { Card, EmptyState } from '../components/CommonComponents';
 import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import { useSocial } from '../context/SocialContext';
 import { TournamentInvite } from '../services/inviteService';
 import TournamentPreviewSheet from './tournament/components/TournamentPreviewSheet';
@@ -38,6 +39,7 @@ const InvitationsScreen = ({ navigation }: any) => {
 
   const [activeTab, setActiveTab] = useState<TabType>('received');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [dismissedReceivedIds, setDismissedReceivedIds] = useState<Set<string>>(new Set());
   const [previewInvite, setPreviewInvite] = useState<TournamentInvite | null>(null);
@@ -54,7 +56,7 @@ const InvitationsScreen = ({ navigation }: any) => {
       const tId = await acceptInvite(invite.id);
       navigation.navigate('Tournament', { tournamentId: tId });
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo aceptar la invitación');
+      showToast({ type: 'error', message: e.message || 'No se pudo aceptar la invitación' });
     } finally {
       setActionLoading(null);
     }
@@ -74,7 +76,7 @@ const InvitationsScreen = ({ navigation }: any) => {
               setActionLoading(`reject-${invite.id}`);
               await rejectInvite(invite.id);
             } catch (e: any) {
-              Alert.alert('Error', e.message || 'No se pudo rechazar');
+              showToast({ type: 'error', message: e.message || 'No se pudo rechazar' });
             } finally {
               setActionLoading(null);
             }
@@ -89,7 +91,7 @@ const InvitationsScreen = ({ navigation }: any) => {
       setActionLoading(`cancel-${invite.id}`);
       await cancelInvite(invite.id);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo cancelar');
+      showToast({ type: 'error', message: e.message || 'No se pudo cancelar' });
     } finally {
       setActionLoading(null);
     }
@@ -214,7 +216,7 @@ const InvitationsScreen = ({ navigation }: any) => {
                 setDismissedReceivedIds(prev => new Set(prev).add(invite.id));
                 dismissReceivedInvite(invite.id).catch(() => {
                   setDismissedReceivedIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; });
-                  Alert.alert('Error', 'No se pudo eliminar la invitación');
+                  showToast({ type: 'error', message: 'No se pudo eliminar la invitación' });
                 });
               },
             },
@@ -304,7 +306,7 @@ const InvitationsScreen = ({ navigation }: any) => {
                 setDismissedIds(prev => new Set(prev).add(invite.id));
                 dismissSentInvite(invite.id).catch(() => {
                   setDismissedIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; });
-                  Alert.alert('Error', 'No se pudo eliminar la invitación');
+                  showToast({ type: 'error', message: 'No se pudo eliminar la invitación' });
                 });
               },
             },
@@ -320,7 +322,11 @@ const InvitationsScreen = ({ navigation }: any) => {
 
   const renderContent = () => {
     if (activeTab === 'received') {
-      const visibleReceived = receivedInvites.filter(inv => !dismissedReceivedIds.has(inv.id));
+      // Primary truth: Firestore hiddenBy.to flag. Local set handles optimistic UI
+      // while the onSnapshot hasn't propagated yet.
+      const visibleReceived = receivedInvites.filter(
+        inv => !inv.hiddenBy?.to && !dismissedReceivedIds.has(inv.id),
+      );
       if (visibleReceived.length === 0) {
         return (
           <EmptyState
@@ -342,7 +348,10 @@ const InvitationsScreen = ({ navigation }: any) => {
         />
       );
     }
-    const visibleSentInvites = sentInvites.filter(inv => !dismissedIds.has(inv.id));
+    // Primary truth: Firestore hiddenBy.from flag. Local set handles optimistic UI.
+    const visibleSentInvites = sentInvites.filter(
+      inv => !inv.hiddenBy?.from && !dismissedIds.has(inv.id),
+    );
     if (visibleSentInvites.length === 0) {
       return (
         <EmptyState

@@ -5,12 +5,12 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
-import Clipboard from 'expo-clipboard';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
+import { useToast } from '../../../context/ToastContext';
 import { SectionHeader } from '../../../components/CommonComponents';
 import { SheetModal } from '../../../components/SheetModal';
 import TournamentSettingsForm from '../../../components/forms/TournamentSettingsForm';
@@ -71,6 +71,7 @@ const InfoTab: React.FC<InfoTabProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
 
@@ -133,8 +134,13 @@ const InfoTab: React.FC<InfoTabProps> = ({
       <TouchableOpacity
         style={[styles.inviteCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         onPress={async () => {
-          await Clipboard.setStringAsync(tournament.inviteCode);
-          Alert.alert('Copiado', 'Código de invitación copiado al portapapeles');
+          if (!tournament.inviteCode) return;
+          try {
+            await Clipboard.setStringAsync(tournament.inviteCode);
+            showToast({ type: 'info', message: 'Código de invitación copiado al portapapeles' });
+          } catch {
+            showToast({ type: 'error', message: 'No se pudo copiar el código' });
+          }
         }}
         activeOpacity={0.7}
       >

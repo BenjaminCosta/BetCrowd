@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
@@ -17,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { createBet } from '../../services/betService';
 import { getTournament } from '../../services/tournamentService';
 import { getEvent } from '../../services/eventService';
@@ -163,6 +163,7 @@ const BetPreviewCard: React.FC<BetPreviewCardProps> = ({ theme, title, type, opt
 const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, onSuccess }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const [tournament, setTournament] = useState<any>(null);
   const [event, setEvent] = useState<any>(null);
@@ -193,7 +194,7 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
       setTournament(tournamentData);
       setEvent(eventData);
     } catch (error) {
-      Alert.alert('Error', 'No se pudo cargar los datos');
+      showToast({ type: 'error', message: 'No se pudo cargar los datos' });
     } finally {
       setLoading(false);
     }
@@ -254,21 +255,21 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
 
   const handleCreate = async () => {
     if (isEventBlocked()) {
-      Alert.alert('Error', 'No se pueden crear apuestas en eventos finalizados.');
+      showToast({ type: 'warning', message: 'No se pueden crear apuestas en eventos finalizados.' });
       return;
     }
     if (!title.trim()) {
-      Alert.alert('Error', 'El título es requerido');
+      showToast({ type: 'warning', message: 'El título es requerido' });
       return;
     }
     const cleanOptions = options.filter((opt) => opt.trim() !== '');
     if (selectedType !== 'score' && cleanOptions.length < 2) {
-      Alert.alert('Error', 'Debes agregar al menos 2 opciones');
+      showToast({ type: 'warning', message: 'Debes agregar al menos 2 opciones' });
       return;
     }
     const stake = parseFloat(stakeAmount);
     if (isNaN(stake) || stake < 0) {
-      Alert.alert('Error', 'El monto de apuesta debe ser un número válido');
+      showToast({ type: 'warning', message: 'El monto de apuesta debe ser un número válido' });
       return;
     }
     try {
@@ -285,9 +286,10 @@ const CreateBetForm: React.FC<CreateBetFormProps> = ({ tournamentId, eventId, on
         betData.line = parseFloat(line);
       }
       await createBet(tournamentId, eventId, betData);
-      Alert.alert('Éxito', 'Apuesta creada', [{ text: 'OK', onPress: () => onSuccess() }]);
+      showToast({ type: 'success', message: 'Apuesta creada' });
+      onSuccess();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo crear la apuesta');
+      showToast({ type: 'error', message: error.message || 'No se pudo crear la apuesta' });
     } finally {
       setCreating(false);
     }

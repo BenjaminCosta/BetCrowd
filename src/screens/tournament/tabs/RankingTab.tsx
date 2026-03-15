@@ -6,19 +6,18 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-  Image,
   TouchableOpacity,
   TouchableWithoutFeedback,
   Modal,
   Animated,
   Dimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Gradients, Colors, Spacing, BorderRadius } from '../../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { Card, EmptyState } from '../../../components/CommonComponents';
 import { UserBalance } from '../../../services/groupsService';
+import UserAvatar from '../../../components/UserAvatar';
 
 import { getInitials, formatBalance, splitBalance } from '../../../utils/formatters';
 
@@ -192,20 +191,11 @@ const RankingTab: React.FC<RankingTabProps> = ({
 
                   {/* Avatar */}
                   <View style={styles.rankAvatarWrapper}>
-                    {balance.photoURL ? (
-                      <Image source={{ uri: balance.photoURL }} style={styles.rankAvatar} />
-                    ) : (
-                      <LinearGradient
-                        colors={Gradients.primary as any}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.rankAvatarPlaceholder}
-                      >
-                        <Text style={styles.rankAvatarText}>
-                          {getInitials(balance.username || balance.displayName)}
-                        </Text>
-                      </LinearGradient>
-                    )}
+                    <UserAvatar
+                      uid={balance.uid}
+                      name={balance.username || balance.displayName || ''}
+                      size={42}
+                    />
                   </View>
 
                   {/* User info */}
@@ -331,15 +321,6 @@ const styles = StyleSheet.create({
   rankNumber: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
   medalEmoji: { fontSize: 18, textAlign: 'center' },
   rankAvatarWrapper: { position: 'relative' },
-  rankAvatar: { width: 42, height: 42, borderRadius: 21 },
-  rankAvatarPlaceholder: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rankAvatarText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
   rankUserInfo: { flex: 1, gap: 3 },
   rankUsernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rankUsername: { fontSize: 15, fontWeight: '600' },

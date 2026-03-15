@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Keyboard,
   InteractionManager,
 } from 'react-native';
@@ -20,6 +20,7 @@ import { SheetModal } from '../../components/SheetModal';
 import CreateEventForm from '../../components/forms/CreateEventForm';
 import LoadResultsForm from '../../components/forms/LoadResultsForm';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   getTournament,
@@ -41,6 +42,7 @@ import {
   listBets,
   getMyPick,
   lockBet,
+  getPickedEventIds,
   Bet,
   Pick,
 } from '../../services/betService';
@@ -89,11 +91,14 @@ const getTournamentStatusLabel = (status: string): string => {
 const TournamentScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
   const { user } = useAuth();
-  const { tournamentId, openEventId, openInviteSheet } = route.params ?? {};
+  const { tournamentId, openEventId, openInviteSheet, initialTab } = route.params ?? {};
 
-  // ── Shared state ────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<Tab>('events');
+  // ── Shared state ─────────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<Tab>(
+    (initialTab === 'ranking' || initialTab === 'info') ? initialTab as Tab : 'events'
+  );
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [loadingHeader, setLoadingHeader] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -157,6 +162,21 @@ const TournamentScreen = ({ navigation, route }: any) => {
     loadHeaderData();
     subscribeEvents();
     return () => { eventsUnsubRef.current?.(); };
+  }, [tournamentId, user]);
+
+  // Preload eventPicks from picksIndex so badges show before opening each event
+  useEffect(() => {
+    if (!tournamentId || !user) return;
+    getPickedEventIds(user.uid, tournamentId)
+      .then((pickedIds) => {
+        if (pickedIds.size === 0) return;
+        setEventPicks((prev) => {
+          const next = { ...prev };
+          pickedIds.forEach((id) => { next[id] = true; });
+          return next;
+        });
+      })
+      .catch(() => {/* non-critical */});
   }, [tournamentId, user]);
 
   useFocusEffect(
@@ -335,7 +355,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
         text: 'Eliminar', style: 'destructive',
         onPress: async () => {
           try { await deleteEvent(tournamentId, event.id); }
-          catch (e: any) { Alert.alert('Error', e.message || 'No se pudo eliminar'); }
+          catch (e: any) { showToast({ type: 'error', message: e.message || 'No se pudo eliminar' }); }
         },
       },
     ]);
@@ -362,10 +382,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               const bets = await listBets(tournamentId, event.id);
               const lockable = bets.filter((b) => b.status === 'open' || b.status === 'pending');
               if (lockable.length === 0) {
-                Alert.alert(
-                  'Sin apuestas',
-                  'Este evento no tiene apuestas abiertas para cerrar.',
-                );
+                showToast({ type: 'info', message: 'Este evento no tiene apuestas abiertas para cerrar.' });
                 return;
               }
               // Lock individual bets first — if this fails, the event status
@@ -373,7 +390,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               await Promise.all(lockable.map((b) => lockBet(tournamentId, event.id, b.id)));
               await updateEvent(tournamentId, event.id, { status: 'locked' });
             } catch (e: any) {
-              Alert.alert('Error', e.message || 'No se pudo cerrar el evento');
+              showToast({ type: 'error', message: e.message || 'No se pudo cerrar el evento' });
             }
           },
         },
@@ -423,10 +440,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               await finishTournament(tournamentId);
               await loadHeaderData();
             } catch (e: any) {
-              Alert.alert(
-                'No se puede finalizar',
-                e.message || 'Error al finalizar el torneo',
-              );
+              showToast({ type: 'error', message: e.message || 'Error al finalizar el torneo' });
             } finally {
               setSavingInfo(false);
             }
@@ -449,7 +463,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               setSavingInfo(true);
               await deleteTournamentSoft(tournamentId);
               navigation.goBack();
-            } catch (e: any) { Alert.alert('Error', e.message); setSavingInfo(false); }
+            } catch (e: any) { showToast({ type: 'error', message: e?.message || 'No se pudo eliminar el torneo' }); setSavingInfo(false); }
           },
         },
       ]
@@ -577,7 +591,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
                         await removeMemberFromTournament(tournamentId, balance.uid);
                         loadRanking();
                       } catch (e: any) {
-                        Alert.alert('No se puede quitar', e.message || 'Error al quitar miembro');
+                        showToast({ type: 'error', message: e.message || 'Error al quitar miembro' });
                       }
                     },
                   },

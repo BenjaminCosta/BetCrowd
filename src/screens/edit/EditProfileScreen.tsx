@@ -6,44 +6,40 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
-  Alert,
   ActivityIndicator,
   Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../context/ThemeContext';
-import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { PrimaryButton } from '../../components/CommonComponents';
+import UserAvatar from '../../components/UserAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { auth } from '../../lib/firebase';
 import { updateProfile } from 'firebase/auth';
 import { getUserProfile, updateFullProfile, UpdateProfileData } from '../../services/userService';
-import { uploadAvatar } from '../../services/storageService';
 import { changePassword, validatePasswordChange, getPasswordErrorMessage } from '../../services/passwordService';
+import { useToast } from '../../context/ToastContext';
 
 const EditProfileScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { showToast } = useToast();
 
   // Profile state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  
+
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [originalUsername, setOriginalUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
-  const [photoURL, setPhotoURL] = useState('');
 
   // Password modal state
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
@@ -70,7 +66,6 @@ const EditProfileScreen = ({ navigation }: any) => {
         setEmail(profile.email || user.email || '');
         setPhone(profile.phone || '');
         setBio(profile.bio || '');
-        setPhotoURL(profile.photoURL || '');
       } else {
         // Fallback to auth user data
         setEmail(user.email || '');
@@ -78,7 +73,7 @@ const EditProfileScreen = ({ navigation }: any) => {
       }
     } catch (error) {
       console.error('Error loading profile:', error);
-      Alert.alert('Error', 'No se pudo cargar tu perfil');
+      showToast({ type: 'error', message: 'No se pudo cargar tu perfil' });
     } finally {
       setLoading(false);
     }
@@ -93,17 +88,17 @@ const EditProfileScreen = ({ navigation }: any) => {
 
     // Basic validation
     if (!fullName.trim()) {
-      Alert.alert('Error', 'El nombre completo es requerido');
+      showToast({ type: 'warning', message: 'El nombre completo es requerido' });
       return;
     }
 
     if (!username.trim()) {
-      Alert.alert('Error', 'El nombre de usuario es requerido');
+      showToast({ type: 'warning', message: 'El nombre de usuario es requerido' });
       return;
     }
 
     if (bio.length > 150) {
-      Alert.alert('Error', 'La biografía no puede exceder 150 caracteres');
+      showToast({ type: 'warning', message: 'La biografía no puede exceder 150 caracteres' });
       return;
     }
 
@@ -117,12 +112,8 @@ const EditProfileScreen = ({ navigation }: any) => {
         bio: bio.trim(),
       };
 
-      if (photoURL) {
-        updateData.photoURL = photoURL;
-      }
-
       await updateFullProfile(user.uid, originalUsername, updateData);
-      
+
       // Update displayName in Firebase Auth
       if (auth.currentUser && fullName.trim() !== auth.currentUser.displayName) {
         await updateProfile(auth.currentUser, {
@@ -130,52 +121,13 @@ const EditProfileScreen = ({ navigation }: any) => {
         });
       }
 
-      Alert.alert('¡Éxito!', 'Tu perfil se actualizó correctamente', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      showToast({ type: 'success', message: 'Tu perfil se actualizó correctamente' });
+      navigation.goBack();
     } catch (error: any) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', error.message || 'No se pudo guardar los cambios');
+      showToast({ type: 'error', message: error.message || 'No se pudo guardar los cambios' });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleChangePhoto = async () => {
-    if (!user) return;
-
-    // Request permissions
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (status !== 'granted') {
-      Alert.alert('Permiso necesario', 'Necesitamos acceso a tus fotos para cambiar tu imagen de perfil');
-      return;
-    }
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setUploadingPhoto(true);
-        
-        const downloadURL = await uploadAvatar(user.uid, result.assets[0].uri);
-        setPhotoURL(downloadURL);
-        
-        Alert.alert('¡Listo!', 'Foto actualizada. No olvides guardar los cambios.');
-      }
-    } catch (error) {
-      console.error('Error changing photo:', error);
-      Alert.alert('Error', 'No se pudo cambiar la foto');
-    } finally {
-      setUploadingPhoto(false);
     }
   };
 
@@ -187,7 +139,7 @@ const EditProfileScreen = ({ navigation }: any) => {
     });
 
     if (!validation.valid) {
-      Alert.alert('Error', validation.error);
+      showToast({ type: 'warning', message: validation.error || 'Error de validación' });
       return;
     }
 
@@ -201,25 +153,14 @@ const EditProfileScreen = ({ navigation }: any) => {
       setConfirmNewPassword('');
       setPasswordModalVisible(false);
       
-      Alert.alert('¡Éxito!', 'Tu contraseña se cambió correctamente');
+      showToast({ type: 'success', message: 'Tu contraseña se cambió correctamente' });
     } catch (error: any) {
       console.error('Error changing password:', error);
       const message = getPasswordErrorMessage(error.code);
-      Alert.alert('Error', message);
+      showToast({ type: 'error', message });
     } finally {
       setChangingPassword(false);
     }
-  };
-
-  const getInitials = () => {
-    if (fullName) {
-      const parts = fullName.trim().split(' ');
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-      }
-      return fullName.substring(0, 2).toUpperCase();
-    }
-    return user?.email?.substring(0, 2).toUpperCase() || 'U';
   };
 
   if (loading) {
@@ -244,35 +185,11 @@ const EditProfileScreen = ({ navigation }: any) => {
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
-          {photoURL ? (
-            <Image source={{ uri: photoURL }} style={styles.avatarImage} />
-          ) : (
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>{getInitials()}</Text>
-            </LinearGradient>
-          )}
-          
-          <TouchableOpacity 
-            style={[styles.changePhotoButton, { backgroundColor: colors.card }]}
-            onPress={handleChangePhoto}
-            disabled={uploadingPhoto}
-          >
-            {uploadingPhoto ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <>
-                <Ionicons name="camera" size={16} color={colors.primary} />
-                <Text style={[styles.changePhotoText, { color: colors.primary }]}>
-                  Cambiar Foto
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <UserAvatar
+            uid={user?.uid ?? ''}
+            name={fullName || user?.email || ''}
+            size={100}
+          />
         </View>
 
         {/* Form */}
@@ -550,38 +467,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.xxl,
     paddingHorizontal: Spacing.xl,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: Spacing.md,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 40,
-    fontWeight: '700',
-  },
-  changePhotoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    minHeight: 36,
-  },
-  changePhotoText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   form: {
     paddingHorizontal: Spacing.xl,

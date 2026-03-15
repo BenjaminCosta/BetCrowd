@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,21 +7,21 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
-  Image,
   TextInput,
   Animated,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal';
-import { Colors, Gradients, Spacing, BorderRadius } from '../../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { Card } from '../../../components/CommonComponents';
+import UserAvatar from '../../../components/UserAvatar';
 import { useSocial, FriendWithProfile } from '../../../context/SocialContext';
+import { useToast } from '../../../context/ToastContext';
 import { sendTournamentInvites } from '../../../services/inviteService';
-import { getInitials } from '../../../utils/formatters';
+import { db } from '../../../lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -49,12 +49,28 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { friends, friendsLoading } = useSocial();
+  const { showToast } = useToast();
   const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } =
     useSwipeToClose(visible, onClose);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sending, setSending] = useState(false);
+  const [memberUidSet, setMemberUidSet] = useState<Set<string>>(new Set());
+
+  // Fetch current tournament members when sheet opens
+  useEffect(() => {
+    if (!visible || !tournamentId) return;
+    let cancelled = false;
+    getDocs(collection(db, 'tournaments', tournamentId, 'members'))
+      .then((snap) => {
+        if (!cancelled) {
+          setMemberUidSet(new Set(snap.docs.map((d) => d.id)));
+        }
+      })
+      .catch(() => { /* silent — worst case we show all as invitable */ });
+    return () => { cancelled = true; };
+  }, [visible, tournamentId]);
 
   // Reset state when sheet closes
   React.useEffect(() => {
@@ -62,6 +78,7 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
       setSelected(new Set());
       setSearchQuery('');
       setSending(false);
+      setMemberUidSet(new Set());
     }
   }, [visible]);
 
@@ -79,6 +96,7 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
   }, [friends, searchQuery]);
 
   const toggleSelect = (uid: string) => {
+    if (memberUidSet.has(uid)) return; // already in tournament
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(uid)) next.delete(uid);
@@ -105,19 +123,19 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
       );
       doClose();
       if (skipped > 0 && sent === 0) {
-        Alert.alert(
-          'Sin cambios',
-          'Los usuarios seleccionados ya son miembros o ya tienen una invitación pendiente.',
-        );
+        showToast({
+          type: 'info',
+          message: 'Los usuarios seleccionados ya son miembros o ya tienen una invitación pendiente.',
+        });
       } else {
         const msg =
           sent === 1
             ? '¡Invitación enviada!'
             : `¡${sent} invitaciones enviadas!`;
-        Alert.alert('', msg);
+        showToast({ type: 'success', message: msg });
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudieron enviar las invitaciones');
+      showToast({ type: 'error', message: e.message || 'No se pudieron enviar las invitaciones' });
     } finally {
       setSending(false);
     }
@@ -129,30 +147,29 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
     const profile = friend.profile;
     if (!profile) return null;
     const isSelected = selected.has(friend.uid);
+    const isMember = memberUidSet.has(friend.uid);
 
     return (
       <TouchableOpacity
         key={friend.uid}
-        activeOpacity={0.75}
-        onPress={() => toggleSelect(friend.uid)}
+        activeOpacity={isMember ? 1 : 0.75}
+        onPress={() => !isMember && toggleSelect(friend.uid)}
+        disabled={isMember}
       >
-        <Card style={[styles.friendCard, isSelected && { borderColor: colors.primary, borderWidth: 1 }]}>
+        <Card
+          style={[
+            styles.friendCard,
+            isSelected && { borderColor: colors.primary, borderWidth: 1 },
+            isMember && { opacity: 0.45 },
+          ]}
+        >
           <View style={styles.friendRow}>
             {/* Avatar */}
-            {profile.photoURL ? (
-              <Image source={{ uri: profile.photoURL }} style={styles.avatar} />
-            ) : (
-              <LinearGradient
-                colors={Gradients.primary as any}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.avatar}
-              >
-                <Text style={styles.avatarText}>
-                  {getInitials(profile.displayName || profile.username)}
-                </Text>
-              </LinearGradient>
-            )}
+            <UserAvatar
+              uid={friend.uid}
+              name={profile.displayName || profile.username || ''}
+              size={44}
+            />
 
             {/* Info */}
             <View style={styles.friendInfo}>
@@ -162,20 +179,30 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
               <Text style={[styles.username, { color: colors.mutedForeground }]}>
                 @{profile.username}
               </Text>
+              {isMember && (
+                <View style={[styles.memberBadge, { backgroundColor: colors.muted }]}>
+                  <Ionicons name="checkmark-circle" size={10} color={colors.mutedForeground} />
+                  <Text style={[styles.memberBadgeText, { color: colors.mutedForeground }]}>
+                    Ya está en el torneo
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* Checkbox */}
-            <View
-              style={[
-                styles.checkbox,
-                {
-                  backgroundColor: isSelected ? colors.primary : 'transparent',
-                  borderColor: isSelected ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              {isSelected && <Ionicons name="checkmark" size={14} color="#FFF" />}
-            </View>
+            {/* Checkbox — only for non-members */}
+            {!isMember && (
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    backgroundColor: isSelected ? colors.primary : 'transparent',
+                    borderColor: isSelected ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                {isSelected && <Ionicons name="checkmark" size={14} color="#FFF" />}
+              </View>
+            )}
           </View>
         </Card>
       </TouchableOpacity>
@@ -441,18 +468,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
   friendInfo: {
     flex: 1,
     gap: 2,
@@ -463,6 +478,20 @@ const styles = StyleSheet.create({
   },
   username: {
     fontSize: 12,
+  },
+  memberBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 3,
+  },
+  memberBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
   checkbox: {
     width: 24,

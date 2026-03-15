@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -7,7 +8,6 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
-  Alert,
   Animated,
   Modal,
 } from 'react-native';
@@ -24,6 +24,7 @@ import { SheetModal } from '../../components/SheetModal';
 import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
 import JoinCodeForm from '../../components/forms/JoinCodeForm';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   listMyTournaments,
@@ -77,6 +78,7 @@ const getFormatIcon = (formatId: string): string => {
 const TorneosScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
   const { user } = useAuth();
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -120,25 +122,39 @@ const TorneosScreen = ({ navigation }: any) => {
     else if (!silent) setLoading(true);
 
     try {
+      // ── Phase 1: Fetch list + roles in parallel ────────────────────────────
+      // These two reads are independent, so we fire them simultaneously.
       const [data, roles] = await Promise.all([
         listMyTournaments(),
         getMyRolesMap(),
       ]);
       const filtered = data.filter((t) => t.status !== 'deleted');
+
+      // PERF: Render the list immediately — don't block on member counts.
+      // The user sees the tournament cards as soon as the list arrives.
       setTournaments(filtered);
       setMyRoles(roles);
+      setLoading(false);    // ← unblock loading screen the moment list data is ready
+      setRefreshing(false); // ← hide pull-to-refresh spinner
 
-      // Load all member counts in parallel
+      // ── Phase 2: Hydrate member counts lazily in the background ───────────
+      // Counts are secondary UI — running them after the list is visible keeps
+      // perceived load time low even as the number of tournaments grows.
+      // Individual errors are swallowed so one bad read never blocks the rest.
       const counts: Record<string, number> = {};
       await Promise.all(
         filtered.map(async (t) => {
-          counts[t.id] = await getTournamentMemberCount(t.id);
-        })
+          try {
+            counts[t.id] = await getTournamentMemberCount(t.id);
+          } catch {
+            counts[t.id] = 0; // fallback: show 0 rather than crash the card
+          }
+        }),
       );
       setMemberCounts(counts);
     } catch (e) {
       console.error('TorneosScreen loadTournaments:', e);
-    } finally {
+      // Phase 1 failed — ensure loading indicators are cleared
       setLoading(false);
       setRefreshing(false);
     }
@@ -182,7 +198,7 @@ const TorneosScreen = ({ navigation }: any) => {
               await deleteTournamentSoft(t.id);
               setTournaments((prev) => prev.filter((x) => x.id !== t.id));
             } catch (e: any) {
-              Alert.alert('Error', e.message || 'No se pudo eliminar el torneo');
+              showToast({ type: 'error', message: e.message || 'No se pudo eliminar el torneo' });
             }
           },
         },

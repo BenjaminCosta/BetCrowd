@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { updateBet, getBet } from '../../services/betService';
 import { getEvent } from '../../services/eventService';
 
@@ -31,6 +31,7 @@ interface EditBetFormProps {
 const EditBetForm: React.FC<EditBetFormProps> = ({ tournamentId, eventId, betId, onSuccess }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -65,7 +66,7 @@ const EditBetForm: React.FC<EditBetFormProps> = ({ tournamentId, eventId, betId,
         setLine(betData.line?.toString() || '');
       }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo cargar los datos');
+      showToast({ type: 'error', message: 'No se pudo cargar los datos' });
     } finally {
       setLoading(false);
     }
@@ -101,15 +102,15 @@ const EditBetForm: React.FC<EditBetFormProps> = ({ tournamentId, eventId, betId,
   };
 
   const handleUpdate = async () => {
-    if (!title.trim()) { Alert.alert('Error', 'El título es requerido'); return; }
+    if (!title.trim()) { showToast({ type: 'warning', message: 'El título es requerido' }); return; }
     const cleanOptions = options.filter((o) => o.trim() !== '');
     if (selectedType !== 'score' && cleanOptions.length < 2) {
-      Alert.alert('Error', 'Debes agregar al menos 2 opciones');
+      showToast({ type: 'warning', message: 'Debes agregar al menos 2 opciones' });
       return;
     }
     const stake = parseFloat(stakeAmount);
     if (isNaN(stake) || stake <= 0) {
-      Alert.alert('Error', 'El monto de apuesta debe ser un número mayor a 0');
+      showToast({ type: 'warning', message: 'El monto de apuesta debe ser un número mayor a 0' });
       return;
     }
     try {
@@ -126,7 +127,7 @@ const EditBetForm: React.FC<EditBetFormProps> = ({ tournamentId, eventId, betId,
       await updateBet(tournamentId, eventId, betId, betData);
       onSuccess();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo actualizar la apuesta');
+      showToast({ type: 'error', message: error.message || 'No se pudo actualizar la apuesta' });
     } finally {
       setUpdating(false);
     }

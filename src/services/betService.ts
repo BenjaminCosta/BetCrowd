@@ -7,6 +7,7 @@ import {
   updateDoc,
   deleteDoc,
   query,
+  where,
   orderBy,
   onSnapshot,
   Timestamp,
@@ -319,6 +320,39 @@ export const settleBet = async (
       const eventStatus = eventSnap.data()?.status;
       if (eventStatus === 'locked' || eventStatus === 'upcoming') {
         await updateDoc(eventRef, { status: 'finished', updatedAt: serverTimestamp() });
+
+        // Notify all members: event_resulted (best-effort)
+        // Firestore rules require fromUid == request.auth.uid for cross-user
+        // notification writes. Only send if a session is active.
+        const _notifUid = auth.currentUser?.uid;
+        if (_notifUid) {
+          try {
+            const eventTitle = eventSnap.data()?.title ?? 'Un evento';
+            const membersSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'members'));
+            const memberUids = membersSnap.docs.map((d) => d.id);
+            for (let i = 0; i < memberUids.length; i += 20) {
+              const chunk = memberUids.slice(i, i + 20);
+              const notifBatch = writeBatch(db);
+              chunk.forEach((uid) => {
+                const notifRef = doc(collection(db, 'users', uid, 'notifications'));
+                notifBatch.set(notifRef, {
+                  type: 'event_resulted',
+                  title: 'Resultado cargado',
+                  body: `Ya se cargó el resultado de "${eventTitle}"`,
+                  fromUid: _notifUid,
+                  tournamentId,
+                  eventId,
+                  meta: { tournamentId, eventId },
+                  createdAt: serverTimestamp(),
+                  readAt: null,
+                });
+              });
+              await notifBatch.commit();
+            }
+          } catch (err) {
+            if (__DEV__) console.warn('settleBet: failed to send event_resulted notifications', err);
+          }
+        }
       }
     }
   } catch {
@@ -729,8 +763,11 @@ export const computeBetStatusFromOptionTotals = (
 /**
  * Calculate odds for each option in a bet
  * Returns a map of option -> odds (e.g., "1.85")
+ *
+ * @param fee Commission rate applied to the pot (0 = no commission, 0.05 = 5%).
+ *            Currently set to 0 — activate when real commission is in place.
  */
-export const calculateOdds = (bet: Bet, fee: number = 0.05): Record<string, string> => {
+export const calculateOdds = (bet: Bet, fee: number = 0): Record<string, string> => {
   const odds: Record<string, string> = {};
   
   if (!bet.totalPot || bet.totalPot <= 0 || !bet.optionTotals) {
@@ -774,7 +811,7 @@ export const calculateEstimatedOdds = (
   stakeAmount: number,
   existingPickOption?: string | null,
   existingPickStake?: number,
-  fee: number = 0.05,
+  fee: number = 0, // Commission rate — currently 0, activate when charging real commission
 ): string => {
   const hasExistingPick = !!existingPickOption && (existingPickStake ?? 0) > 0;
 
@@ -897,4 +934,24 @@ export const getUserPicksForTournament = async (
   }
   
   return picks;
+};
+
+/**
+ * Get the set of eventIds where the current user has at least one pick
+ * in a given tournament. Uses the picksIndex subcollection for a single
+ * filtered read instead of N+1 per-event queries.
+ */
+export const getPickedEventIds = async (
+  uid: string,
+  tournamentId: string,
+): Promise<Set<string>> => {
+  const indexRef = collection(db, 'users', uid, 'picksIndex');
+  const q = query(indexRef, where('tournamentId', '==', tournamentId));
+  const snapshot = await getDocs(q);
+  const eventIds = new Set<string>();
+  snapshot.docs.forEach((d) => {
+    const data = d.data();
+    if (data.eventId) eventIds.add(data.eventId as string);
+  });
+  return eventIds;
 };

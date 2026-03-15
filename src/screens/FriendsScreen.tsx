@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Image,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { Card, EmptyState } from '../components/CommonComponents';
+import UserAvatar from '../components/UserAvatar';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import { useSocial } from '../context/SocialContext';
 
 type TabType = 'friends' | 'incoming' | 'outgoing';
@@ -35,13 +36,14 @@ const FriendsScreen = ({ navigation }: any) => {
 
   const [activeTab, setActiveTab] = useState<TabType>('friends');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const handleAccept = async (fromUid: string) => {
     try {
       setActionLoading(`accept-${fromUid}`);
       await acceptFriendRequest(fromUid);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo aceptar la solicitud');
+      showToast({ type: 'error', message: error.message || 'No se pudo aceptar la solicitud' });
     } finally {
       setActionLoading(null);
     }
@@ -52,7 +54,7 @@ const FriendsScreen = ({ navigation }: any) => {
       setActionLoading(`reject-${fromUid}`);
       await rejectFriendRequest(fromUid);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo rechazar la solicitud');
+      showToast({ type: 'error', message: error.message || 'No se pudo rechazar la solicitud' });
     } finally {
       setActionLoading(null);
     }
@@ -63,7 +65,7 @@ const FriendsScreen = ({ navigation }: any) => {
       setActionLoading(`cancel-${toUid}`);
       await cancelFriendRequest(toUid);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo cancelar la solicitud');
+      showToast({ type: 'error', message: error.message || 'No se pudo cancelar la solicitud' });
     } finally {
       setActionLoading(null);
     }
@@ -83,7 +85,7 @@ const FriendsScreen = ({ navigation }: any) => {
               setActionLoading(`remove-${friendUid}`);
               await removeFriend(friendUid);
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'No se pudo quitar el amigo');
+              showToast({ type: 'error', message: error.message || 'No se pudo quitar el amigo' });
             } finally {
               setActionLoading(null);
             }
@@ -91,14 +93,6 @@ const FriendsScreen = ({ navigation }: any) => {
         },
       ]
     );
-  };
-
-  const getInitials = (name: string) => {
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
   };
 
   const renderFriendItem = (friend: any, showRemove: boolean = false) => {
@@ -109,20 +103,11 @@ const FriendsScreen = ({ navigation }: any) => {
       <Card key={friend.uid} style={styles.friendCard}>
         <View style={styles.friendRow}>
           {/* Avatar */}
-          {profile.photoURL ? (
-            <Image source={{ uri: profile.photoURL }} style={styles.avatar} />
-          ) : (
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>
-                {getInitials(profile.displayName || profile.username)}
-              </Text>
-            </LinearGradient>
-          )}
+          <UserAvatar
+            uid={friend.uid}
+            name={profile.displayName || profile.username || ''}
+            size={48}
+          />
 
           {/* Info */}
           <View style={styles.friendInfo}>
@@ -163,20 +148,11 @@ const FriendsScreen = ({ navigation }: any) => {
       <Card key={request.uid} style={styles.friendCard}>
         <View style={styles.friendRow}>
           {/* Avatar */}
-          {profile.photoURL ? (
-            <Image source={{ uri: profile.photoURL }} style={styles.avatar} />
-          ) : (
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>
-                {getInitials(profile.displayName || profile.username)}
-              </Text>
-            </LinearGradient>
-          )}
+          <UserAvatar
+            uid={request.uid}
+            name={profile.displayName || profile.username || ''}
+            size={48}
+          />
 
           {/* Info */}
           <View style={styles.friendInfo}>
@@ -232,20 +208,11 @@ const FriendsScreen = ({ navigation }: any) => {
       <Card key={request.uid} style={styles.friendCard}>
         <View style={styles.friendRow}>
           {/* Avatar */}
-          {profile.photoURL ? (
-            <Image source={{ uri: profile.photoURL }} style={styles.avatar} />
-          ) : (
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>
-                {getInitials(profile.displayName || profile.username)}
-              </Text>
-            </LinearGradient>
-          )}
+          <UserAvatar
+            uid={request.uid}
+            name={profile.displayName || profile.username || ''}
+            size={48}
+          />
 
           {/* Info */}
           <View style={styles.friendInfo}>

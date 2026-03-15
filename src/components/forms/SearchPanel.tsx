@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  Alert,
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ import type { NavigationProp } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius, Gradients } from '../../theme/colors';
 import { Card, EmptyState } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { searchTournaments, Tournament } from '../../services/tournamentService';
@@ -39,6 +39,7 @@ interface SearchPanelProps {
 const SearchPanel: React.FC<SearchPanelProps> = ({ onClose }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
   const { user } = useAuth();
   const { sendFriendRequest, acceptFriendRequest, cancelFriendRequest, getFriendshipStatus: checkStatus } = useSocial();
   const navigation = useNavigation<NavigationProp<any>>();
@@ -115,7 +116,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ onClose }) => {
       await sendFriendRequest(targetUid);
       setFriendStatuses({ ...friendStatuses, [targetUid]: 'pending_sent' });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo enviar la solicitud');
+      showToast({ type: 'error', message: error.message || 'No se pudo enviar la solicitud' });
     } finally {
       setActionLoading(null);
     }
@@ -127,7 +128,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ onClose }) => {
       await acceptFriendRequest(fromUid);
       setFriendStatuses({ ...friendStatuses, [fromUid]: 'friends' });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo aceptar la solicitud');
+      showToast({ type: 'error', message: error.message || 'No se pudo aceptar la solicitud' });
     } finally {
       setActionLoading(null);
     }
@@ -139,7 +140,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ onClose }) => {
       await cancelFriendRequest(toUid);
       setFriendStatuses({ ...friendStatuses, [toUid]: 'none' });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo cancelar la solicitud');
+      showToast({ type: 'error', message: error.message || 'No se pudo cancelar la solicitud' });
     } finally {
       setActionLoading(null);
     }

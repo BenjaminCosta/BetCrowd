@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Badge } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { getTournament } from '../../services/tournamentService';
 import { listenEvents, Event } from '../../services/eventService';
@@ -30,6 +31,7 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId, onOpenE
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { showToast } = useToast();
 
   const [tournament, setTournament] = useState<any>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -96,9 +98,9 @@ const LoadResultsForm: React.FC<LoadResultsFormProps> = ({ tournamentId, onOpenE
           onPress: async () => {
             try {
               await settleBet(tournamentId, eventId, bet.id, { winner: option });
-              Alert.alert('Éxito', `Apuesta resuelta: ${option}`);
+              showToast({ type: 'success', message: `Apuesta resuelta: ${option}` });
             } catch (e: any) {
-              Alert.alert('Error', e.message || 'No se pudo resolver');
+              showToast({ type: 'error', message: e.message || 'No se pudo resolver' });
             }
           },
         })),

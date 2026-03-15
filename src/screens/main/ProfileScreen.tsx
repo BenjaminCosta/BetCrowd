@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   Switch,
-  Alert,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients } from '../../theme/colors';
+import { Colors } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
+import UserAvatar from '../../components/UserAvatar';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { getUserProfile } from '../../services/userService';
@@ -22,8 +22,8 @@ const ProfileScreen = ({ navigation }: any) => {
   const { theme, toggleTheme } = useTheme();
   const colors = Colors[theme];
   const { user, signOut } = useAuth();
+  const { showToast } = useToast();
   const { friends, incomingRequests, pendingInviteCount } = useSocial();
-  const [photoURL, setPhotoURL] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
 
   useEffect(() => {
@@ -35,23 +35,11 @@ const ProfileScreen = ({ navigation }: any) => {
     try {
       const profile = await getUserProfile(user.uid);
       if (profile) {
-        setPhotoURL(profile.photoURL || '');
         setFullName(profile.fullName || profile.displayName || '');
       }
     } catch (error) {
       console.error('Error loading profile:', error);
     }
-  };
-
-  const getInitials = () => {
-    if (fullName) {
-      const parts = fullName.trim().split(' ');
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-      }
-      return fullName.substring(0, 2).toUpperCase();
-    }
-    return user?.email?.substring(0, 2).toUpperCase() || 'U';
   };
 
   const handleSignOut = async () => {
@@ -67,7 +55,7 @@ const ProfileScreen = ({ navigation }: any) => {
             try {
               await signOut();
             } catch (error) {
-              Alert.alert('Error', 'No se pudo cerrar sesión. Intenta nuevamente.');
+              showToast({ type: 'error', message: 'No se pudo cerrar sesión. Intenta nuevamente.' });
             }
           },
         },
@@ -81,18 +69,12 @@ const ProfileScreen = ({ navigation }: any) => {
       <ScrollView style={styles.content}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          {photoURL ? (
-            <Image source={{ uri: photoURL }} style={styles.avatarImage} />
-          ) : (
-            <LinearGradient
-              colors={Gradients.primary as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>{getInitials()}</Text>
-            </LinearGradient>
-          )}
+          <UserAvatar
+            uid={user?.uid ?? ''}
+            name={fullName || user?.displayName || user?.email || ''}
+            size={80}
+            style={{ marginBottom: 16 }}
+          />
           
           <Text style={[styles.userName, { color: colors.foreground }]}>
             {fullName || user?.displayName || 'Usuario'}
@@ -276,25 +258,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 24,
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginBottom: 16,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '700',
-  },
+
   userName: {
     fontSize: 24,
     fontWeight: '700',

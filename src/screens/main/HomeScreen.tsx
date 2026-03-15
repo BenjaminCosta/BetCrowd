@@ -25,9 +25,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTournaments } from '../../context/TournamentsContext';
 import { getUserProfile } from '../../services/userService';
-import { getTournamentMemberCount, listMyTournaments } from '../../services/tournamentService';
+import { getTournamentMemberCount } from '../../services/tournamentService';
 import { Event, listenEvents, listEvents } from '../../services/eventService';
-import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds, listenBetPicks } from '../../services/betService';
+import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds, calculateEstimatedOdds, listenBetPicks } from '../../services/betService';
 import { isEventToday, getEventBadgeLabel } from '../../utils/formatters';
 
 // Format label mapping
@@ -91,10 +91,12 @@ const HomeScreen = ({ navigation }: any) => {
   const colors = Colors[theme];
   const { user } = useAuth();
   const { tournaments, adminStatuses, loading: loadingTournaments, refreshing, refresh } = useTournaments();
-  const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
   const [todayEvents, setTodayEvents] = useState<EventWithTournament[]>([]);
+  // FIX: userBetsAll = full list for selection lookups (never truncated to 3).
+  // userBets = top-3 preview rendered in the "Apuestas abiertas" block.
   const [userBets, setUserBets] = useState<UserBetInfo[]>([]);
+  const [userBetsAll, setUserBetsAll] = useState<UserBetInfo[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EventWithTournament | null>(null);
   const [showQuickBetModal, setShowQuickBetModal] = useState(false);
@@ -118,11 +120,10 @@ const HomeScreen = ({ navigation }: any) => {
     optionTotals: Record<string, number>;
   }>>({});
   const picksUnsubsRef = useRef<Record<string, () => void>>({});
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1500);
-    return () => clearTimeout(timer);
-  }, []);
+  // Ref for debouncing background reloads after optimistic actions (confirm bet)
+  const deferredRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // PERF: Removed artificial 1500ms loading timer — LoadingBar now reflects real
+  // loading state (loadingEvents || loadingTournaments) so there is zero artificial delay.
 
   useEffect(() => {
     loadUserName();
@@ -136,23 +137,29 @@ const HomeScreen = ({ navigation }: any) => {
     }
   }, [tournaments, user]);
 
-  // Cleanup picks listeners on unmount
+  // Cleanup picks listeners and pending deferred refresh on unmount
   useEffect(() => {
-    return () => { Object.values(picksUnsubsRef.current).forEach(u => { u(); }); };
+    return () => {
+      Object.values(picksUnsubsRef.current).forEach(u => { u(); });
+      if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+    };
   }, []);
 
   const loadParticipantCounts = async () => {
+    // PERF: Parallel fetch — replaces the old sequential for+await loop.
+    // Only the 2 tournaments rendered in the card list are fetched.
+    const toFetch = tournaments.filter(t => t.status !== 'deleted').slice(0, 2);
+    const results = await Promise.all(
+      toFetch.map(async (tournament) => {
+        try {
+          return { id: tournament.id, count: await getTournamentMemberCount(tournament.id) };
+        } catch {
+          return { id: tournament.id, count: 0 };
+        }
+      }),
+    );
     const counts: Record<string, number> = {};
-    // Must use the same filter+slice as the render so counts align with the
-    // tournaments actually displayed on screen.
-    for (const tournament of tournaments.filter(t => t.status !== 'deleted').slice(0, 2)) {
-      try {
-        const count = await getTournamentMemberCount(tournament.id);
-        counts[tournament.id] = count;
-      } catch (error) {
-        console.error(`Error loading participant count for ${tournament.id}:`, error);
-      }
-    }
+    results.forEach(({ id, count }) => { counts[id] = count; });
     setParticipantCounts(counts);
   };
 
@@ -276,13 +283,14 @@ const HomeScreen = ({ navigation }: any) => {
   const loadUserBets = async () => {
     if (!user) return;
     try {
-      // Mirror TournamentPredictionsScreen: query every tournament the user belongs to,
-      // then walk every event/bet to find picks on bets that are not yet settled/cancelled.
-      const allTournaments = await listMyTournaments();
+      // PERF: Reuse tournaments already in context — avoids calling listMyTournaments()
+      // again which would fire another N+1 Firestore round-trip.
+      // FIX: Include 'pending' bets so picks made before a bet is activated are
+      // also reflected in the event card selection indicator.
       const found: UserBetInfo[] = [];
 
       await Promise.allSettled(
-        allTournaments
+        tournaments
           .filter((t) => t.status !== 'deleted')
           .map(async (t) => {
             try {
@@ -293,8 +301,9 @@ const HomeScreen = ({ navigation }: any) => {
                     const bets = await listBets(t.id, event.id);
                     await Promise.allSettled(
                       bets.map(async (bet) => {
-                        // APUESTAS ABIERTAS = only truly open bets (2 sides with picks, market active)
-                        if (bet.status !== 'open') return;
+                        // Include open AND pending bets so picks on both statuses
+                        // are reflected in the event-card selection indicator.
+                        if (bet.status !== 'open' && bet.status !== 'pending') return;
                         try {
                           const pick = await getMyPick(t.id, event.id, bet.id, user.uid);
                           if (!pick) return;
@@ -329,10 +338,21 @@ const HomeScreen = ({ navigation }: any) => {
         return 0;
       });
 
-      setUserBets(found.slice(0, 3));
+      // FIX: userBetsAll retains open+pending picks for event-card selection lookups.
+      // userBets is filtered to only 'open' status — the "Apuestas abiertas" block
+      // must not show pending bets (market not yet activated).
+      setUserBetsAll(found);
+      setUserBets(found.filter(b => b.status === 'open').slice(0, 3));
     } catch (error) {
       console.error('Error loading user bets:', error);
     }
+  };
+
+  // PERF: Debounces background reloads after optimistic state updates so rapid
+  // actions (confirm bet) don't stack multiple full Firestore re-scans.
+  const scheduleDeferredRefresh = () => {
+    if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+    deferredRefreshRef.current = setTimeout(() => { loadUserBets(); }, 1500);
   };
 
   const handleOddPress = (event: EventWithTournament, option: string, bet: Bet, oddValue: string) => {
@@ -342,7 +362,11 @@ const HomeScreen = ({ navigation }: any) => {
     setSelectedOdd(oddValue);
     setBetFeedback('');
     setBetAmount('');
-    const existingBet = userBets.find((b) => b.eventId === event.id && b.betId === bet.id);
+    // FIX: Use userBetsAll (full list) so picks beyond position 3 are found.
+    // Fallback: if the user's pick is on a different bet than the one tapped,
+    // still pass currentPick so the modal shows the right state.
+    const existingBet = userBetsAll.find((b) => b.eventId === event.id && b.betId === bet.id)
+      ?? userBetsAll.find((b) => b.eventId === event.id);
     setSelectedCurrentPick(existingBet?.pickSelection ?? null);
     setModalCurrentPickStake(existingBet?.stakeAmount ?? 0);
     setShowQuickBetModal(true);
@@ -365,7 +389,37 @@ const HomeScreen = ({ navigation }: any) => {
         stakeAmount
       );
       setBetFeedback('¡Apuesta registrada!');
-      await loadUserBets();
+
+      // Optimistic update: reflect the confirmed pick immediately in userBetsAll
+      // so the event card shows the selection without waiting for the full reload.
+      const _selEvent = selectedEvent; // captured: non-null after guard above
+      const _selBet = modalBet;        // captured: non-null after guard above
+      const _optStr = typeof selectedOption === 'string' ? selectedOption : JSON.stringify(selectedOption);
+      setUserBetsAll(prev => {
+        const exists = prev.some(b => b.eventId === _selEvent.id && b.betId === _selBet.id);
+        if (exists) {
+          return prev.map(b =>
+            b.eventId === _selEvent.id && b.betId === _selBet.id
+              ? { ...b, pickSelection: _optStr, stakeAmount }
+              : b,
+          );
+        }
+        return [...prev, {
+          eventId: _selEvent.id,
+          betId: _selBet.id,
+          eventTitle: _selEvent.title,
+          tournamentName: _selEvent.tournamentName,
+          tournamentId: _selEvent.tournamentId,
+          status: _selBet.status,
+          pickSelection: _optStr,
+          stakeAmount,
+          eventStartsAt: _selEvent.startsAt ? _selEvent.startsAt.toMillis() : undefined,
+        }];
+      });
+
+      // Deferred background sync to reconcile userBets/userBetsAll from Firestore
+      scheduleDeferredRefresh();
+
       setTimeout(() => {
         setShowQuickBetModal(false);
         setBetFeedback('');
@@ -390,14 +444,29 @@ const HomeScreen = ({ navigation }: any) => {
     const mergedPrimaryBet = primaryBet && liveTotals[primaryBet.id]
       ? { ...primaryBet, ...liveTotals[primaryBet.id] }
       : primaryBet;
-    const realOdds = mergedPrimaryBet ? calculateOdds(mergedPrimaryBet) : {};
+    const baseOdds = mergedPrimaryBet ? calculateOdds(mergedPrimaryBet) : {};
+    // For open fixed-stake bets: fill '—' slots with projected odds (same as BetCardCompact)
+    const realOdds: Record<string, string> = (
+      mergedPrimaryBet?.status === 'open' &&
+      mergedPrimaryBet?.stakeType === 'fixed' &&
+      (mergedPrimaryBet?.stakeAmount ?? 0) > 0
+        ? Object.fromEntries(
+            Object.entries(baseOdds).map(([opt, val]) => [
+              opt,
+              val === '—' ? calculateEstimatedOdds(mergedPrimaryBet!, opt, mergedPrimaryBet!.stakeAmount ?? 0) : val,
+            ]),
+          )
+        : baseOdds
+    );
     const options = primaryBet?.options?.slice(0, 3) ?? [];
     const hasOdds = options.length > 0;
 
-    // Find the user's existing pick for this event's primary bet
-    const existingUserBet = userBets.find(
-      (b) => b.eventId === item.id && b.betId === primaryBet?.id
-    );
+    // FIX: Use userBetsAll (never truncated) so picks beyond position 3 are found.
+    // Fallback: if the user's pick is on a different bet than primaryBet, still
+    // highlight the option so the card reflects the real pick state.
+    const existingUserBet = userBetsAll.find(
+      (b) => b.eventId === item.id && b.betId === primaryBet?.id,
+    ) ?? userBetsAll.find((b) => b.eventId === item.id);
     const userSelection = existingUserBet?.pickSelection;
 
     return (
@@ -517,7 +586,8 @@ const HomeScreen = ({ navigation }: any) => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <TopBar />
-        <LoadingBar isLoading={isLoading} />
+        {/* PERF: LoadingBar now reflects real loading state — no artificial timer */}
+        <LoadingBar isLoading={loadingEvents || loadingTournaments} />
       
       <ScrollView 
         style={styles.scrollView}
@@ -580,7 +650,7 @@ const HomeScreen = ({ navigation }: any) => {
               snapToInterval={CARD_WIDTH + CARD_GAP}
               snapToAlignment="start"
               decelerationRate="fast"
-              extraData={userBets}
+              extraData={userBetsAll}
             />
           )}
 

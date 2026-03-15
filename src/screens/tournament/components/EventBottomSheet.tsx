@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -7,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
-  Alert,
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal
 import { Colors, Spacing, BorderRadius } from '../../../theme/colors'; // Spacing used by SwipeDragHandle marginBottom
 import { isEventToday, getEventBadgeLabel } from '../../../utils/formatters';
 import { useTheme } from '../../../context/ThemeContext';
+import { useToast } from '../../../context/ToastContext';
 import { FloatingActionButton } from '../../../components/FloatingActionButton';
 import { SwipeableRow, BetCardCompact } from '../../../components/BetanoComponents';
 import { deleteBet, deleteMyPick, upsertMyPick, calculateOdds, adjustBetResult, Bet, Pick } from '../../../services/betService';
@@ -57,6 +58,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { showToast } = useToast();
   const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } = useSwipeToClose(
     visible,
     onClose,
@@ -117,7 +119,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
         text: 'Eliminar', style: 'destructive',
         onPress: async () => {
           try { await deleteBet(tournamentId, event.id, bet.id); }
-          catch (e: any) { Alert.alert('Error', e.message || 'No se pudo eliminar'); }
+          catch (e: any) { showToast({ type: 'error', message: e.message || 'No se pudo eliminar' }); }
         },
       },
     ]);
@@ -131,7 +133,7 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
         text: 'Sí, cancelar', style: 'destructive',
         onPress: async () => {
           try { await deleteMyPick(tournamentId, event.id, bet.id, user.uid); }
-          catch (e: any) { Alert.alert('Error', e.message || 'No se pudo cancelar'); }
+          catch (e: any) { showToast({ type: 'error', message: e.message || 'No se pudo cancelar' }); }
         },
       },
     ]);
@@ -157,9 +159,9 @@ const EventBottomSheet: React.FC<EventBottomSheetProps> = ({
                   onPress: async () => {
                     try {
                       await adjustBetResult(tournamentId, event.id, bet.id, { winner: option });
-                      Alert.alert('Listo', 'Resultado actualizado correctamente');
+                      showToast({ type: 'success', message: 'Resultado actualizado correctamente' });
                     } catch (e: any) {
-                      Alert.alert('Error', e.message || 'No se pudo ajustar');
+                      showToast({ type: 'error', message: e.message || 'No se pudo ajustar' });
                     }
                   },
                 })),

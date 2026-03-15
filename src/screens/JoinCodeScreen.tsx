@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Keyboard,
   InteractionManager,
 } from 'react-native';
@@ -14,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { TopBar } from '../components/TopBar';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import TournamentPreviewSheet from './tournament/components/TournamentPreviewSheet';
 import { getTournamentCodePreview, TournamentCodePreview } from '../services/inviteService';
 
@@ -24,6 +24,7 @@ const JoinCodeScreen = ({ navigation }: any) => {
   const [showPreviewSheet, setShowPreviewSheet] = useState(false);
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const handleValidateCode = async () => {
     const trimmed = code.trim().toUpperCase();
@@ -34,14 +35,14 @@ const JoinCodeScreen = ({ navigation }: any) => {
     try {
       const preview = await getTournamentCodePreview(trimmed);
       if (!preview) {
-        Alert.alert('Código inválido', 'No se encontró ningún torneo con ese código.');
+        showToast({ type: 'warning', message: 'No se encontró ningún torneo con ese código.' });
         setCodePreview(null);
         return;
       }
       setShowPreviewSheet(false); // explicit reset
       setCodePreview(preview);    // payload set → useEffect below fires
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo verificar el código');
+      showToast({ type: 'error', message: e.message || 'No se pudo verificar el código' });
     } finally {
       setValidating(false);
     }

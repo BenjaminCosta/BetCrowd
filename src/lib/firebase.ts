@@ -1,9 +1,44 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { initializeAuth, getReactNativePersistence } from "firebase/auth";
-import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
+import { initializeAuth, getAuth } from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+
+// Custom AsyncStorage-based persistence for React Native.
+// Firebase v12 removed getReactNativePersistence. Internally it calls
+// _getInstance(persistence) which asserts typeof persistence === 'function',
+// so we must pass a CLASS CONSTRUCTOR, not a plain object.
+class AsyncStoragePersistence {
+  static type: 'LOCAL' = 'LOCAL';
+  type = 'LOCAL' as const;
+
+  async _isAvailable(): Promise<boolean> {
+    try {
+      await AsyncStorage.setItem('__fb_avail__', '1');
+      await AsyncStorage.removeItem('__fb_avail__');
+      return true;
+    } catch { return false; }
+  }
+
+  async _set(key: string, value: unknown): Promise<void> {
+    try { await AsyncStorage.setItem(key, JSON.stringify(value)); } catch { /* silent */ }
+  }
+
+  async _get(key: string): Promise<unknown> {
+    try {
+      const item = await AsyncStorage.getItem(key);
+      return item ? JSON.parse(item) : null;
+    } catch { return null; }
+  }
+
+  async _remove(key: string): Promise<void> {
+    try { await AsyncStorage.removeItem(key); } catch { /* silent */ }
+  }
+
+  _addListener(_key: string, _listener: unknown): void {}
+  _removeListener(_key: string, _listener: unknown): void {}
+}
 
 const firebaseConfig = {
   apiKey: "AIzaSyAq-uVfR4kX_d1rO5O3jI0nMcRSZxus61o",
@@ -22,12 +57,11 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 let authInstance;
 try {
   authInstance = initializeAuth(app, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+    persistence: AsyncStoragePersistence as any, // class constructor, not instance
   });
 } catch (error: any) {
   // Si ya está inicializado (hot reload), obtener la instancia existente
   if (error.code === 'auth/already-initialized') {
-    const { getAuth } = require('firebase/auth');
     authInstance = getAuth(app);
   } else {
     throw error;

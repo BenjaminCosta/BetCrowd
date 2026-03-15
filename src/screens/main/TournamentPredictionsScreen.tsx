@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -7,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { LoadingBar } from '../../components/LoadingBar';
 import { SwipeableRow, BetCardCompact } from '../../components/BetanoComponents';
 import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { listMyTournaments } from '../../services/tournamentService';
 import {
@@ -31,9 +32,16 @@ import {
 } from '../../services/betService';
 import { listEvents } from '../../services/eventService';
 
+/**
+ * Minimum time (ms) the loading bar stays visible after loadData completes.
+ * Prevents flicker when the network responds faster than a single render frame.
+ */
+const MIN_LOADING_MS = 600;
+
 const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
   const { user } = useAuth();
   const { tournamentId: routeTournamentId } = route?.params || {};
 
@@ -71,12 +79,8 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     optionTotals: Record<string, number>;
   }>>({});
   const picksUnsubsRef = useRef<Record<string, () => void>>({});
-
-  // ── Init ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 300);
-    return () => clearTimeout(timer);
-  }, []);
+  // Ref for debouncing background refreshes after optimistic actions (confirm / cancel pick)
+  const deferredRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load persisted dismissed keys when user is known
   useEffect(() => {
@@ -102,14 +106,21 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     if (user) loadData();
   }, [user]);
 
-  // Cleanup picks listeners on unmount
+  // Cleanup picks listeners and any pending deferred refresh on unmount
   useEffect(() => {
-    return () => { Object.values(picksUnsubsRef.current).forEach(u => { u(); }); };
+    return () => {
+      Object.values(picksUnsubsRef.current).forEach(u => { u(); });
+      if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+    };
   }, []);
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadData = async () => {
     if (!user) return;
+    // PERF: isLoading is now tied to the real data cycle instead of a fixed timer.
+    // The loading bar stays visible until data is fully fetched and state is set.
+    setIsLoading(true);
+    const _loadStart = Date.now(); // used in finally to enforce MIN_LOADING_MS
     try {
       const allOpenPicks: any[] = [];
       const allSettledPicks: any[] = [];
@@ -164,12 +175,34 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
         }),
       );
 
-      // Reset picks listeners and subscribe to live picks for all open bets
-      Object.values(picksUnsubsRef.current).forEach(u => { u(); });
-      picksUnsubsRef.current = {};
-      setLiveTotals({});
+      // ── Smart listener diffing ─────────────────────────────────────────────
+      // PERF: Instead of tearing down ALL listeners and recreating them on every
+      // loadData(), we compute a diff: unsub only bets that left the open list,
+      // subscribe only to bets that are newly open. Unchanged bets keep their
+      // existing listener without any interruption.
+      const newOpenBetIds = new Set(allOpenPicks.map((pd: any) => pd.betId as string));
+      const existingBetIds = Object.keys(picksUnsubsRef.current);
+
+      // Unsubscribe listeners for bets no longer in the open list
+      existingBetIds.forEach(betId => {
+        if (!newOpenBetIds.has(betId)) {
+          picksUnsubsRef.current[betId]?.();
+          delete picksUnsubsRef.current[betId];
+        }
+      });
+
+      // Remove stale liveTotals entries to keep state consistent
+      setLiveTotals(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(betId => {
+          if (!newOpenBetIds.has(betId)) delete next[betId];
+        });
+        return next;
+      });
+
+      // Subscribe only to bets not already being listened to
       for (const pd of allOpenPicks) {
-        if (picksUnsubsRef.current[pd.betId]) continue;
+        if (picksUnsubsRef.current[pd.betId]) continue; // already subscribed — skip
         picksUnsubsRef.current[pd.betId] = listenBetPicks(
           pd.tournamentId, pd.eventId, pd.betId,
           (allPicks) => {
@@ -194,6 +227,11 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     } catch (err) {
       console.warn('TournamentPredictions loadData:', err);
     } finally {
+      // Enforce minimum visible loading time to avoid flicker on fast networks
+      const elapsed = Date.now() - _loadStart;
+      const remaining = MIN_LOADING_MS - elapsed;
+      if (remaining > 0) await new Promise<void>(res => setTimeout(res, remaining));
+      setIsLoading(false);        // ← tied to real data cycle, not an arbitrary timer
       setInitialLoadDone(true);
     }
   };
@@ -202,6 +240,15 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  };
+
+  // ── Deferred background refresh ───────────────────────────────────────────
+  // PERF: Debounces loadData so rapid optimistic actions (confirm / cancel pick)
+  // don't stack multiple full reloads. The 1.5 s window lets the user interact
+  // immediately after an action while still syncing state from Firestore.
+  const scheduleDeferredRefresh = () => {
+    if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+    deferredRefreshRef.current = setTimeout(() => { loadData(); }, 1500);
   };
 
   // ── BetModal handlers ─────────────────────────────────────────────────────
@@ -245,7 +292,9 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
       setBetFeedback('¡Apuesta actualizada!');
       setTimeout(() => {
         setShowBetModal(false);
-        loadData();
+        // Deferred refresh — optimistic pick update already applied above;
+        // background sync runs 1.5 s after modal closes to avoid blocking UX.
+        scheduleDeferredRefresh();
       }, 1200);
     } catch {
       setBetFeedback('Error al guardar. Intenta de nuevo.');
@@ -269,7 +318,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
           style: 'destructive',
           onPress: async () => {
             if (!uid) {
-              Alert.alert('Error', 'Sesión expirada. Vuelve a iniciar sesión.');
+              showToast({ type: 'error', message: 'Sesión expirada. Vuelve a iniciar sesión.' });
               return;
             }
             // Optimistic: remove immediately so UI reflects the action instantly
@@ -285,10 +334,12 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 pickData.betId,
                 uid,
               );
-              loadData(); // background refresh for accuracy
+              // Deferred refresh — optimistic removal already updated the UI;
+              // background sync reconciles state without blocking interaction.
+              scheduleDeferredRefresh();
             } catch {
-              loadData(); // restore correct state on error
-              Alert.alert('Error', 'No se pudo cancelar la apuesta.');
+              loadData(); // immediate reload to restore correct state after error
+              showToast({ type: 'error', message: 'No se pudo cancelar la apuesta.' });
             }
           },
         },
@@ -301,15 +352,59 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     ? openPicks
     : settledPicks.filter(p => !dismissedKeys.has(`${p.tournamentId}-${p.betId}`));
 
-  // Group picks by event so the event header shows only once per event
+  // Group picks by event so the event header shows only once per event.
+  // Groups are sorted by most-recent activity desc; picks within each group too.
   const groupedPicks = useMemo(() => {
+    // Use compound key to avoid collisions across tournaments with same eventId
     const groupMap: Record<string, any[]> = {};
     currentPicks.forEach((p: any) => {
-      if (!groupMap[p.eventId]) groupMap[p.eventId] = [];
-      groupMap[p.eventId].push(p);
+      const key = `${p.tournamentId}__${p.eventId}`;
+      if (!groupMap[key]) groupMap[key] = [];
+      groupMap[key].push(p);
     });
-    return Object.values(groupMap);
-  }, [currentPicks]);
+
+    /** Safe ms extractor for Firestore Timestamp, plain object, or null */
+    const getTs = (v: any): number => {
+      if (!v) return 0;
+      if (typeof v.toMillis === 'function') return v.toMillis();
+      if (v.seconds) return v.seconds * 1000;
+      return 0;
+    };
+
+    /** Activity timestamp for a single pick entry depending on active tab */
+    const getPickTs = (p: any): number => {
+      if (activeTab === 'settled') {
+        // Prioritise result update time so newly-resolved bets float to the top
+        return (
+          getTs(p.bet?.resultUpdatedAt) ||
+          getTs(p.bet?.updatedAt) ||
+          getTs(p.pick?.updatedAt)
+        );
+      }
+      // Open tab: use the latest of pick, bet, or event update
+      return Math.max(
+        getTs(p.pick?.updatedAt),
+        getTs(p.bet?.updatedAt),
+        getTs(p.event?.updatedAt),
+      );
+    };
+
+    const groups = Object.values(groupMap);
+
+    // Sort picks within each group newest-activity first
+    groups.forEach((group) => {
+      group.sort((a: any, b: any) => getPickTs(b) - getPickTs(a));
+    });
+
+    // Sort groups by the highest activity timestamp in the group
+    groups.sort((gA: any[], gB: any[]) => {
+      const tsA = gA.reduce((m, p) => Math.max(m, getPickTs(p)), 0);
+      const tsB = gB.reduce((m, p) => Math.max(m, getPickTs(p)), 0);
+      return tsB - tsA;
+    });
+
+    return groups;
+  }, [currentPicks, activeTab]);
 
   // ── Loading screen ────────────────────────────────────────────────────────
   if (!initialLoadDone) {
@@ -412,7 +507,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 const firstPick = group[0];
                 const { event: groupEvent } = firstPick;
                 return (
-                  <View key={firstPick.eventId} style={styles.eventGroup}>
+                  <View key={`${firstPick.tournamentId}-${firstPick.eventId}`} style={styles.eventGroup}>
                     {/* Event header — shown once per event */}
                     <TouchableOpacity
                       style={styles.eventRow}

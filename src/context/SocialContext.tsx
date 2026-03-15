@@ -296,7 +296,10 @@ export const SocialProvider = ({ children }: { children: ReactNode }) => {
     setFriendsLoading(true);
   };
 
-  const pendingInviteCount = receivedInvites.filter((i) => i.status === 'pending').length;
+  // Exclude invites the user has persistently hidden (hiddenBy.to) from the badge count
+  const pendingInviteCount = receivedInvites.filter(
+    (i) => i.status === 'pending' && !i.hiddenBy?.to,
+  ).length;
 
   return (
     <SocialContext.Provider

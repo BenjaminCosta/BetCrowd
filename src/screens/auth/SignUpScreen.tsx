@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Image,
 } from 'react-native';
@@ -18,12 +17,14 @@ import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
 import { PrimaryButton } from '../../components/CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { getFirebaseErrorMessage } from '../../services/authService';
 
 const SignUpScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { signUp } = useAuth();
+  const { showToast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState('');
@@ -36,17 +37,17 @@ const SignUpScreen = ({ navigation }: any) => {
   const handleSignUp = async () => {
     // Basic validation
     if (!name.trim() || !email.trim() || !username.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Por favor completa todos los campos');
+      showToast({ type: 'warning', message: 'Por favor completa todos los campos' });
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Las contraseñas no coinciden');
+      showToast({ type: 'warning', message: 'Las contraseñas no coinciden' });
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert('Error', 'La contraseña debe tener al menos 8 caracteres');
+      showToast({ type: 'warning', message: 'La contraseña debe tener al menos 8 caracteres' });
       return;
     }
 
@@ -59,9 +60,10 @@ const SignUpScreen = ({ navigation }: any) => {
         username: username.trim(),
       });
       // Navigation is handled automatically by AppNavigator when auth state changes
-    } catch (error: any) {
-      const message = getFirebaseErrorMessage(error.code);
-      Alert.alert('Error al registrarte', message);
+    } catch (error: unknown) {
+      const code = (error as any)?.code;
+      const message = getFirebaseErrorMessage(code ?? 'UNKNOWN');
+      showToast({ type: 'error', message });
     } finally {
       setIsLoading(false);
     }

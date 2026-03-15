@@ -1,24 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Modal,
-  Image,
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal';
-import { Colors, Gradients, Spacing, BorderRadius } from '../../../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
+import { useToast } from '../../../context/ToastContext';
 import { useAuth } from '../../../context/AuthContext';
 import { Card } from '../../../components/CommonComponents';
+import UserAvatar from '../../../components/UserAvatar';
 import { UserBalance, getUserPickHistory, UserPickHistory } from '../../../services/groupsService';
 import { getMyTournamentRole, removeMemberFromTournament } from '../../../services/tournamentService';
 import { listEvents } from '../../../services/eventService';
@@ -68,6 +69,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { showToast } = useToast();
   const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } = useSwipeToClose(
     visible,
     onClose,
@@ -114,7 +116,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
               await removeMemberFromTournament(tournamentId, participant.uid);
               onMemberRemoved?.();
             } catch (e: any) {
-              Alert.alert('No se puede quitar', e.message || 'Error al quitar miembro');
+              showToast({ type: 'error', message: e.message || 'Error al quitar miembro' });
             } finally {
               setRemovingMember(false);
             }
@@ -271,20 +273,11 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                 {/* Hero card */}
                 <Card gradient style={styles.heroCard}>
                   <View style={styles.heroRow}>
-                    {participant.photoURL ? (
-                      <Image source={{ uri: participant.photoURL }} style={styles.avatar} />
-                    ) : (
-                      <LinearGradient
-                        colors={Gradients.primary as any}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.avatarPlaceholder}
-                      >
-                        <Text style={styles.avatarInitials}>
-                          {getInitials(participant.username || participant.displayName)}
-                        </Text>
-                      </LinearGradient>
-                    )}
+                    <UserAvatar
+                      uid={participant.uid}
+                      name={participant.username || participant.displayName || ''}
+                      size={76}
+                    />
                     <View style={styles.heroInfo}>
                       <Text style={[styles.heroHandle, { color: colors.foreground }]} numberOfLines={1}>
                         {participant.username ? `@${participant.username}` : participant.displayName}

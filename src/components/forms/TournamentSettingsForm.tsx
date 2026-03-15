@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input, SectionHeader } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   getTournament,
@@ -45,6 +46,7 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { showToast } = useToast();
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +55,8 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [participantsEstimated, setParticipantsEstimated] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     loadTournament();
@@ -67,46 +71,56 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
         setName(data.name);
         setDescription(data.description || '');
         setParticipantsEstimated(data.participantsEstimated?.toString() || '0');
+        setStartDate(data.startDate || '');
+        setEndDate(data.endDate || '');
       }
     } catch (e) {
-      Alert.alert('Error', 'No se pudo cargar el torneo');
+      showToast({ type: 'error', message: 'No se pudo cargar el torneo' });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveBasic = async () => {
-    if (!name.trim()) { Alert.alert('Error', 'El nombre es requerido'); return; }
+    if (!name.trim()) { showToast({ type: 'warning', message: 'El nombre es requerido' }); return; }
     try {
       setSaving(true);
       await updateTournamentBasic(tournamentId, { name: name.trim(), description: description.trim() });
-      Alert.alert('Éxito', 'Información actualizada');
+      showToast({ type: 'success', message: 'Información actualizada' });
       loadTournament();
       onSuccess?.();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo actualizar');
+      showToast({ type: 'error', message: e.message || 'No se pudo actualizar' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleSaveConfig = async () => {
-    if (tournament?.hasActivity) {
-      Alert.alert('No permitido', 'No se puede editar porque el torneo ya tiene actividad.');
+    if (!tournament) return;
+    if (['finished', 'deleted', 'archived'].includes(tournament.status)) {
+      showToast({ type: 'warning', message: 'No se puede editar un torneo finalizado o archivado.' });
       return;
     }
     const participantsNum = parseInt(participantsEstimated) || 0;
-    if (participantsNum <= 0) { Alert.alert('Error', 'Debe haber al menos 1 participante'); return; }
+    if (participantsNum <= 0) { showToast({ type: 'warning', message: 'Debe haber al menos 1 participante' }); return; }
+    if (endDate && startDate && endDate < startDate) {
+      showToast({ type: 'warning', message: 'La fecha de fin debe ser igual o posterior a la fecha de inicio' });
+      return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const isStartDateLocked = !!(tournament.startDate && today >= tournament.startDate);
     try {
       setSaving(true);
       await updateTournamentConfig(tournamentId, {
-        contribution: 0,
         participantsEstimated: participantsNum,
+        endDate: endDate || undefined,
+        ...(isStartDateLocked ? {} : { startDate: startDate || undefined }),
       });
-      Alert.alert('Éxito', 'Configuración actualizada');
+      showToast({ type: 'success', message: 'Configuración actualizada' });
       loadTournament();
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      showToast({ type: 'error', message: e.message });
     } finally {
       setSaving(false);
     }
@@ -124,11 +138,10 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
             try {
               setSaving(true);
               await archiveTournament(tournamentId);
-              Alert.alert('Éxito', 'Torneo archivado', [
-                { text: 'OK', onPress: () => onArchived?.() },
-              ]);
+              showToast({ type: 'success', message: 'Torneo archivado' });
+              onArchived?.();
             } catch (e: any) {
-              Alert.alert('Error', e.message);
+              showToast({ type: 'error', message: e.message });
               setSaving(false);
             }
           },
@@ -149,11 +162,10 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
             try {
               setSaving(true);
               await deleteTournamentSoft(tournamentId);
-              Alert.alert('Éxito', 'Torneo eliminado', [
-                { text: 'OK', onPress: () => onDeleted?.() },
-              ]);
+              showToast({ type: 'success', message: 'Torneo eliminado' });
+              onDeleted?.();
             } catch (e: any) {
-              Alert.alert('Error', e.message);
+              showToast({ type: 'error', message: e.message });
               setSaving(false);
             }
           },
@@ -216,45 +228,74 @@ const TournamentSettingsForm: React.FC<TournamentSettingsFormProps> = ({
       </Card>
 
       {/* Config */}
-      <Card style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <SectionHeader title="Configuración del torneo" />
-          {tournament.hasActivity && (
-            <View style={[styles.lockedBadge, { backgroundColor: colors.destructive + '20' }]}>
-              <Ionicons name="lock-closed" size={11} color={colors.destructive} />
-              <Text style={[styles.lockedText, { color: colors.destructive }]}>BLOQUEADO</Text>
-            </View>
-          )}
-        </View>
-        {tournament.hasActivity && (
-          <View style={[styles.warningBox, { backgroundColor: colors.destructive + '15' }]}>
-            <Ionicons name="alert-circle" size={16} color={colors.destructive} />
-            <Text style={[styles.warningText, { color: colors.destructive }]}>
-              Estos campos no se pueden editar porque el torneo ya tiene actividad.
-            </Text>
-          </View>
-        )}
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>Participantes estimados</Text>
-          <Input
-            value={participantsEstimated}
-            onChangeText={(t) => { if (!tournament.hasActivity) setParticipantsEstimated(t); }}
-            placeholder="10"
-            keyboardType="numeric"
-            editable={!tournament.hasActivity}
-          />
-        </View>
-        <TouchableOpacity
-          style={[
-            styles.saveButton,
-            { backgroundColor: colors.primary, opacity: (saving || !!tournament.hasActivity) ? 0.5 : 1 },
-          ]}
-          onPress={handleSaveConfig}
-          disabled={saving || !!tournament.hasActivity}
-        >
-          <Text style={styles.saveButtonText}>Guardar configuración</Text>
-        </TouchableOpacity>
-      </Card>
+      {
+        (() => {
+          const today = new Date().toISOString().split('T')[0];
+          const isFinished = ['finished', 'deleted', 'archived'].includes(tournament.status);
+          const isStartDateLocked = !!(tournament.startDate && today >= tournament.startDate);
+          return (
+            <Card style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <SectionHeader title="Configuración del torneo" />
+                {isFinished && (
+                  <View style={[styles.lockedBadge, { backgroundColor: colors.destructive + '20' }]}>
+                    <Ionicons name="lock-closed" size={11} color={colors.destructive} />
+                    <Text style={[styles.lockedText, { color: colors.destructive }]}>BLOQUEADO</Text>
+                  </View>
+                )}
+              </View>
+              {isFinished && (
+                <View style={[styles.warningBox, { backgroundColor: colors.destructive + '15' }]}>
+                  <Ionicons name="alert-circle" size={16} color={colors.destructive} />
+                  <Text style={[styles.warningText, { color: colors.destructive }]}>
+                    El torneo está finalizado o archivado. No se puede editar.
+                  </Text>
+                </View>
+              )}
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Participantes estimados</Text>
+                <Input
+                  value={participantsEstimated}
+                  onChangeText={(t) => { if (!isFinished) setParticipantsEstimated(t); }}
+                  placeholder="10"
+                  keyboardType="numeric"
+                  editable={!isFinished}
+                />
+              </View>
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>
+                  Fecha de inicio{isStartDateLocked ? ' (bloqueada — torneo ya comenzó)' : ' (AAAA-MM-DD)'}
+                </Text>
+                <Input
+                  value={startDate}
+                  onChangeText={(t) => { if (!isFinished && !isStartDateLocked) setStartDate(t); }}
+                  placeholder="2025-06-01"
+                  editable={!isFinished && !isStartDateLocked}
+                />
+              </View>
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Fecha de fin (AAAA-MM-DD)</Text>
+                <Input
+                  value={endDate}
+                  onChangeText={(t) => { if (!isFinished) setEndDate(t); }}
+                  placeholder="2025-12-31"
+                  editable={!isFinished}
+                />
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.saveButton,
+                  { backgroundColor: colors.primary, opacity: (saving || isFinished) ? 0.5 : 1 },
+                ]}
+                onPress={handleSaveConfig}
+                disabled={saving || isFinished}
+              >
+                <Text style={styles.saveButtonText}>Guardar configuración</Text>
+              </TouchableOpacity>
+            </Card>
+          );
+        })()
+      }
 
       {/* Danger zone */}
       <Card style={[styles.section, styles.dangerZone, { borderColor: colors.destructive }]}>

@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
 import { LoadingBar } from '../LoadingBar';
 import { Card, Input, SectionHeader } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { createTournament } from '../../services/tournamentService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -47,6 +47,7 @@ interface CreateTournamentFormProps {
 const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
   const [tournamentName, setTournamentName] = useState('');
@@ -60,20 +61,20 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
 
   const handleCreate = async () => {
     if (!tournamentName.trim()) {
-      Alert.alert('Error', 'El nombre del torneo es requerido');
+      showToast({ type: 'warning', message: 'El nombre del torneo es requerido' });
       return;
     }
     if (!selectedFormat) {
-      Alert.alert('Error', 'Debes seleccionar un formato de torneo');
+      showToast({ type: 'warning', message: 'Debes seleccionar un formato de torneo' });
       return;
     }
     const participantsNum = parseInt(participants) || 0;
     if (participantsNum <= 0) {
-      Alert.alert('Error', 'Debe haber al menos 1 participante');
+      showToast({ type: 'warning', message: 'Debe haber al menos 1 participante' });
       return;
     }
     if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
-      Alert.alert('Error', 'La fecha de fin debe ser igual o posterior a la fecha de inicio');
+      showToast({ type: 'warning', message: 'La fecha de fin debe ser igual o posterior a la fecha de inicio' });
       return;
     }
     setIsLoading(true);
@@ -94,7 +95,7 @@ const CreateTournamentForm: React.FC<CreateTournamentFormProps> = ({ onSuccess }
       // está animando su salida. Eliminando el Alert se evita ese conflicto.
       onSuccess({ tournamentId, tournamentName: tournamentName.trim(), inviteCode });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo crear el torneo');
+      showToast({ type: 'error', message: error.message || 'No se pudo crear el torneo' });
     } finally {
       setIsLoading(false);
     }

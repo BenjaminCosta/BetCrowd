@@ -7,12 +7,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Keyboard,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { joinTournamentByInviteCode } from '../../services/tournamentService';
 import { getTournamentCodePreview, TournamentCodePreview } from '../../services/inviteService';
 
@@ -42,6 +42,7 @@ const JoinCodeForm: React.FC<JoinCodeFormProps> = ({ onJoined }) => {
   const [preview, setPreview] = useState<TournamentCodePreview | null>(null);
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const canSubmit = code.trim().length >= 6 && !loading;
 
@@ -75,7 +76,7 @@ const JoinCodeForm: React.FC<JoinCodeFormProps> = ({ onJoined }) => {
       const tournamentId = await joinTournamentByInviteCode(preview.inviteCode);
       onJoined(tournamentId);
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'No se pudo unir al torneo');
+      showToast({ type: 'error', message: e?.message ?? 'No se pudo unir al torneo' });
       setLoading(false);
     }
   };

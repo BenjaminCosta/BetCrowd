@@ -243,6 +243,38 @@ export const joinTournamentByInviteCode = async (code: string): Promise<string> 
     // Best-effort — never fail the join if preview update errors
   }
 
+  // ── Step 7: Notify tournament admins of the new member (best-effort) ────────────────────
+  try {
+    const membersSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'members'));
+    const adminUids = membersSnap.docs
+      .filter((d) => d.data().role === 'admin' || d.data().role === 'owner')
+      .map((d) => d.id)
+      .filter((uid) => uid !== user.uid); // Don't notify yourself
+    if (adminUids.length > 0) {
+      const joinerSnap = await getDoc(doc(db, 'publicProfiles', user.uid));
+      const joinerName: string = joinerSnap.exists()
+        ? (joinerSnap.data()!.displayName || joinerSnap.data()!.username || user.displayName || 'Un usuario')
+        : (user.displayName || 'Un usuario');
+      const notifBatch = writeBatch(db);
+      adminUids.forEach((adminUid) => {
+        const ref = doc(collection(db, 'users', adminUid, 'notifications'));
+        notifBatch.set(ref, {
+          type: 'tournament_member_joined',
+          title: 'Nuevo participante',
+          body: `@${joinerName} se unió al torneo`,
+          fromUid: user.uid,
+          tournamentId,
+          meta: { tournamentId },
+          createdAt: serverTimestamp(),
+          readAt: null,
+        });
+      });
+      await notifBatch.commit();
+    }
+  } catch {
+    // Best-effort — never fail the join
+  }
+
   return tournamentId;
 };
 
@@ -280,20 +312,22 @@ export const listMyTournaments = async (): Promise<Tournament[]> => {
     const q = query(tournamentRefsRef, orderBy('joinedAt', 'desc'));
     const snapshot = await getDocs(q);
 
-    // Fetch tournament details
+    // PERF: Parallel fetch — replaces the old sequential for+await loop (N+1 reads).
+    // All getDoc calls are fired simultaneously; total latency ≈ single round-trip
+    // instead of N sequential round-trips as tournament count grows.
+    const tournamentDocs = await Promise.all(
+      snapshot.docs.map((refDoc) => getDoc(doc(db, 'tournaments', refDoc.id))),
+    );
+
     const tournaments: Tournament[] = [];
-    
-    for (const refDoc of snapshot.docs) {
-      const tournamentId = refDoc.id;
-      const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-      
+    tournamentDocs.forEach((tournamentDoc) => {
       if (tournamentDoc.exists()) {
         tournaments.push({
           id: tournamentDoc.id,
           ...tournamentDoc.data(),
         } as Tournament);
       }
-    }
+    });
 
     // Sort: active/locked first (by lastActivityAt DESC, fallback createdAt), then finished
     tournaments.sort((a, b) => {
@@ -551,8 +585,11 @@ export const updateTournamentBasic = async (
 };
 
 /**
- * Update tournament configuration (only if hasActivity is false)
- * Also syncs denormalized data to all members
+ * Update tournament configuration with date-aware rules:
+ * - Blocked entirely if status is finished / deleted / archived.
+ * - startDate is blocked once today >= current startDate.
+ * - endDate and participantsEstimated are always editable while not finished.
+ * Also syncs denormalized data to all members.
  */
 export const updateTournamentConfig = async (
   tournamentId: string,
@@ -572,36 +609,52 @@ export const updateTournamentConfig = async (
   }
 
   try {
-    // Check if tournament has activity
     const tournamentDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-    
+
     if (!tournamentDoc.exists()) {
       throw new Error('Torneo no encontrado');
     }
 
     const tournament = tournamentDoc.data() as Tournament;
 
-    if (tournament.hasActivity) {
-      throw new Error(
-        'No se pueden editar estos campos porque el torneo ya tiene actividad (eventos o predicciones)'
-      );
+    // Block all edits on closed tournaments
+    if (['finished', 'deleted', 'archived'].includes(tournament.status)) {
+      throw new Error('No se puede editar un torneo finalizado o archivado.');
     }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Validate startDate: reject the change if the tournament has already started
+    if (config.startDate !== undefined) {
+      const currentStart = tournament.startDate;
+      if (currentStart && today >= currentStart) {
+        throw new Error('No se puede cambiar la fecha de inicio porque el torneo ya comenzó.');
+      }
+    }
+
+    // Build the allowed update object (strip undefined values)
+    const allowedUpdate: Record<string, any> = {};
+    if (config.participantsEstimated !== undefined) allowedUpdate.participantsEstimated = config.participantsEstimated;
+    if (config.endDate !== undefined) allowedUpdate.endDate = config.endDate;
+    if (config.startDate !== undefined) allowedUpdate.startDate = config.startDate;
+    if (config.contribution !== undefined) allowedUpdate.contribution = config.contribution;
+    if (config.format !== undefined) allowedUpdate.format = config.format;
+    if (config.currency !== undefined) allowedUpdate.currency = config.currency;
+
+    if (Object.keys(allowedUpdate).length === 0) return;
 
     const tournamentRef = doc(db, 'tournaments', tournamentId);
     await setDoc(
       tournamentRef,
-      {
-        ...config,
-        updatedAt: serverTimestamp(),
-      },
+      { ...allowedUpdate, updatedAt: serverTimestamp() },
       { merge: true }
     );
 
     // Sync denormalized data
     const denormalizedUpdates: Partial<TournamentRef> = {};
-    if (config.format) denormalizedUpdates.format = config.format;
-    if (config.contribution !== undefined) denormalizedUpdates.contribution = config.contribution;
-    if (config.participantsEstimated !== undefined) denormalizedUpdates.participantsEstimated = config.participantsEstimated;
+    if (allowedUpdate.format) denormalizedUpdates.format = allowedUpdate.format;
+    if (allowedUpdate.contribution !== undefined) denormalizedUpdates.contribution = allowedUpdate.contribution;
+    if (allowedUpdate.participantsEstimated !== undefined) denormalizedUpdates.participantsEstimated = allowedUpdate.participantsEstimated;
 
     if (Object.keys(denormalizedUpdates).length > 0) {
       await syncDenormalizedData(tournamentId, denormalizedUpdates);
@@ -705,6 +758,36 @@ export const finishTournament = async (tournamentId: string): Promise<void> => {
   }, { merge: true });
 
   await syncDenormalizedData(tournamentId, { status: 'finished' });
+
+  // Notify all members: tournament_finished (best-effort)
+  try {
+    const [tSnap, membersSnap] = await Promise.all([
+      getDoc(tournamentRef),
+      getDocs(collection(db, 'tournaments', tournamentId, 'members')),
+    ]);
+    const tournamentName: string = tSnap.exists() ? (tSnap.data()?.name ?? 'El torneo') : 'El torneo';
+    const memberUids = membersSnap.docs.map((d) => d.id);
+    for (let i = 0; i < memberUids.length; i += 20) {
+      const chunk = memberUids.slice(i, i + 20);
+      const notifBatch = writeBatch(db);
+      chunk.forEach((uid) => {
+        const ref = doc(collection(db, 'users', uid, 'notifications'));
+        notifBatch.set(ref, {
+          type: 'tournament_finished',
+          title: 'Torneo finalizado',
+          body: `"${tournamentName}" finalizó`,
+          fromUid: user.uid,
+          tournamentId,
+          meta: { tournamentId },
+          createdAt: serverTimestamp(),
+          readAt: null,
+        });
+      });
+      await notifBatch.commit();
+    }
+  } catch {
+    // Best-effort — never fail the finish
+  }
 };
 
 /**

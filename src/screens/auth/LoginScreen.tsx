@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Image,
 } from 'react-native';
@@ -18,12 +17,14 @@ import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
 import { PrimaryButton } from '../../components/CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { getFirebaseErrorMessage } from '../../services/authService';
 
 const LoginScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { signIn } = useAuth();
+  const { showToast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +32,7 @@ const LoginScreen = ({ navigation }: any) => {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Por favor completa todos los campos');
+      showToast({ type: 'warning', message: 'Por favor completa todos los campos' });
       return;
     }
 
@@ -41,7 +42,7 @@ const LoginScreen = ({ navigation }: any) => {
       // Navigation is handled automatically by AppNavigator when auth state changes
     } catch (error: any) {
       const message = getFirebaseErrorMessage(error.code);
-      Alert.alert('Error al iniciar sesión', message);
+      showToast({ type: 'error', message });
     } finally {
       setIsLoading(false);
     }
@@ -126,7 +127,7 @@ const LoginScreen = ({ navigation }: any) => {
             </View>
 
             <TouchableOpacity
-              onPress={() => Alert.alert('Restablecer contraseña', 'Esta función estará disponible próximamente')}
+              onPress={() => navigation.navigate('ForgotPassword')}
               accessibilityRole="button"
             >
               <Text style={[styles.forgotPassword, { color: colors.primary }]}>
@@ -159,7 +160,7 @@ const LoginScreen = ({ navigation }: any) => {
                 backgroundColor: colors.secondary,
                 borderColor: colors.border,
               }]}
-              onPress={() => Alert.alert('Próximamente', 'El inicio de sesión con Google estará disponible pronto')}
+              onPress={() => showToast({ type: 'info', message: 'El inicio de sesión con Google estará disponible pronto' })}
               accessibilityRole="button"
             >
               <Ionicons name="logo-google" size={20} color={colors.foreground} />

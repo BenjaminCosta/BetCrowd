@@ -4,12 +4,12 @@ import SearchPanel from './forms/SearchPanel';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useSocial } from '../context/SocialContext';
 import { getUserProfile } from '../services/userService';
+import UserAvatar from './UserAvatar';
 
 interface TopBarProps {
   showBackButton?: boolean;
@@ -21,7 +21,6 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
   const colors = Colors[theme];
   const { user } = useAuth();
   const { unreadCount } = useSocial();
-  const [photoURL, setPhotoURL] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
   const [showSearch, setShowSearch] = useState(false);
 
@@ -34,23 +33,11 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
     try {
       const profile = await getUserProfile(user.uid);
       if (profile) {
-        setPhotoURL(profile.photoURL || '');
         setFullName(profile.fullName || profile.displayName || '');
       }
     } catch (error) {
       console.error('Error loading profile in TopBar:', error);
     }
-  };
-
-  const getInitials = () => {
-    if (fullName) {
-      const parts = fullName.trim().split(' ');
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-      }
-      return fullName.substring(0, 2).toUpperCase();
-    }
-    return user?.email?.substring(0, 2).toUpperCase() || 'U';
   };
 
   const handleNavigate = (screen: string) => {
@@ -117,18 +104,11 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
             style={styles.iconButton}
             onPress={() => handleNavigate('Perfil')}
           >
-            {photoURL ? (
-              <Image source={{ uri: photoURL }} style={styles.avatarImage} />
-            ) : (
-              <LinearGradient
-                colors={Gradients.primary as any}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.avatarGradient}
-              >
-                <Text style={styles.avatarText}>{getInitials()}</Text>
-              </LinearGradient>
-            )}
+            <UserAvatar
+              uid={user?.uid ?? ''}
+              name={fullName || user?.email || ''}
+              size={30}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -194,23 +174,6 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#FFF',
     fontSize: 10,
-    fontWeight: '700',
-  },
-  avatarGradient: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarImage: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 12,
     fontWeight: '700',
   },
 });

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,6 +14,7 @@ import { TopBar } from '../components/TopBar';
 import { Card, EmptyState } from '../components/CommonComponents';
 import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import { useSocial } from '../context/SocialContext';
 import { Notification } from '../services/notificationsService';
 
@@ -30,6 +30,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
   } = useSocial();
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return '';
@@ -57,6 +58,14 @@ const NotificationCenterScreen = ({ navigation }: any) => {
         return 'checkmark-circle';
       case 'tournament_invite':
         return 'trophy';
+      case 'event_locked':
+        return 'lock-closed';
+      case 'event_resulted':
+        return 'checkmark-done-circle';
+      case 'tournament_finished':
+        return 'flag';
+      case 'tournament_member_joined':
+        return 'person-add';
       default:
         return 'notifications';
     }
@@ -86,6 +95,37 @@ const NotificationCenterScreen = ({ navigation }: any) => {
         // "Missing or insufficient permissions" on getTournament / getMemberCount.
         navigation.navigate('Invitations');
         break;
+      case 'event_locked':
+      case 'event_resulted': {
+        const tid = notification.tournamentId ?? notification.meta?.tournamentId;
+        if (tid) {
+          navigation.navigate('Tournament', { tournamentId: tid });
+        } else {
+          console.warn('NotificationCenter: missing tournamentId for', notification.type, notification.id);
+          showToast({ type: 'warning', message: 'No se pudo abrir el torneo. Inténtalo más tarde.' });
+        }
+        break;
+      }
+      case 'tournament_finished': {
+        const tid = notification.tournamentId ?? notification.meta?.tournamentId;
+        if (tid) {
+          navigation.navigate('Tournament', { tournamentId: tid });
+        } else {
+          console.warn('NotificationCenter: missing tournamentId for tournament_finished', notification.id);
+          showToast({ type: 'warning', message: 'No se pudo abrir el torneo. Inténtalo más tarde.' });
+        }
+        break;
+      }
+      case 'tournament_member_joined': {
+        const tid = notification.tournamentId ?? notification.meta?.tournamentId;
+        if (tid) {
+          navigation.navigate('Tournament', { tournamentId: tid, initialTab: 'ranking' });
+        } else {
+          console.warn('NotificationCenter: missing tournamentId for tournament_member_joined', notification.id);
+          showToast({ type: 'warning', message: 'No se pudo abrir el torneo. Inténtalo más tarde.' });
+        }
+        break;
+      }
     }
   };
 
@@ -94,7 +134,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
       setActionLoading('mark-all');
       await markAllAsRead();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo marcar como leídas');
+      showToast({ type: 'error', message: error.message || 'No se pudo marcar como leídas' });
     } finally {
       setActionLoading(null);
     }
@@ -112,7 +152,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
             icon: 'trash-outline',
             color: colors.destructive,
             onPress: () => deleteNotification(notification.id).catch(() => {
-              Alert.alert('Error', 'No se pudo eliminar la notificación');
+              showToast({ type: 'error', message: 'No se pudo eliminar la notificación' });
             }),
           },
         ]}

@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Modal,
   KeyboardAvoidingView,
@@ -18,6 +17,7 @@ import { Calendar, DateData } from 'react-native-calendars';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { Card, Input, SectionHeader } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { getTournament } from '../../services/tournamentService';
 import {
   createEvent,
@@ -165,6 +165,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
 
   const [tournament, setTournament] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -220,7 +221,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo cargar los datos');
+      showToast({ type: 'error', message: 'No se pudo cargar los datos' });
     } finally {
       setLoading(false);
     }
@@ -233,7 +234,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
   const handleBulkCreate = async () => {
     const count = parseInt(bulkCount);
     if (!count || count < 1 || count > 20) {
-      Alert.alert('Error', 'Ingresa un número entre 1 y 20');
+      showToast({ type: 'warning', message: 'Ingresa un número entre 1 y 20' });
       return;
     }
     try {
@@ -254,9 +255,11 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
       }
 
       await createEventsBatch(tournamentId, eventsToCreate);
-      Alert.alert('Éxito', `${count} eventos creados`, [{ text: 'OK', onPress: () => onSuccess() }]);
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showToast({ type: 'success', message: `${count} eventos creados` });
+      onSuccess();
+    } catch (error: unknown) {
+      console.error('CreateEventForm (bulk create):', error);
+      showToast({ type: 'error', message: 'Ocurrió un error inesperado al crear los eventos. Por favor, inténtalo de nuevo.' });
     } finally {
       setCreating(false);
     }
@@ -264,11 +267,11 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
 
   const handleCustomCreate = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'El título es requerido');
+      showToast({ type: 'warning', message: 'El título es requerido' });
       return;
     }
     if (!eventDate) {
-      Alert.alert('Error', 'La fecha del evento es requerida');
+      showToast({ type: 'warning', message: 'La fecha del evento es requerida' });
       return;
     }
     try {
@@ -286,13 +289,16 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
 
       if (editMode && eventId) {
         await updateEvent(tournamentId, eventId, eventData);
-        Alert.alert('Éxito', 'Evento actualizado', [{ text: 'OK', onPress: () => onSuccess() }]);
+        showToast({ type: 'success', message: 'Evento actualizado' });
+        onSuccess();
       } else {
         await createEvent(tournamentId, eventData);
-        Alert.alert('Éxito', 'Evento creado', [{ text: 'OK', onPress: () => onSuccess() }]);
+        showToast({ type: 'success', message: 'Evento creado' });
+        onSuccess();
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
+    } catch (error: unknown) {
+      console.error('CreateEventForm (custom create):', error);
+      showToast({ type: 'error', message: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.' });
     } finally {
       setCreating(false);
     }

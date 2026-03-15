@@ -177,6 +177,43 @@ export const lockPastEvents = async (tournamentId: string): Promise<void> => {
         // skip this event on error
       }
     }
+
+    // Dispatch event_locked notifications for newly auto-locked events (best-effort)
+    if (eventDocsToLock.length > 0) {
+      const notifActorUid = auth.currentUser?.uid;
+      // Firestore rules require fromUid == request.auth.uid for writes to other users'
+      // notification subcollections. Skip silently if no auth session is active.
+      if (notifActorUid) {
+        try {
+          const membersSnap = await getDocs(collection(db, `tournaments/${tournamentId}/members`));
+          const memberUids = membersSnap.docs.map((d) => d.id);
+          for (const eventDoc of eventDocsToLock) {
+            const eventTitle: string = eventDoc.data().title ?? 'Evento sin título';
+            for (let i = 0; i < memberUids.length; i += 20) {
+              const chunk = memberUids.slice(i, i + 20);
+              const notifBatch = writeBatch(db);
+              chunk.forEach((uid) => {
+                const notifRef = doc(collection(db, 'users', uid, 'notifications'));
+                notifBatch.set(notifRef, {
+                  type: 'event_locked',
+                  title: 'Apuestas cerradas',
+                  body: `Se cerraron las apuestas de "${eventTitle}"`,
+                  fromUid: notifActorUid,
+                  tournamentId,
+                  eventId: eventDoc.id,
+                  meta: { tournamentId, eventId: eventDoc.id },
+                  createdAt: serverTimestamp(),
+                  readAt: null,
+                });
+              });
+              await notifBatch.commit();
+            }
+          }
+        } catch (err) {
+          if (__DEV__) console.warn('lockPastEvents: failed to send event_locked notifications', err);
+        }
+      }
+    }
   } catch {
     // Best-effort — non-critical
   }

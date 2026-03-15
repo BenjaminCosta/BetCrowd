@@ -17,11 +17,19 @@ import { db } from '../lib/firebase';
 
 export interface Notification {
   id: string;
-  type: 'friend_request' | 'friend_accepted' | 'tournament_invite';
+  type:
+    | 'friend_request'
+    | 'friend_accepted'
+    | 'tournament_invite'
+    | 'event_locked'
+    | 'event_resulted'
+    | 'tournament_finished'
+    | 'tournament_member_joined';
   title: string;
   body: string;
   fromUid: string;
   tournamentId?: string;
+  eventId?: string; // present for event_locked and event_resulted
   createdAt: any;
   readAt: any | null;
   meta?: Record<string, any>;
@@ -145,5 +153,34 @@ export const deleteNotification = async (
   } catch (error) {
     console.error('Error deleting notification:', error);
     throw error;
+  }
+};
+
+/**
+ * Broadcast the same notification to a list of users.
+ * Writes in batches of 20. Best-effort — never throws, swallows errors
+ * so the calling operation is never affected.
+ */
+export const broadcastNotification = async (
+  uids: string[],
+  payload: Omit<Notification, 'id' | 'createdAt' | 'readAt'>,
+): Promise<void> => {
+  if (uids.length === 0) return;
+  for (let i = 0; i < uids.length; i += 20) {
+    const chunk = uids.slice(i, i + 20);
+    try {
+      const batch = writeBatch(db);
+      chunk.forEach((uid) => {
+        const ref = doc(collection(db, 'users', uid, 'notifications'));
+        batch.set(ref, { ...payload, createdAt: serverTimestamp(), readAt: null });
+      });
+      await batch.commit();
+    } catch (err) {
+      // Best-effort: log and continue so a single batch failure doesn't block subsequent chunks
+      console.error(
+        `broadcastNotification: batch [${i}–${i + chunk.length - 1}] failed for uids [${chunk.join(', ')}]`,
+        err,
+      );
+    }
   }
 };

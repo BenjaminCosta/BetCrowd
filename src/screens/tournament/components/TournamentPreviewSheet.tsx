@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -8,7 +9,6 @@ import {
   ActivityIndicator,
   Modal,
   Animated,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSwipeToClose, SwipeDragHandle } from '../../../components/SheetModal';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
+import { useToast } from '../../../context/ToastContext';
 import { TournamentInvite, acceptTournamentInvite, rejectTournamentInvite } from '../../../services/inviteService';
 import { joinTournamentByInviteCode } from '../../../services/tournamentService';
 import { TournamentCodePreview } from '../../../services/inviteService';
@@ -50,6 +51,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { showToast } = useToast();
   const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } =
     useSwipeToClose(visible, onClose);
 
@@ -75,7 +77,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
       doClose();
       onSuccess?.(tId);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo aceptar la invitación');
+      showToast({ type: 'error', message: e.message || 'No se pudo aceptar la invitación' });
       setLoading(false);
     }
   };
@@ -96,7 +98,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
               await rejectTournamentInvite(invite.id);
               doClose();
             } catch (e: any) {
-              Alert.alert('Error', e.message || 'No se pudo rechazar');
+              showToast({ type: 'error', message: e.message || 'No se pudo rechazar' });
               setLoading(false);
             }
           },
@@ -113,7 +115,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
       doClose();
       onSuccess?.(tId);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo unir al torneo');
+      showToast({ type: 'error', message: e.message || 'No se pudo unir al torneo' });
       setLoading(false);
     }
   };

@@ -32,6 +32,12 @@ export interface TournamentInvite {
   updatedAt: any;
   /** Up to 5 current members snapshotted at invite-send time */
   memberPreviews?: { uid: string; displayName: string }[];
+  /**
+   * Persistent soft-hide flags. Each actor can only set their own flag.
+   * fromUid sets `from`, toUid sets `to`.
+   * Invites with their flag set are filtered out in the UI and badge counts.
+   */
+  hiddenBy?: { from?: boolean; to?: boolean };
 }
 
 export interface TournamentCodePreview {
@@ -199,6 +205,35 @@ export const acceptTournamentInvite = async (inviteId: string): Promise<string> 
 
   await batch.commit();
 
+  // Notify tournament admins: tournament_member_joined (best-effort)
+  try {
+    const membersSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'members'));
+    const adminUids = membersSnap.docs
+      .filter((d) => d.data().role === 'admin' || d.data().role === 'owner')
+      .map((d) => d.id)
+      .filter((uid) => uid !== user.uid);
+    if (adminUids.length > 0) {
+      const joinerName = invite.toName || user.displayName || 'Un usuario';
+      const notifBatch = writeBatch(db);
+      adminUids.forEach((adminUid) => {
+        const notifRef = doc(collection(db, 'users', adminUid, 'notifications'));
+        notifBatch.set(notifRef, {
+          type: 'tournament_member_joined',
+          title: 'Nuevo participante',
+          body: `${joinerName} se unió al torneo "${invite.tournamentName}"`,
+          fromUid: user.uid,
+          tournamentId,
+          meta: { tournamentId },
+          createdAt: serverTimestamp(),
+          readAt: null,
+        });
+      });
+      await notifBatch.commit();
+    }
+  } catch (err) {
+    if (__DEV__) console.warn('acceptTournamentInvite: failed to notify admins', err);
+  }
+
   return tournamentId;
 };
 
@@ -248,8 +283,9 @@ export const cancelTournamentInvite = async (inviteId: string): Promise<void> =>
 // ─── Dismiss (sender) ────────────────────────────────────────────────────────
 
 /**
- * Permanently delete a sent invite that is already rejected or cancelled.
- * Only the sender (fromUid) can dismiss it.
+ * Persistently hide a sent invite from the sender's view.
+ * Uses hiddenBy.from = true instead of deleteDoc (delete is blocked by rules).
+ * Only the sender (fromUid) can call this, and only on non-pending invites.
  */
 export const dismissSentInvite = async (inviteId: string): Promise<void> => {
   const user = auth.currentUser;
@@ -260,14 +296,18 @@ export const dismissSentInvite = async (inviteId: string): Promise<void> => {
   if (!snap.exists()) return; // already gone
   const data = snap.data();
   if (data?.fromUid !== user.uid) throw new Error('No autorizado');
-  if (data?.status === 'pending') throw new Error('No se puede eliminar una invitación pendiente');
+  if (data?.status === 'pending') throw new Error('No se puede ocultar una invitación pendiente');
 
-  await deleteDoc(inviteRef);
+  await updateDoc(inviteRef, {
+    'hiddenBy.from': true,
+    updatedAt: serverTimestamp(),
+  });
 };
 
 /**
- * Permanently delete a received invite that is already accepted or rejected.
- * Only the recipient (toUid) can dismiss it.
+ * Persistently hide a received invite from the recipient's view.
+ * Uses hiddenBy.to = true instead of deleteDoc (delete is blocked by rules).
+ * Only the recipient (toUid) can call this, and only on non-pending invites.
  */
 export const dismissReceivedInvite = async (inviteId: string): Promise<void> => {
   const user = auth.currentUser;
@@ -278,9 +318,12 @@ export const dismissReceivedInvite = async (inviteId: string): Promise<void> => 
   if (!snap.exists()) return; // already gone
   const data = snap.data();
   if (data?.toUid !== user.uid) throw new Error('No autorizado');
-  if (data?.status === 'pending') throw new Error('No se puede eliminar una invitación pendiente');
+  if (data?.status === 'pending') throw new Error('No se puede ocultar una invitación pendiente');
 
-  await deleteDoc(inviteRef);
+  await updateDoc(inviteRef, {
+    'hiddenBy.to': true,
+    updatedAt: serverTimestamp(),
+  });
 };
 
 // ─── Listeners ────────────────────────────────────────────────────────────────
