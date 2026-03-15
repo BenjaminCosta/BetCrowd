@@ -5,6 +5,8 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
+  Share,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +17,7 @@ import { SectionHeader } from '../../../components/CommonComponents';
 import { SheetModal } from '../../../components/SheetModal';
 import TournamentSettingsForm from '../../../components/forms/TournamentSettingsForm';
 import { Tournament } from '../../../services/tournamentService';
+import { getOrCreateTournamentInviteLink } from '../../../services/inviteLinkService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,9 +77,27 @@ const InfoTab: React.FC<InfoTabProps> = ({
   const { showToast } = useToast();
 
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [sharingLink, setSharingLink] = useState(false);
 
   const handleFormArchived = () => setShowSettingsSheet(false);
   const handleFormDeleted = () => setShowSettingsSheet(false);
+  const handleShareLink = async () => {
+    setSharingLink(true);
+    try {
+      const inviteLink = await getOrCreateTournamentInviteLink(tournamentId);
+      if (!inviteLink || !inviteLink.shareUrl) {
+        showToast({ type: 'error', message: 'No se pudo obtener el link del torneo' });
+        return;
+      }
+      await Share.share({
+        message: `Únete a "${tournament.name}" en BetCrowd: ${inviteLink.shareUrl}`,
+      });
+    } catch (e: any) {
+      showToast({ type: 'error', message: e?.message || 'No se pudo compartir el link del torneo' });
+    } finally {
+      setSharingLink(false);
+    }
+  };
 
   const today = new Date().toISOString().split('T')[0];
   const isOverdue =
@@ -159,6 +180,32 @@ const InfoTab: React.FC<InfoTabProps> = ({
           </View>
         </View>
       </TouchableOpacity>
+
+      {isAdmin && (
+        <TouchableOpacity
+          style={[
+            styles.shareLinkButton,
+            {
+              backgroundColor: colors.primary + '07',
+              borderColor: colors.primary + '35',
+            },
+          ]}
+          onPress={handleShareLink}
+          disabled={sharingLink}
+          activeOpacity={0.8}
+        >
+          {sharingLink ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <>
+              <Ionicons name="share-social-outline" size={16} color={colors.primary} />
+              <Text style={[styles.shareLinkButtonText, { color: colors.primary }]}>
+                Compartir link web
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
 
       {/* Admin section */}
       {isAdmin && (
@@ -253,6 +300,18 @@ const styles = StyleSheet.create({
   inviteCode: { fontSize: 22, fontWeight: '800', letterSpacing: 2 },
   copyBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.sm },
   copyText: { fontSize: 13, fontWeight: '600' },
+  shareLinkButton: {
+    height: 48,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  shareLinkButtonText: { fontSize: 14, fontWeight: '700' },
   adminSection: { marginBottom: Spacing.xl },
   adminRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, borderRadius: BorderRadius.md, marginBottom: Spacing.sm },
   adminIconCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },

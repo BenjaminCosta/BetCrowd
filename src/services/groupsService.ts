@@ -9,6 +9,30 @@ import {
 import { db } from '../lib/firebase';
 import { getPublicProfile, PublicProfile } from './publicProfileService';
 
+// ─── Module-level profile cache ──────────────────────────────────────────────
+/** Lives for the app session; avoids redundant Firestore reads across calls. */
+const _profileCache = new Map<string, PublicProfile | null>();
+
+// ─── Concurrency helper ───────────────────────────────────────────────────────
+/**
+ * Process `items` with at most `limit` concurrent Promises.
+ * Order is not guaranteed (worker-pool style).
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift()!;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 export interface UserBalance {
   uid: string;
   username: string;
@@ -36,10 +60,14 @@ export const calculateTournamentBalances = async (
   tournamentId: string
 ): Promise<UserBalance[]> => {
   try {
-    // Get all members
+    // Fetch members + events concurrently
     const membersRef = collection(db, 'tournaments', tournamentId, 'members');
-    const membersSnapshot = await getDocs(membersRef);
-    
+    const eventsRef = collection(db, 'tournaments', tournamentId, 'events');
+    const [membersSnapshot, eventsSnapshot] = await Promise.all([
+      getDocs(membersRef),
+      getDocs(eventsRef),
+    ]);
+
     if (membersSnapshot.empty) {
       return [];
     }
@@ -55,36 +83,32 @@ export const calculateTournamentBalances = async (
       // Normalize legacy 'owner' role → 'admin' for display
       memberRoles.set(d.id, r === 'owner' || r === 'admin' ? 'admin' : 'member');
     });
-    
+
     // Initialize balances map
     const balancesMap = new Map<string, { totalWon: number; totalLost: number; wonCount: number; lostCount: number }>();
     memberUids.forEach(uid => {
       balancesMap.set(uid, { totalWon: 0, totalLost: 0, wonCount: 0, lostCount: 0 });
     });
 
-    // Get all events in tournament
-    const eventsRef = collection(db, 'tournaments', tournamentId, 'events');
-    const eventsSnapshot = await getDocs(eventsRef);
-
-    // Process each event's bets
-    for (const eventDoc of eventsSnapshot.docs) {
+    // Process events + bets + picks with bounded concurrency
+    await runWithConcurrency(eventsSnapshot.docs, 8, async (eventDoc) => {
       const eventId = eventDoc.id;
-      
+
       // Get all settled bets for this event
       const betsRef = collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets');
       const betsQuery = query(betsRef, where('status', '==', 'settled'));
       const betsSnapshot = await getDocs(betsQuery);
 
-      // Process each settled bet
-      for (const betDoc of betsSnapshot.docs) {
+      // Process settled bets concurrently
+      await runWithConcurrency(betsSnapshot.docs, 8, async (betDoc) => {
         const bet = betDoc.data();
         const betId = betDoc.id;
         const result = bet.result;
         
-        if (!result) continue;
+        if (!result) return;
         // Bets that were never activated (only 1 side had picks) are void:
         // they don't affect anyone's won/lost stats.
-        if (result.void) continue;
+        if (result.void) return;
 
         // Get all picks for this bet
         const picksRef = collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks');
@@ -148,7 +172,7 @@ export const calculateTournamentBalances = async (
               current.lostCount += 1;
             }
           });
-          continue;
+          return;
         }
 
         // Calculate winnings
@@ -177,12 +201,18 @@ export const calculateTournamentBalances = async (
             current.lostCount += 1;
           }
         });
-      }
-    }
+      });
+    });
 
-    // Fetch public profiles for all members in parallel
-    const profilesPromises = memberUids.map(uid => getPublicProfile(uid));
-    const profiles = await Promise.all(profilesPromises);
+    // Fetch public profiles for all members (with session-level cache)
+    const profiles = await Promise.all(
+      memberUids.map(async (uid) => {
+        if (_profileCache.has(uid)) return _profileCache.get(uid) ?? null;
+        const p = await getPublicProfile(uid);
+        _profileCache.set(uid, p);
+        return p;
+      }),
+    );
 
     // Build final user balances array
     const userBalances: UserBalance[] = memberUids.map((uid, index) => {

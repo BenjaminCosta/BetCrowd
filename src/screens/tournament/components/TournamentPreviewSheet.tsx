@@ -20,11 +20,15 @@ import { useToast } from '../../../context/ToastContext';
 import { TournamentInvite, acceptTournamentInvite, rejectTournamentInvite } from '../../../services/inviteService';
 import { joinTournamentByInviteCode } from '../../../services/tournamentService';
 import { TournamentCodePreview } from '../../../services/inviteService';
+import {
+  joinTournamentByInviteLink,
+  TournamentInviteLinkPreview,
+} from '../../../services/inviteLinkService';
 import { getInitials } from '../../../utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PreviewMode = 'invite' | 'join';
+type PreviewMode = 'invite' | 'join' | 'join-link';
 
 interface TournamentPreviewSheetProps {
   visible: boolean;
@@ -35,6 +39,8 @@ interface TournamentPreviewSheetProps {
   invite?: TournamentInvite | null;
   /** Required when mode === 'join' */
   codePreview?: TournamentCodePreview | null;
+  /** Required when mode === 'join-link' */
+  inviteLinkPreview?: TournamentInviteLinkPreview | null;
   /** Called after accepting invite or completing join. Receives the tournamentId. */
   onSuccess?: (tournamentId: string) => void;
 }
@@ -47,6 +53,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
   mode,
   invite,
   codePreview,
+  inviteLinkPreview,
   onSuccess,
 }) => {
   const { theme } = useTheme();
@@ -63,7 +70,11 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
 
   // Derived display data
   const tournamentName =
-    mode === 'invite' ? invite?.tournamentName ?? '—' : codePreview?.name ?? '—';
+    mode === 'invite'
+      ? invite?.tournamentName ?? '—'
+      : mode === 'join-link'
+        ? inviteLinkPreview?.name ?? '—'
+        : codePreview?.name ?? '—';
   const inviteCode = mode === 'join' ? codePreview?.inviteCode : undefined;
   const fromName = mode === 'invite' ? invite?.fromName : undefined;
 
@@ -120,9 +131,29 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
     }
   };
 
+  const handleJoinLink = async () => {
+    if (!inviteLinkPreview) return;
+    setLoading(true);
+    try {
+      const tId = await joinTournamentByInviteLink({
+        tournamentId: inviteLinkPreview.tournamentId,
+        token: inviteLinkPreview.token,
+      });
+      doClose();
+      onSuccess?.(tId);
+    } catch (e: any) {
+      showToast({ type: 'error', message: e.message || 'No se pudo unir con el link de invitación' });
+      setLoading(false);
+    }
+  };
+
   const renderMemberPreviews = () => {
     const members =
-      mode === 'invite' ? invite?.memberPreviews : codePreview?.memberPreviews;
+      mode === 'invite'
+        ? invite?.memberPreviews
+        : mode === 'join-link'
+          ? inviteLinkPreview?.memberPreviews
+          : codePreview?.memberPreviews;
     if (!members || members.length === 0) return null;
     return (
       <View style={[styles.membersCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -202,11 +233,13 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
 
               {/* Info cards */}
               <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                {mode === 'join' ? (
+                {mode === 'join' || mode === 'join-link' ? (
                   <View style={styles.infoRow}>
                     <Ionicons name="checkmark-circle" size={20} color={colors.success} />
                     <Text style={[styles.infoText, { color: colors.foreground }]}>
-                      Código válido — listo para unirte
+                      {mode === 'join-link'
+                        ? 'Link válido — listo para unirte'
+                        : 'Código válido — listo para unirte'}
                     </Text>
                   </View>
                 ) : (
@@ -280,7 +313,7 @@ const TournamentPreviewSheet: React.FC<TournamentPreviewSheetProps> = ({
 
                   <TouchableOpacity
                     style={[styles.acceptBtnWrapper, loading && { opacity: 0.6 }]}
-                    onPress={handleJoin}
+                    onPress={mode === 'join-link' ? handleJoinLink : handleJoin}
                     disabled={loading}
                   >
                     <LinearGradient

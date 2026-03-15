@@ -4,6 +4,7 @@ import {
   setDoc, 
   getDoc,
   getDocs,
+  updateDoc,
   serverTimestamp,
   runTransaction,
   writeBatch,
@@ -73,6 +74,21 @@ const generateInviteCode = (): string => {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
+};
+
+const updateTournamentInviteLinkStatus = async (
+  tournamentId: string,
+  status: 'revoked' | 'expired',
+): Promise<void> => {
+  try {
+    const inviteLinkRef = doc(db, 'tournamentInviteLinks', tournamentId);
+    await updateDoc(inviteLinkRef, {
+      status,
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Best-effort — never block tournament lifecycle actions on invite link status
+  }
 };
 
 /**
@@ -686,6 +702,8 @@ export const archiveTournament = async (tournamentId: string): Promise<void> => 
       { merge: true }
     );
 
+    await updateTournamentInviteLinkStatus(tournamentId, 'revoked');
+
     // Update only the current user's own tournamentRef.
     // Other members will see status='archived' from the main tournament doc.
     const myRefDoc = doc(db, 'users', user.uid, 'tournamentRefs', tournamentId);
@@ -757,6 +775,7 @@ export const finishTournament = async (tournamentId: string): Promise<void> => {
     updatedAt: serverTimestamp(),
   }, { merge: true });
 
+  await updateTournamentInviteLinkStatus(tournamentId, 'expired');
   await syncDenormalizedData(tournamentId, { status: 'finished' });
 
   // Notify all members: tournament_finished (best-effort)
@@ -814,6 +833,8 @@ export const deleteTournamentSoft = async (tournamentId: string): Promise<void> 
       },
       { merge: true }
     );
+
+    await updateTournamentInviteLinkStatus(tournamentId, 'revoked');
 
     // 2. Update only the current user's own tournamentRef
     //    (Rules only allow writing to your own /users/{uid}/ subcollection.)

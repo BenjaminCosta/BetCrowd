@@ -20,17 +20,21 @@ import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { getDocs, collection, query, orderBy } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { listMyTournaments } from '../../services/tournamentService';
 import {
   getMyPick,
-  listBets,
+  getBet,
+  hideMyPick,
+  restoreMyPick,
   upsertMyPick,
   deleteMyPick,
   calculateOdds,
   listenBetPicks,
   type Bet,
 } from '../../services/betService';
-import { listEvents } from '../../services/eventService';
+import { getEvent } from '../../services/eventService';
 
 /**
  * Minimum time (ms) the loading bar stays visible after loadData completes.
@@ -48,8 +52,18 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   // ── Pick lists ────────────────────────────────────────────────────────────
   const [openPicks, setOpenPicks] = useState<any[]>([]);
   const [settledPicks, setSettledPicks] = useState<any[]>([]);
-  // Keys of settled picks the user has swiped away locally (tournamentId-betId)
-  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set());
+  /** Settled picks that the user has hidden; source of truth is Firestore hiddenFromPredictionsAt. */
+  const [hiddenPicks, setHiddenPicks] = useState<any[]>([]);
+  /**
+   * Optimistic client-side hide keys — applied immediately on swipe so the
+   * item disappears before the Firestore round-trip completes.
+   * Key format: `${tournamentId}__${eventId}__${betId}` (no collisions across events).
+   */
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
+  /** True while async-storage is being read on mount; blocks persisting until load completes. */
+  const dismissedLoadedRef = useRef(false);
+  /** When true the settled tab shows hidden picks instead of visible ones. */
+  const [showHidden, setShowHidden] = useState(false);
 
   // ── Loading ───────────────────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -81,26 +95,43 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const picksUnsubsRef = useRef<Record<string, () => void>>({});
   // Ref for debouncing background refreshes after optimistic actions (confirm / cancel pick)
   const deferredRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // In-flight guard: prevents concurrent hide/restore on the same pick key
+  const inFlightKeysRef = useRef<Set<string>>(new Set());
 
-  // Load persisted dismissed keys when user is known
+  // Hydrate hidden-keys cache from AsyncStorage on mount.
+  // dismissedLoadedRef prevents the persist effect below from writing an
+  // empty set back to storage before we have finished reading.
   useEffect(() => {
     if (!user) return;
-    const storageKey = `dismissed_picks_${user.uid}`;
-    AsyncStorage.getItem(storageKey).then((val) => {
-      if (val) {
-        try { setDismissedKeys(new Set(JSON.parse(val))); } catch {}
-      }
-    }).catch(() => {});
+    const storageKey = `hidden_picks_${user.uid}`;
+    AsyncStorage.getItem(storageKey)
+      .then((val) => {
+        if (val) {
+          try {
+            // Merge with any keys that may have been added optimistically before
+            // this async read returned (defensive union, not overwrite).
+            const loaded = new Set<string>(JSON.parse(val));
+            setHiddenKeys((prev) => {
+              if (prev.size === 0) return loaded;
+              return new Set([...loaded, ...prev]);
+            });
+          } catch { /* malformed JSON — ignore */ }
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        dismissedLoadedRef.current = true; // unlock persist effect
+      });
   }, [user?.uid]);
 
-  // Persist dismissed keys whenever they change
+  // Persist hidden-keys cache whenever it changes.
+  // Guard: do NOT write until the initial read has completed, otherwise an
+  // early optimistic update would overwrite the persisted set with a partial one.
   useEffect(() => {
-    if (!user) return;
-    AsyncStorage.setItem(
-      `dismissed_picks_${user.uid}`,
-      JSON.stringify([...dismissedKeys]),
-    ).catch(() => {});
-  }, [dismissedKeys, user]);
+    if (!user || !dismissedLoadedRef.current) return;
+    const storageKey = `hidden_picks_${user.uid}`;
+    AsyncStorage.setItem(storageKey, JSON.stringify([...hiddenKeys])).catch(() => {});
+  }, [hiddenKeys, user]);
 
   useEffect(() => {
     if (user) loadData();
@@ -117,63 +148,98 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadData = async () => {
     if (!user) return;
-    // PERF: isLoading is now tied to the real data cycle instead of a fixed timer.
-    // The loading bar stays visible until data is fully fetched and state is set.
     setIsLoading(true);
-    const _loadStart = Date.now(); // used in finally to enforce MIN_LOADING_MS
+    const _loadStart = Date.now();
     try {
       const allOpenPicks: any[] = [];
       const allSettledPicks: any[] = [];
-      // NOTE: do NOT reset dismissedKeys here — they are persisted across reloads
+      /** Settled picks with hiddenFromPredictionsAt != null */
+      const allHiddenPicks: any[] = [];
 
-      const allTournaments = await listMyTournaments();
-      const tournamentsToLoad = allTournaments.filter(
-        (t) => t.status !== 'deleted' && (!routeTournamentId || t.id === routeTournamentId),
+      // Step 1: Parallel-fetch tournament list + full picks index.
+      // A single picksIndex query replaces the N+1 cascade:
+      //   torneo → listEvents() → listBets() → getMyPick()   [O(T×E×B) reads]
+      // becomes:
+      //   picksIndex query → parallel-fetch only referenced docs  [O(P) reads]
+      const [allTournaments, indexSnap] = await Promise.all([
+        listMyTournaments(),
+        getDocs(
+          query(
+            collection(db, 'users', user.uid, 'picksIndex'),
+            orderBy('updatedAt', 'desc'),
+          ),
+        ),
+      ]);
+
+      const tournamentMap = new Map<string, any>(allTournaments.map((t) => [t.id, t]));
+      const activeIds = new Set(
+        allTournaments
+          .filter((t) => t.status !== 'deleted' && (!routeTournamentId || t.id === routeTournamentId))
+          .map((t) => t.id),
       );
 
-      await Promise.allSettled(
-        tournamentsToLoad.map(async (t) => {
-          try {
-            const events = await listEvents(t.id);
-            await Promise.allSettled(
-              events.map(async (event) => {
-                try {
-                  const bets = await listBets(t.id, event.id);
-                  await Promise.allSettled(
-                    bets.map(async (bet) => {
-                      try {
-                        const pick = await getMyPick(t.id, event.id, bet.id, user.uid);
-                        if (pick) {
-                          const pickData = {
-                            tournamentId: t.id,
-                            tournamentName: t.name,
-                            eventId: event.id,
-                            betId: bet.id,
-                            pick,
-                            bet,
-                            event,
-                          };
-                          if (bet.status === 'settled' || bet.status === 'cancelled') {
-                            allSettledPicks.push(pickData);
-                          } else {
-                            allOpenPicks.push(pickData);
-                          }
-                        }
-                      } catch {
-                        // pick doesn't exist, skip
-                      }
-                    }),
-                  );
-                } catch {
-                  // no bets, skip
-                }
-              }),
-            );
-          } catch {
-            // no events, skip
+      // Step 2: Filter index entries to active tournaments only
+      const indexEntries = indexSnap.docs
+        .map((d) => d.data() as { tournamentId: string; eventId: string; betId: string })
+        .filter((d) => activeIds.has(d.tournamentId));
+
+      if (indexEntries.length > 0) {
+        // Step 3: Deduplicate, then batch-fetch bets, events, and picks in parallel.
+        const eventKeys = [...new Set(indexEntries.map((d) => `${d.tournamentId}__${d.eventId}`))];
+        const betKeys   = [...new Set(indexEntries.map((d) => `${d.tournamentId}__${d.eventId}__${d.betId}`))];
+
+        const betCache   = new Map<string, any>();
+        const eventCache = new Map<string, any>();
+        const pickCache  = new Map<string, any>();
+
+        await Promise.allSettled([
+          ...betKeys.map(async (k) => {
+            const [tid, eid, bid] = k.split('__');
+            try { const b = await getBet(tid, eid, bid); if (b) betCache.set(k, b); } catch { /* skip */ }
+          }),
+          ...eventKeys.map(async (k) => {
+            const [tid, eid] = k.split('__');
+            try { const e = await getEvent(tid, eid); if (e) eventCache.set(k, e); } catch { /* skip */ }
+          }),
+          ...indexEntries.map(async (d) => {
+            const k = `${d.tournamentId}__${d.eventId}__${d.betId}`;
+            try { const p = await getMyPick(d.tournamentId, d.eventId, d.betId, user.uid); if (p) pickCache.set(k, p); } catch { /* skip */ }
+          }),
+        ]);
+
+        // Step 4: Assemble pick data objects
+        for (const d of indexEntries) {
+          const betKey   = `${d.tournamentId}__${d.eventId}__${d.betId}`;
+          const eventKey = `${d.tournamentId}__${d.eventId}`;
+          const bet   = betCache.get(betKey);
+          const event = eventCache.get(eventKey);
+          const pick  = pickCache.get(betKey);
+          if (!bet || !event || !pick) continue;
+
+          const t = tournamentMap.get(d.tournamentId);
+          const pickData = {
+            tournamentId: d.tournamentId,
+            tournamentName: t?.name ?? '',
+            eventId: d.eventId,
+            betId: d.betId,
+            pick,
+            bet,
+            event,
+          };
+
+          if (bet.status === 'settled' || bet.status === 'cancelled') {
+            // Picks with hiddenFromPredictionsAt go to the hidden list;
+            // only null / undefined means the pick is visible.
+            if (pick.hiddenFromPredictionsAt != null) {
+              allHiddenPicks.push(pickData);
+            } else {
+              allSettledPicks.push(pickData);
+            }
+          } else {
+            allOpenPicks.push(pickData);
           }
-        }),
-      );
+        }
+      }
 
       // ── Smart listener diffing ─────────────────────────────────────────────
       // PERF: Instead of tearing down ALL listeners and recreating them on every
@@ -224,14 +290,17 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
 
       setOpenPicks(allOpenPicks);
       setSettledPicks(allSettledPicks);
+      setHiddenPicks(allHiddenPicks);
+      // After a full reload the server is the source of truth: clear the
+      // optimistic client-side keys so they don't double-filter on next render.
+      setHiddenKeys(new Set());
     } catch (err) {
       console.warn('TournamentPredictions loadData:', err);
     } finally {
-      // Enforce minimum visible loading time to avoid flicker on fast networks
       const elapsed = Date.now() - _loadStart;
       const remaining = MIN_LOADING_MS - elapsed;
       if (remaining > 0) await new Promise<void>(res => setTimeout(res, remaining));
-      setIsLoading(false);        // ← tied to real data cycle, not an arbitrary timer
+      setIsLoading(false);
       setInitialLoadDone(true);
     }
   };
@@ -240,6 +309,73 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  };
+
+  // ── Hide / restore settled picks ────────────────────────────────────────────────
+  // Hides/restores picks from the Predictions view by writing a flag field on
+  // the pick document. This NEVER deletes the pick or alters bet totals.
+
+  const handleHidePick = async (pickData: any) => {
+    if (!user) return;
+    const key = `${pickData.tournamentId}__${pickData.eventId}__${pickData.betId}`;
+    if (inFlightKeysRef.current.has(key)) return;
+    inFlightKeysRef.current.add(key);
+    // Optimistic: hide immediately so the card vanishes before the network call
+    setHiddenKeys((prev) => new Set([...prev, key]));
+    setSettledPicks((prev) =>
+      prev.filter(
+        (p) => !(p.tournamentId === pickData.tournamentId && p.eventId === pickData.eventId && p.betId === pickData.betId),
+      ),
+    );
+    setHiddenPicks((prev) => [pickData, ...prev]);
+    showToast({ type: 'info', message: 'Apuesta ocultada' });
+    try {
+      await hideMyPick(pickData.tournamentId, pickData.eventId, pickData.betId, user.uid);
+    } catch {
+      // Revert optimistic changes on error
+      setHiddenKeys((prev) => { const s = new Set(prev); s.delete(key); return s; });
+      setSettledPicks((prev) => [pickData, ...prev]);
+      setHiddenPicks((prev) =>
+        prev.filter(
+          (p) => !(p.tournamentId === pickData.tournamentId && p.eventId === pickData.eventId && p.betId === pickData.betId),
+        ),
+      );
+      showToast({ type: 'error', message: 'No se pudo ocultar la apuesta.' });
+    } finally {
+      inFlightKeysRef.current.delete(key);
+    }
+  };
+
+  const handleRestorePick = async (pickData: any) => {
+    if (!user) return;
+    const key = `${pickData.tournamentId}__${pickData.eventId}__${pickData.betId}`;
+    if (inFlightKeysRef.current.has(key)) return;
+    inFlightKeysRef.current.add(key);
+    // Optimistic: remove from hidden list immediately
+    setHiddenKeys((prev) => { const s = new Set(prev); s.delete(key); return s; });
+    setHiddenPicks((prev) =>
+      prev.filter(
+        (p) => !(p.tournamentId === pickData.tournamentId && p.eventId === pickData.eventId && p.betId === pickData.betId),
+      ),
+    );
+    // Restore the pick (with hiddenFromPredictionsAt cleared)
+    setSettledPicks((prev) => [{ ...pickData, pick: { ...pickData.pick, hiddenFromPredictionsAt: null } }, ...prev]);
+    showToast({ type: 'success', message: 'Apuesta restaurada' });
+    try {
+      await restoreMyPick(pickData.tournamentId, pickData.eventId, pickData.betId, user.uid);
+    } catch {
+      // Revert
+      setHiddenKeys((prev) => new Set([...prev, key]));
+      setHiddenPicks((prev) => [pickData, ...prev]);
+      setSettledPicks((prev) =>
+        prev.filter(
+          (p) => !(p.tournamentId === pickData.tournamentId && p.eventId === pickData.eventId && p.betId === pickData.betId),
+        ),
+      );
+      showToast({ type: 'error', message: 'No se pudo restaurar la apuesta.' });
+    } finally {
+      inFlightKeysRef.current.delete(key);
+    }
   };
 
   // ── Deferred background refresh ───────────────────────────────────────────
@@ -347,10 +483,16 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     );
   };
 
-  // Must be declared before any early returns to satisfy Rules of Hooks
-  const currentPicks = activeTab === 'open'
-    ? openPicks
-    : settledPicks.filter(p => !dismissedKeys.has(`${p.tournamentId}-${p.betId}`));
+  // Must be declared before any early returns to satisfy Rules of Hooks.
+  // When showHidden is true (settled tab), currentPicks comes from hiddenPicks;
+  // otherwise settled picks are filtered by the optimistic hiddenKeys set.
+  const currentPicks = useMemo(() => {
+    if (activeTab === 'open') return openPicks;
+    if (showHidden) return hiddenPicks;
+    return settledPicks.filter(
+      (p) => !hiddenKeys.has(`${p.tournamentId}__${p.eventId}__${p.betId}`),
+    );
+  }, [activeTab, openPicks, settledPicks, hiddenPicks, hiddenKeys, showHidden]);
 
   // Group picks by event so the event header shows only once per event.
   // Groups are sorted by most-recent activity desc; picks within each group too.
@@ -440,7 +582,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
               styles.tab,
               activeTab === 'open' && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
             ]}
-            onPress={() => setActiveTab('open')}
+            onPress={() => { setActiveTab('open'); setShowHidden(false); }}
           >
             <Text
               style={[
@@ -459,7 +601,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 borderBottomWidth: 2,
               },
             ]}
-            onPress={() => setActiveTab('settled')}
+            onPress={() => { setActiveTab('settled'); setShowHidden(false); }}
           >
             <Text
               style={[
@@ -489,15 +631,27 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
           {currentPicks.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons
-                name={activeTab === 'open' ? 'hourglass-outline' : 'checkmark-done-outline'}
+                name={
+                  showHidden
+                    ? 'eye-off-outline'
+                    : activeTab === 'open'
+                    ? 'hourglass-outline'
+                    : 'checkmark-done-outline'
+                }
                 size={64}
                 color={colors.mutedForeground}
               />
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {activeTab === 'open' ? 'Sin apuestas activas' : 'Sin apuestas resueltas'}
+                {showHidden
+                  ? 'Sin apuestas ocultas'
+                  : activeTab === 'open'
+                  ? 'Sin apuestas activas'
+                  : 'Sin apuestas resueltas'}
               </Text>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                {activeTab === 'open'
+                {showHidden
+                  ? 'Aquí verás las apuestas que ocultaste'
+                  : activeTab === 'open'
                   ? 'Participa en eventos para ver tus apuestas aquí'
                   : 'Las apuestas finalizadas aparecerán aquí'}
               </Text>
@@ -567,19 +721,19 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                           <SwipeableRow
                             key={pickKey}
                             actions={[
-                              {
-                                label: 'Borrar',
-                                icon: 'trash-outline',
-                                color: colors.destructive,
-                                onPress: () => {
-                                  const key = `${pickData.tournamentId}-${pickData.betId}`;
-                                  setDismissedKeys(prev => {
-                                    const s = new Set(prev);
-                                    s.add(key);
-                                    return s;
-                                  });
-                                },
-                              },
+                              showHidden
+                                ? {
+                                    label: 'Restaurar',
+                                    icon: 'eye-outline',
+                                    color: colors.success,
+                                    onPress: () => handleRestorePick(pickData),
+                                  }
+                                : {
+                                    label: 'Ocultar',
+                                    icon: 'eye-off-outline',
+                                    color: colors.mutedForeground,
+                                    onPress: () => handleHidePick(pickData),
+                                  },
                             ]}
                           >
                             {betCard}
@@ -591,6 +745,25 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                   </View>
                 );
             })
+          )}
+          {/* Subtle footer to show/hide hidden settled picks */}
+          {activeTab === 'settled' && hiddenPicks.length > 0 && (
+            <TouchableOpacity
+              style={styles.hiddenToggleRow}
+              onPress={() => setShowHidden((v) => !v)}
+              activeOpacity={0.5}
+            >
+              <Ionicons
+                name={showHidden ? 'eye-outline' : 'eye-off-outline'}
+                size={12}
+                color={colors.mutedForeground}
+              />
+              <Text style={[styles.hiddenToggleText, { color: colors.mutedForeground }]}>
+                {showHidden
+                  ? `Ver resueltas (${settledPicks.length})`
+                  : `Mostrar ocultas (${hiddenPicks.length})`}
+              </Text>
+            </TouchableOpacity>
           )}
         </ScrollView>
 
@@ -666,6 +839,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   cancelText: { fontSize: 12, fontWeight: '500' },
+  /** Shown between tab bar and scroll content on the Resueltas tab */
+  hiddenToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 14,
+    opacity: 0.55,
+  },
+  hiddenToggleText: { fontSize: 11, fontWeight: '500', letterSpacing: 0.2 },
 });
 
 export default TournamentPredictionsScreen;

@@ -71,6 +71,12 @@ export interface Pick {
   stakeAmount: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /**
+   * Set to a server timestamp when the user hides this pick from Predictions.
+   * null (or absent) means the pick is visible. Hiding never touches bet totals
+   * or settlement results — it is purely a display flag.
+   */
+  hiddenFromPredictionsAt?: any;
 }
 
 export interface PickInput {
@@ -310,9 +316,28 @@ export const settleBet = async (
   try {
     const allBetsRef = collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets');
     const allBetsSnap = await getDocs(allBetsRef);
+
+    // Void any pending bets (never activated — fewer than 2 sides placed picks).
+    // These will never be settled normally, so clear them before the finish check.
+    const pendingBetDocs = allBetsSnap.docs.filter((d) => d.data().status === 'pending');
+    if (pendingBetDocs.length > 0) {
+      const voidBatch = writeBatch(db);
+      pendingBetDocs.forEach((bd) => {
+        voidBatch.update(bd.ref, {
+          status: 'settled',
+          result: { void: true },
+          settledAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await voidBatch.commit();
+    }
+
+    const pendingIds = new Set(pendingBetDocs.map((d) => d.id));
     const hasPending = allBetsSnap.docs.some((d) => {
       const s = d.data().status;
-      return s === 'open' || s === 'locked';
+      // pending bets were just voided above — exclude them from this check
+      return (s === 'open' || s === 'locked') && !pendingIds.has(d.id);
     });
     if (!hasPending) {
       const eventRef = doc(db, 'tournaments', tournamentId, 'events', eventId);
@@ -421,6 +446,39 @@ export const getMyPick = async (
   }
   
   return pickDoc.data() as Pick;
+};
+
+/**
+ * Hide a settled pick from the Predictions screen.
+ * Only sets a display flag — pick data, bet totals, and results are untouched.
+ */
+export const hideMyPick = async (
+  tournamentId: string,
+  eventId: string,
+  betId: string,
+  uid: string,
+): Promise<void> => {
+  const pickRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks', uid);
+  await updateDoc(pickRef, {
+    hiddenFromPredictionsAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * Restore a previously-hidden pick back to the Predictions screen.
+ */
+export const restoreMyPick = async (
+  tournamentId: string,
+  eventId: string,
+  betId: string,
+  uid: string,
+): Promise<void> => {
+  const pickRef = doc(db, 'tournaments', tournamentId, 'events', eventId, 'bets', betId, 'picks', uid);
+  await updateDoc(pickRef, {
+    hiddenFromPredictionsAt: null,
+    updatedAt: serverTimestamp(),
+  });
 };
 
 /**

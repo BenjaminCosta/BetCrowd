@@ -154,6 +154,38 @@ service cloud.firestore {
     }
 
     // -------------------------
+    // TOURNAMENT INVITE LINKS (web landing)
+    // -------------------------
+    match /tournamentInviteLinks/{tournamentId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+
+      allow create, update: if isTournamentAdmin(tournamentId)
+        && request.resource.data.tournamentId == tournamentId
+        && request.resource.data.keys().hasOnly([
+          "tournamentId",
+          "token",
+          "inviteCode",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "expiresAt",
+          "status"
+        ])
+        && request.resource.data.keys().hasAll([
+          "tournamentId",
+          "token",
+          "inviteCode",
+          "createdBy",
+          "expiresAt",
+          "status"
+        ])
+        && request.resource.data.status in ["active", "revoked", "expired"];
+
+      allow delete: if isTournamentAdmin(tournamentId);
+    }
+
+    // -------------------------
     // TOURNAMENTS
     // -------------------------
     match /tournaments/{tournamentId} {
@@ -258,6 +290,14 @@ service cloud.firestore {
               && request.auth.uid == uid
               && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId))
               && get(/databases/$(database)/documents/tournaments/$(tournamentId)/events/$(eventId)/bets/$(betId)).data.status in ["pending", "open"];
+
+            // ✅ hide/restore: el usuario puede actualizar SOLO hiddenFromPredictionsAt (+ updatedAt)
+            //    en su propio pick sin importar el estado del bet (ej. settled/cancelled).
+            //    Este campo es solo de display — no afecta totales ni resultados.
+            allow update: if isTournamentMember(tournamentId)
+              && request.auth.uid == uid
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["hiddenFromPredictionsAt", "updatedAt"]);
 
             // ✅ delete: el usuario borra su propio pick (solo si bet abierto/pendiente)
             //    o un admin elimina picks de cualquier usuario (ej. al quitar un miembro)

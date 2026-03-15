@@ -16,15 +16,26 @@ import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import TournamentPreviewSheet from './tournament/components/TournamentPreviewSheet';
 import { getTournamentCodePreview, TournamentCodePreview } from '../services/inviteService';
+import { clearPendingTournamentInvite } from '../services/deepLinkService';
+import {
+  getTournamentInviteLinkPreview,
+  TournamentInviteLinkPreview,
+} from '../services/inviteLinkService';
 
-const JoinCodeScreen = ({ navigation }: any) => {
+const JoinCodeScreen = ({ navigation, route }: any) => {
   const [code, setCode] = useState('');
   const [validating, setValidating] = useState(false);
   const [codePreview, setCodePreview] = useState<TournamentCodePreview | null>(null);
+  const [inviteLinkPreview, setInviteLinkPreview] = useState<TournamentInviteLinkPreview | null>(null);
+  const [previewMode, setPreviewMode] = useState<'join' | 'join-link'>('join');
   const [showPreviewSheet, setShowPreviewSheet] = useState(false);
+  const [inviteLinkLoading, setInviteLinkLoading] = useState(false);
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { showToast } = useToast();
+  const deepLinkTournamentId = typeof route?.params?.tournamentId === 'string' ? route.params.tournamentId : '';
+  const deepLinkToken = typeof route?.params?.token === 'string' ? route.params.token : '';
+  const isInviteLinkRoute = deepLinkTournamentId !== '' && deepLinkToken !== '';
 
   const handleValidateCode = async () => {
     const trimmed = code.trim().toUpperCase();
@@ -39,6 +50,8 @@ const JoinCodeScreen = ({ navigation }: any) => {
         setCodePreview(null);
         return;
       }
+      setPreviewMode('join');
+      setInviteLinkPreview(null);
       setShowPreviewSheet(false); // explicit reset
       setCodePreview(preview);    // payload set → useEffect below fires
     } catch (e: any) {
@@ -51,18 +64,76 @@ const JoinCodeScreen = ({ navigation }: any) => {
   // Two-step open: same pattern as CreateTournamentScreen — wait for all
   // pending interactions before presenting the Modal.
   useEffect(() => {
-    if (!codePreview) return;
+    if (!codePreview && !inviteLinkPreview) return;
     Keyboard.dismiss();
     const task = InteractionManager.runAfterInteractions(() => {
       setShowPreviewSheet(true);
     });
     return () => task.cancel();
-  }, [codePreview]);
+  }, [codePreview, inviteLinkPreview]);
+
+  useEffect(() => {
+    if (!isInviteLinkRoute) return;
+
+    let cancelled = false;
+
+    const resolveInviteLink = async () => {
+      Keyboard.dismiss();
+      setInviteLinkLoading(true);
+      try {
+        const preview = await getTournamentInviteLinkPreview({
+          tournamentId: deepLinkTournamentId,
+          token: deepLinkToken,
+        });
+        if (cancelled) return;
+
+        setPreviewMode('join-link');
+        setCodePreview(null);
+        setInviteLinkPreview(preview);
+      } catch (e: any) {
+        if (!cancelled) {
+          showToast({ type: 'error', message: e?.message || 'No se pudo verificar el link de invitación' });
+          setInviteLinkPreview(null);
+          setPreviewMode('join');
+        }
+      } finally {
+        await clearPendingTournamentInvite().catch(() => {});
+        if (!cancelled) {
+          setInviteLinkLoading(false);
+          navigation.setParams({ tournamentId: undefined, token: undefined });
+        }
+      }
+    };
+
+    resolveInviteLink().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkToken, deepLinkTournamentId, isInviteLinkRoute, navigation, showToast]);
 
   const handleJoinSuccess = (tournamentId: string) => {
     setShowPreviewSheet(false);
+    clearPendingTournamentInvite().catch(() => {});
     navigation.navigate('Tournament', { tournamentId });
   };
+
+  if (inviteLinkLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <TopBar showBackButton />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingTitle, { color: colors.foreground }]}>
+            Validando invitación
+          </Text>
+          <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground }]}>
+            Estamos preparando la vista previa del torneo.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -116,11 +187,12 @@ const JoinCodeScreen = ({ navigation }: any) => {
 
       {/* key forces a fresh Animated.Value each time the user previews a tournament */}
       <TournamentPreviewSheet
-        key={`preview-${codePreview?.tournamentId ?? 'empty'}`}
+        key={`preview-${previewMode}-${inviteLinkPreview?.tournamentId ?? codePreview?.tournamentId ?? 'empty'}`}
         visible={showPreviewSheet}
         onClose={() => setShowPreviewSheet(false)}
-        mode="join"
+        mode={previewMode}
         codePreview={codePreview}
+        inviteLinkPreview={inviteLinkPreview}
         onSuccess={handleJoinSuccess}
       />
     </View>
@@ -130,6 +202,24 @@ const JoinCodeScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  loadingTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 18,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  loadingSubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
   },
   content: {
     flex: 1,

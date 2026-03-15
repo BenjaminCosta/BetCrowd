@@ -12,18 +12,6 @@ import { useToast, ToastItem, ToastType } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
 import { Colors, BorderRadius, Spacing } from '../theme/colors';
 
-// ─── Type config — BetCrowd palette only ─────────────────────────────────────
-//   error   → #D7263D  primary red (brand)
-//   success → #10B981  success green
-//   warning → #F59E0B  warning amber
-//   info    → #FF7A00  accent orange (brand)
-
-const TYPE_CONFIG: Record<ToastType, { icon: string; accent: string }> = {
-  success: { icon: 'checkmark-circle',   accent: '#10B981' },
-  error:   { icon: 'alert-circle',       accent: '#D7263D' },
-  warning: { icon: 'warning',            accent: '#F59E0B' },
-  info:    { icon: 'information-circle', accent: '#FF7A00' },
-};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -32,6 +20,15 @@ const AppToast: React.FC = () => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const colors = Colors[theme];
+
+  // Type config reads directly from the resolved palette so toasts always
+  // match the active theme without any hardcoded hex values.
+  const TYPE_CFG: Record<ToastType, { icon: string; accent: string }> = {
+    success: { icon: 'checkmark-circle',   accent: colors.success  },
+    error:   { icon: 'alert-circle',       accent: colors.primary  },
+    warning: { icon: 'warning',            accent: colors.warning  },
+    info:    { icon: 'information-circle', accent: colors.accent   },
+  };
 
   const translateY = useRef(new Animated.Value(60)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -114,7 +111,7 @@ const AppToast: React.FC = () => {
   if (!showing && !displayed) return null;
 
   const toast = displayed!;
-  const cfg = TYPE_CONFIG[toast.type];
+  const cfg = TYPE_CFG[toast.type];
 
   return (
     <View
@@ -138,7 +135,7 @@ const AppToast: React.FC = () => {
 
         {/* Icon badge */}
         <View style={[styles.iconWrap, { backgroundColor: cfg.accent + '20' }]}>
-          <Ionicons name={cfg.icon as any} size={20} color={cfg.accent} />
+          <Ionicons name={cfg.icon as any} size={16} color={cfg.accent} />
         </View>
 
         {/* Text */}
@@ -195,23 +192,23 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     overflow: 'hidden',       // clips accentBar to rounded corners
-    paddingRight: Spacing.md,
-    paddingVertical: Spacing.md,
-    // Colored glow shadow using the type accent
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    elevation: 12,
+    paddingRight: 10,
+    paddingVertical: 9,
+    // Subtle colored glow using the type accent
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
   },
   accentBar: {
-    width: 3,
+    width: 2,
     alignSelf: 'stretch',
-    marginRight: Spacing.sm + 2,
+    marginRight: 8,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.sm,
+    width: 28,
+    height: 28,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm,
@@ -221,15 +218,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    marginBottom: 2,
+    marginBottom: 1,
     letterSpacing: 0.1,
   },
   message: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   closeBtn: {
     marginLeft: Spacing.sm,

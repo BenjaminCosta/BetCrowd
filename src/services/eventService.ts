@@ -133,13 +133,22 @@ export const lockPastEvents = async (tournamentId: string): Promise<void> => {
       }
     }
 
-    // Also lock all open bets inside each newly-locked event
+    // Also lock/void all non-settled bets inside each newly-locked event
     for (const eventDoc of eventDocsToLock) {
       const betsRef = collection(db, `tournaments/${tournamentId}/events/${eventDoc.id}/bets`);
       const betsSnap = await getDocs(betsRef);
       for (const betDoc of betsSnap.docs) {
-        if (betDoc.data().status === 'open') {
+        const bs = betDoc.data().status;
+        if (bs === 'open') {
           await safeUpdate(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
+        } else if (bs === 'pending') {
+          // Pending = never reached 2 sides — void immediately so it doesn't block event finish
+          await safeUpdate(betDoc.ref, {
+            status: 'settled',
+            result: { void: true },
+            settledAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
         }
       }
     }
@@ -154,20 +163,37 @@ export const lockPastEvents = async (tournamentId: string): Promise<void> => {
         const betsRef = collection(db, `tournaments/${tournamentId}/events/${eventId}/bets`);
         const betsSnap = await getDocs(betsRef);
         if (betsSnap.empty) continue;
-        // Lock open bets that slipped through before the cascade fix
-        const openBetDocs = betsSnap.docs.filter((d) => d.data().status === 'open');
-        if (openBetDocs.length > 0) {
-          const betBatch = writeBatch(db);
-          openBetDocs.forEach((betDoc) => {
-            betBatch.update(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
-          });
-          await betBatch.commit();
+        // Lock/void stale bets that slipped through before the cascade fix
+        const staleBetDocs = betsSnap.docs.filter((d) => {
+          const s = d.data().status;
+          return s === 'open' || s === 'pending';
+        });
+        if (staleBetDocs.length > 0) {
+          const BATCH_LIMIT = 500;
+          for (let i = 0; i < staleBetDocs.length; i += BATCH_LIMIT) {
+            const chunk = staleBetDocs.slice(i, i + BATCH_LIMIT);
+            const betBatch = writeBatch(db);
+            chunk.forEach((betDoc) => {
+              if (betDoc.data().status === 'open') {
+                betBatch.update(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
+              } else {
+                // pending → void; never reached 2 sides so there's nothing to settle
+                betBatch.update(betDoc.ref, {
+                  status: 'settled',
+                  result: { void: true },
+                  settledAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                });
+              }
+            });
+            await betBatch.commit();
+          }
         }
-        // Re-read bets to reflect freshly-locked status before auto-finish check
+        // Re-read to reflect freshly-locked/voided status before auto-finish check
         const freshBetsSnap = await getDocs(betsRef);
         const hasPending = freshBetsSnap.docs.some((d) => {
           const s = d.data().status;
-          return s === 'open' || s === 'locked';
+          return s === 'open' || s === 'locked' || s === 'pending';
         });
         if (!hasPending) {
           const eventRef = doc(db, `tournaments/${tournamentId}/events`, eventId);
@@ -349,8 +375,18 @@ export const updateEvent = async (
       const batchLock = writeBatch(db);
       let hasBets = false;
       betsSnap.docs.forEach((betDoc) => {
-        if (betDoc.data().status === 'open') {
+        const bs = betDoc.data().status;
+        if (bs === 'open') {
           batchLock.update(betDoc.ref, { status: 'locked', updatedAt: serverTimestamp() });
+          hasBets = true;
+        } else if (bs === 'pending') {
+          // Pending = never reached 2 sides — void so it doesn’t block event finish
+          batchLock.update(betDoc.ref, {
+            status: 'settled',
+            result: { void: true },
+            settledAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
           hasBets = true;
         }
       });

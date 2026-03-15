@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
@@ -128,9 +128,116 @@ const RankingTab: React.FC<RankingTabProps> = ({
 
   return (
     <>
-    <ScrollView
-      style={styles.tabScroll}
-      contentContainerStyle={styles.tabContent}
+    <FlatList
+      data={balances}
+      keyExtractor={(item) => item.uid}
+      renderItem={({ item: balance, index }) => {
+        const isCurrentUser = balance.uid === currentUserId;
+        const balanceNum = balance.netBalance;
+        const { sign: balSign, formatted: balFormatted } = splitBalance(balanceNum);
+
+        // Medal for top 3
+        const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+        const medalColors = ['#F59E0B', '#9CA3AF', '#CD7F32'];
+        const hasMedal = index < 3;
+
+        return (
+          <TouchableOpacity
+            ref={(ref) => { if (ref) rowRefs.current[balance.uid] = ref as any; }}
+            activeOpacity={0.75}
+            onPress={() => showTooltip(balance, index, balance.uid)}
+          >
+            <Card
+              style={[
+                styles.rankingCard,
+                index < 3 && { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 },
+                isCurrentUser && { backgroundColor: colors.primary + '07' },
+              ]}
+            >
+              <View style={styles.rankingRow}>
+                {/* Position */}
+                <View style={styles.rankPositionCol}>
+                  {hasMedal ? (
+                    <Text style={styles.medalEmoji}>{medals[index]}</Text>
+                  ) : (
+                    <Text style={[styles.rankNumber, { color: colors.mutedForeground }]}>
+                      {index + 1}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Avatar */}
+                <View style={styles.rankAvatarWrapper}>
+                  <UserAvatar
+                    uid={balance.uid}
+                    name={balance.username || balance.displayName || ''}
+                    size={42}
+                  />
+                </View>
+
+                {/* User info */}
+                <View style={styles.rankUserInfo}>
+                  <View style={styles.rankUsernameRow}>
+                    <Text
+                      ref={(ref) => { if (ref) usernameRefs.current[balance.uid] = ref as any; }}
+                      style={[styles.rankUsername, { color: colors.foreground }]}
+                      numberOfLines={1}
+                    >
+                      {balance.username ? `@${balance.username}` : balance.displayName}
+                    </Text>
+                    {isCurrentUser && (
+                      <View style={[styles.youBadge, { backgroundColor: colors.primary + '20' }]}>
+                        <Text style={[styles.youText, { color: colors.primary }]}>Tú</Text>
+                      </View>
+                    )}
+                    {balance.role === 'admin' && (
+                      <View style={[styles.adminBadge, { backgroundColor: colors.mutedForeground + '18' }]}>
+                        <Text style={[styles.adminText, { color: colors.mutedForeground }]}>Admin</Text>
+                      </View>
+                    )}
+                  </View>
+                  {(balance.wonCount > 0 || balance.lostCount > 0) && (
+                    <View style={styles.wlMicro}>
+                      <Text style={[styles.wlWins, { color: colors.mutedForeground }]}>
+                        {balance.wonCount}W
+                      </Text>
+                      <Text style={[styles.wlSep, { color: colors.mutedForeground }]}> – </Text>
+                      <Text style={[styles.wlLoss, { color: colors.mutedForeground }]}>
+                        {balance.lostCount}L
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Balance — primary visual element */}
+                <Text style={[
+                  styles.rankBalance,
+                  { color: balanceNum > 0 ? colors.success : balanceNum < 0 ? colors.destructive : colors.mutedForeground },
+                ]}>
+                  {balSign}{balFormatted}
+                </Text>
+              </View>
+            </Card>
+          </TouchableOpacity>
+        );
+      }}
+      ListEmptyComponent={
+        rankingLoading ? (
+          <View style={styles.centeredLoader}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <EmptyState
+            iconName="trophy-outline"
+            title="Sin movimientos"
+            message="Todavía no hay apuestas liquidadas en este torneo"
+          />
+        )
+      }
+      initialNumToRender={12}
+      maxToRenderPerBatch={12}
+      windowSize={7}
+      removeClippedSubviews
       refreshControl={
         <RefreshControl
           refreshing={rankingRefreshing}
@@ -139,113 +246,9 @@ const RankingTab: React.FC<RankingTabProps> = ({
           colors={[colors.primary]}
         />
       }
-    >
-      {rankingLoading ? (
-        <View style={styles.centeredLoader}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : balances.length === 0 ? (
-        <EmptyState
-          iconName="trophy-outline"
-          title="Sin movimientos"
-          message="Todavía no hay apuestas liquidadas en este torneo"
-        />
-      ) : (
-        balances.map((balance, index) => {
-          const isCurrentUser = balance.uid === currentUserId;
-          const balanceNum = balance.netBalance;
-          const { sign: balSign, formatted: balFormatted } = splitBalance(balanceNum);
-
-          // Medal for top 3
-          const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
-          const medalColors = ['#F59E0B', '#9CA3AF', '#CD7F32'];
-          const hasMedal = index < 3;
-
-          return (
-            <TouchableOpacity
-              key={balance.uid}
-              ref={(ref) => { if (ref) rowRefs.current[balance.uid] = ref as any; }}
-              activeOpacity={0.75}
-              onPress={() => showTooltip(balance, index, balance.uid)}
-            >
-              <Card
-                style={[
-                  styles.rankingCard,
-                  index < 3 && { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 },
-                  isCurrentUser && {
-                    backgroundColor: colors.primary + '07',
-                  },
-                ]}
-              >
-                <View style={styles.rankingRow}>
-                  {/* Position */}
-                  <View style={styles.rankPositionCol}>
-                    {hasMedal ? (
-                      <Text style={styles.medalEmoji}>{medals[index]}</Text>
-                    ) : (
-                      <Text style={[styles.rankNumber, { color: colors.mutedForeground }]}>
-                        {index + 1}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Avatar */}
-                  <View style={styles.rankAvatarWrapper}>
-                    <UserAvatar
-                      uid={balance.uid}
-                      name={balance.username || balance.displayName || ''}
-                      size={42}
-                    />
-                  </View>
-
-                  {/* User info */}
-                  <View style={styles.rankUserInfo}>
-                    <View style={styles.rankUsernameRow}>
-                      <Text
-                        ref={(ref) => { if (ref) usernameRefs.current[balance.uid] = ref as any; }}
-                        style={[styles.rankUsername, { color: colors.foreground }]}
-                        numberOfLines={1}
-                      >
-                        {balance.username ? `@${balance.username}` : balance.displayName}
-                      </Text>
-                      {isCurrentUser && (
-                        <View style={[styles.youBadge, { backgroundColor: colors.primary + '20' }]}>
-                          <Text style={[styles.youText, { color: colors.primary }]}>Tú</Text>
-                        </View>
-                      )}
-                      {balance.role === 'admin' && (
-                        <View style={[styles.adminBadge, { backgroundColor: colors.mutedForeground + '18' }]}>
-                          <Text style={[styles.adminText, { color: colors.mutedForeground }]}>Admin</Text>
-                        </View>
-                      )}
-                    </View>
-                    {(balance.wonCount > 0 || balance.lostCount > 0) && (
-                      <View style={styles.wlMicro}>
-                        <Text style={[styles.wlWins, { color: colors.mutedForeground }]}>
-                          {balance.wonCount}W
-                        </Text>
-                        <Text style={[styles.wlSep, { color: colors.mutedForeground }]}> – </Text>
-                        <Text style={[styles.wlLoss, { color: colors.mutedForeground }]}>
-                          {balance.lostCount}L
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Balance — primary visual element */}
-                  <Text style={[
-                    styles.rankBalance,
-                    { color: balanceNum > 0 ? colors.success : balanceNum < 0 ? colors.destructive : colors.mutedForeground },
-                  ]}>
-                    {balSign}{balFormatted}
-                  </Text>
-                </View>
-              </Card>
-            </TouchableOpacity>
-          );
-        })
-      )}
-    </ScrollView>
+      style={styles.tabScroll}
+      contentContainerStyle={styles.tabContent}
+    />
     {/* ── Tooltip Modal ──────────────────────────────────────────────────────────────── */}
     <Modal
       visible={tooltip.visible}

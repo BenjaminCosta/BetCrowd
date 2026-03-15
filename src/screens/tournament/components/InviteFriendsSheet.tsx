@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Animated,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -22,6 +23,7 @@ import { useToast } from '../../../context/ToastContext';
 import { sendTournamentInvites } from '../../../services/inviteService';
 import { db } from '../../../lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { getOrCreateTournamentInviteLink } from '../../../services/inviteLinkService';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,7 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sending, setSending] = useState(false);
+  const [sharingLink, setSharingLink] = useState(false);
   const [memberUidSet, setMemberUidSet] = useState<Set<string>>(new Set());
 
   // Fetch current tournament members when sheet opens
@@ -78,6 +81,7 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
       setSelected(new Set());
       setSearchQuery('');
       setSending(false);
+      setSharingLink(false);
       setMemberUidSet(new Set());
     }
   }, [visible]);
@@ -138,6 +142,20 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
       showToast({ type: 'error', message: e.message || 'No se pudieron enviar las invitaciones' });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleShareLink = async () => {
+    setSharingLink(true);
+    try {
+      const inviteLink = await getOrCreateTournamentInviteLink(tournamentId);
+      await Share.share({
+        message: `Únete a "${tournamentName}" en BetCrowd: ${inviteLink.shareUrl}`,
+      });
+    } catch (e: any) {
+      showToast({ type: 'error', message: e.message || 'No se pudo compartir el link del torneo' });
+    } finally {
+      setSharingLink(false);
     }
   };
 
@@ -251,6 +269,30 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
                     </Text>
                   </View>
                 ) : null}
+                <TouchableOpacity
+                  style={[
+                    styles.shareLinkChip,
+                    {
+                      backgroundColor: colors.primary + '10',
+                      borderColor: colors.primary + '35',
+                    },
+                    sharingLink && { opacity: 0.7 },
+                  ]}
+                  onPress={handleShareLink}
+                  disabled={sharingLink}
+                  activeOpacity={0.8}
+                >
+                  {sharingLink ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <>
+                      <Ionicons name="share-social-outline" size={13} color={colors.primary} />
+                      <Text style={[styles.shareLinkChipText, { color: colors.primary }]}>
+                        Compartir link
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
               {selected.size > 0 && (
                 <View style={[styles.selectedBadge, { backgroundColor: colors.primary }]}>
@@ -403,6 +445,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 1,
+  },
+  shareLinkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    minHeight: 34,
+  },
+  shareLinkChipText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   selectedBadge: {
     minWidth: 26,

@@ -22,6 +22,7 @@ import LoadResultsForm from '../../components/forms/LoadResultsForm';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { sortEventsForFilter } from '../../utils/eventSorting';
 import {
   getTournament,
   getTournamentMemberCount,
@@ -142,6 +143,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingRefreshing, setRankingRefreshing] = useState(false);
   const [rankingLastFetched, setRankingLastFetched] = useState(0);
+  const rankingInFlightRef = useRef(false);
 
   // ── Participant sheet state ──────────────────────────────────────────────────
   const [showParticipantSheet, setShowParticipantSheet] = useState(false);
@@ -249,12 +251,10 @@ const TournamentScreen = ({ navigation, route }: any) => {
   // EVENTS HANDLERS
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const filteredEvents = events.filter((e) => {
-    if (eventFilter === 'open') return e.status === 'live' || e.status === 'upcoming' || e.status === 'locked';
-    if (eventFilter === 'upcoming') return e.status === 'upcoming';
-    if (eventFilter === 'finished') return e.status === 'finished' || e.status === 'cancelled';
-    return true;
-  });
+  const filteredEvents = useMemo(
+    () => sortEventsForFilter(events, eventFilter),
+    [events, eventFilter]
+  );
 
   const handleEventPress = useCallback(async (event: Event) => {
     setSelectedEvent(event);
@@ -407,19 +407,35 @@ const TournamentScreen = ({ navigation, route }: any) => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const loadRanking = async (refreshing = false) => {
+    if (rankingInFlightRef.current) return;
+    rankingInFlightRef.current = true;
     if (refreshing) setRankingRefreshing(true); else setRankingLoading(true);
     try {
       const data = await calculateTournamentBalances(tournamentId);
       setBalances(data);
       setRankingLastFetched(Date.now());
     } catch (e) { console.error('Ranking error:', e); }
-    finally { setRankingLoading(false); setRankingRefreshing(false); }
+    finally {
+      rankingInFlightRef.current = false;
+      setRankingLoading(false);
+      setRankingRefreshing(false);
+    }
   };
 
   useEffect(() => {
     const isStale = Date.now() - rankingLastFetched > 60000;
     if (activeTab === 'ranking' && (balances.length === 0 || isStale)) loadRanking();
   }, [activeTab]);
+
+  // Background prefetch ranking data while the user is on the Events tab,
+  // so the Ranking tab is already populated when they switch to it.
+  useEffect(() => {
+    if (activeTab !== 'events') return; // opened directly on ranking — already handled above
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadRanking();
+    });
+    return () => task.cancel();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────────────────────────────────────────────────────────────────────────
   // INFO HANDLERS
@@ -682,6 +698,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
           onClose={() => { setShowInviteSheet(false); setIsInvitePostCreation(false); }}
           tournamentId={tournamentId}
           tournamentName={tournament?.name ?? ''}
+          inviteCode={tournament?.inviteCode}
           isPostCreation={isInvitePostCreation}
         />
 

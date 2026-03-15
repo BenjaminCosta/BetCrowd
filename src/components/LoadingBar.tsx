@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
@@ -13,67 +13,57 @@ export const LoadingBar: React.FC<LoadingBarProps> = ({ isLoading }) => {
   const colors = Colors[theme];
   const progress = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
-  
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track visibility independently: stay mounted until the 100% fill animation
+  // finishes so the bar never disappears mid-fill when isLoading goes false.
+  const [visible, setVisible] = useState(isLoading);
+
   useEffect(() => {
     if (isLoading) {
-      // Reset y empezar desde 0
+      setVisible(true);
       progress.setValue(0);
-      
-      // Animación de carga progresiva (simula carga real)
+      if (animationRef.current) { animationRef.current.stop(); animationRef.current = null; }
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+
       animationRef.current = Animated.sequence([
-        // Inicio rápido: 0% a 30% en 0.5s
-        Animated.timing(progress, {
-          toValue: 30,
-          duration: 500,
-          useNativeDriver: false,
-        }),
-        // Progreso medio: 30% a 60% en 1s
-        Animated.timing(progress, {
-          toValue: 60,
-          duration: 1000,
-          useNativeDriver: false,
-        }),
-        // Se ralentiza: 60% a 80% en 1.5s
-        Animated.timing(progress, {
-          toValue: 80,
-          duration: 1500,
-          useNativeDriver: false,
-        }),
-        // Casi al final: 80% a 90% en 2s (esperando)
-        Animated.timing(progress, {
-          toValue: 90,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
+        Animated.timing(progress, { toValue: 30, duration: 500, useNativeDriver: false }),
+        Animated.timing(progress, { toValue: 60, duration: 1000, useNativeDriver: false }),
+        Animated.timing(progress, { toValue: 80, duration: 1500, useNativeDriver: false }),
+        Animated.timing(progress, { toValue: 90, duration: 2000, useNativeDriver: false }),
       ]);
-      
       animationRef.current.start();
     } else {
-      // Detener animación en curso
       if (animationRef.current) {
         animationRef.current.stop();
+        animationRef.current = null;
       }
-      
-      // Completar rápidamente al 100% cuando la carga termina
-      Animated.timing(progress, {
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+      // Animate to 100% first, then hide — avoids abrupt disappearance mid-fill
+      const completionAnim = Animated.timing(progress, {
         toValue: 100,
-        duration: 200,
+        duration: 220,
         useNativeDriver: false,
-      }).start(() => {
-        // Resetear después de completar
-        setTimeout(() => progress.setValue(0), 100);
+      });
+      animationRef.current = completionAnim;
+      completionAnim.start(({ finished }) => {
+        animationRef.current = null;
+        if (finished) {
+          timeoutRef.current = setTimeout(() => {
+            timeoutRef.current = null;
+            setVisible(false);
+            progress.setValue(0);
+          }, 80);
+        }
       });
     }
-    
+
     return () => {
-      if (animationRef.current) {
-        animationRef.current.stop();
-      }
+      if (animationRef.current) { animationRef.current.stop(); animationRef.current = null; }
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
     };
   }, [isLoading]);
-  
-  // No mostrar si no está cargando
-  if (!isLoading) return null;
+
+  if (!visible) return null;
 
   const width = progress.interpolate({
     inputRange: [0, 100],
