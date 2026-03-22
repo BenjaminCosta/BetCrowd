@@ -70,30 +70,16 @@ export const getFriendshipStatus = async (
       return 'none';
     }
 
-    // Check if friends
-    const friendDoc = await getDoc(
-      doc(db, 'users', currentUid, 'friends', targetUid)
-    );
-    if (friendDoc.exists()) {
-      return 'friends';
-    }
+    // PERF: Parallel fetch — all 3 reads fire simultaneously instead of sequentially
+    const [friendDoc, outgoingDoc, incomingDoc] = await Promise.all([
+      getDoc(doc(db, 'users', currentUid, 'friends', targetUid)),
+      getDoc(doc(db, 'users', currentUid, 'outgoingRequests', targetUid)),
+      getDoc(doc(db, 'users', currentUid, 'incomingRequests', targetUid)),
+    ]);
 
-    // Check if outgoing request exists (we sent)
-    const outgoingDoc = await getDoc(
-      doc(db, 'users', currentUid, 'outgoingRequests', targetUid)
-    );
-    if (outgoingDoc.exists()) {
-      return 'pending_sent';
-    }
-
-    // Check if incoming request exists (they sent)
-    const incomingDoc = await getDoc(
-      doc(db, 'users', currentUid, 'incomingRequests', targetUid)
-    );
-    if (incomingDoc.exists()) {
-      return 'pending_received';
-    }
-
+    if (friendDoc.exists()) return 'friends';
+    if (outgoingDoc.exists()) return 'pending_sent';
+    if (incomingDoc.exists()) return 'pending_received';
     return 'none';
   } catch (error) {
     console.error('Error getting friendship status:', error);

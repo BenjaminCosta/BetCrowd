@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,159 +6,186 @@ import {
   TouchableOpacity,
   StyleSheet,
   Linking,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { TopBar } from '../components/TopBar';
-import { Colors, Gradients, Spacing, BorderRadius } from '../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
+
+const SUPPORT_EMAIL = 'soporte@betcrowd.com';
+
+const FAQ_ITEMS = [
+  {
+    question: '¿Cómo me uno a un torneo?',
+    answer:
+      'Podés unirte usando un código de invitación tocando "Unirse con código" en la pantalla de Torneos, o abriendo el link de invitación que te compartió el organizador.',
+  },
+  {
+    question: '¿Cómo invito amigos a mi torneo?',
+    answer:
+      'Desde la pantalla del torneo podés compartir el código o el link de invitación directamente por WhatsApp u otras apps.',
+  },
+  {
+    question: '¿Se usa dinero real?',
+    answer:
+      'No. BetCrowd es una app de competencia social entre amigos, sin dinero real ni transacciones de ningún tipo.',
+  },
+  {
+    question: '¿Cómo elimino mi cuenta?',
+    answer: `Escribinos a ${SUPPORT_EMAIL} y eliminamos tu cuenta y todos tus datos en menos de 48 horas.`,
+  },
+];
 
 const HelpSupportScreen = () => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
-  const helpTopics = [
-    {
-      icon: 'help-circle',
-      title: 'Preguntas Frecuentes',
-      description: '¿Tienes dudas? Encuentra respuestas a las preguntas más comunes.',
-    },
-    {
-      icon: 'book',
-      title: 'Guía de Usuario',
-      description: 'Aprende a usar todas las funciones de BetCrowd paso a paso.',
-    },
-    {
-      icon: 'trophy',
-      title: 'Cómo Crear Torneos',
-      description: 'Tutorial completo para crear y gestionar tus propios torneos.',
-    },
-    {
-      icon: 'bar-chart',
-      title: 'Sistema de Puntos',
-      description: 'Entiende cómo funciona el sistema de puntuación y rankings.',
-    },
-  ];
-
-  const contactOptions = [
-    {
-      icon: 'mail',
-      title: 'Email',
-      value: 'soporte@betcrowd.com',
-      action: () => Linking.openURL('mailto:soporte@betcrowd.com'),
-    },
-    {
-      icon: 'logo-whatsapp',
-      title: 'WhatsApp',
-      value: '+34 600 123 456',
-      action: () => Linking.openURL('https://wa.me/34600123456'),
-    },
-    {
-      icon: 'chatbubbles',
-      title: 'Chat en Vivo',
-      value: 'Lun - Vie, 9:00 - 18:00',
-      action: () => console.log('Abrir chat'),
-    },
-  ];
+  const toggle = (index: number) =>
+    setOpenIndex(openIndex === index ? null : index);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TopBar showBackButton />
-      
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.foreground }]}>
             Ayuda y Soporte
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Estamos aquí para ayudarte. Encuentra recursos útiles o contáctanos directamente.
+            Estamos aquí para ayudarte.
           </Text>
         </View>
 
-        {/* Help Topics */}
+        {/* Contacto */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Recursos de Ayuda
+            Contacto
           </Text>
-          <View style={styles.topicsContainer}>
-            {helpTopics.map((topic, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.topicCard, { backgroundColor: colors.card }]}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.topicIconContainer, { backgroundColor: colors.accent + '20' }]}>
-                  <Ionicons name={topic.icon as any} size={24} color={colors.accent} />
-                </View>
-                <View style={styles.topicContent}>
-                  <Text style={[styles.topicTitle, { color: colors.foreground }]}>
-                    {topic.title}
-                  </Text>
-                  <Text style={[styles.topicDescription, { color: colors.mutedForeground }]}>
-                    {topic.description}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Contact Options */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Contacto Directo
-          </Text>
-          <View style={styles.contactContainer}>
-            {contactOptions.map((option, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.contactCard, { backgroundColor: colors.card }]}
-                onPress={option.action}
-                activeOpacity={0.7}
-              >
-                <View style={styles.contactLeft}>
-                  <View style={[styles.contactIcon, { backgroundColor: colors.primary + '20' }]}>
-                    <Ionicons name={option.icon as any} size={22} color={colors.primary} />
-                  </View>
-                  <View>
-                    <Text style={[styles.contactTitle, { color: colors.foreground }]}>
-                      {option.title}
-                    </Text>
-                    <Text style={[styles.contactValue, { color: colors.mutedForeground }]}>
-                      {option.value}
-                    </Text>
-                  </View>
-                </View>
-                <Ionicons name="open-outline" size={20} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Quick Help Button */}
-        <TouchableOpacity
-          style={styles.quickHelpButton}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={Gradients.primary as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.quickHelpGradient}
+          <TouchableOpacity
+            style={[styles.row, { backgroundColor: colors.card }]}
+            onPress={() => {
+              const url = `mailto:${SUPPORT_EMAIL}?subject=Soporte%20BetCrowd`;
+              Linking.openURL(url).catch(() => {
+                Alert.alert('Error', 'No se pudo abrir el cliente de correo.');
+              });
+            }}
+            activeOpacity={0.7}
           >
-            <Ionicons name="rocket" size={24} color="#FFFFFF" />
-            <Text style={styles.quickHelpText}>
-              Enviar Comentarios
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <View style={styles.rowLeft}>
+              <View
+                style={[
+                  styles.iconBox,
+                  { backgroundColor: colors.primary + '20' },
+                ]}
+              >
+                <Ionicons name="mail" size={22} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                  Email
+                </Text>
+                <Text
+                  style={[styles.rowSubtitle, { color: colors.mutedForeground }]}
+                >
+                  {SUPPORT_EMAIL}
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name="open-outline"
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </TouchableOpacity>
+        </View>
 
-        <View style={[styles.infoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Ionicons name="time" size={18} color={colors.primary} />
-          <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-            Nuestro equipo de soporte responde en menos de 24 horas
+        {/* FAQ */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Preguntas frecuentes
           </Text>
+          <View style={[styles.faqCard, { backgroundColor: colors.card }]}>
+            {FAQ_ITEMS.map((item, index) => (
+              <View key={index}>
+                {index > 0 && (
+                  <View
+                    style={[styles.divider, { backgroundColor: colors.border }]}
+                  />
+                )}
+                <TouchableOpacity
+                  style={styles.faqRow}
+                  onPress={() => toggle(index)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[styles.faqQuestion, { color: colors.foreground }]}
+                  >
+                    {item.question}
+                  </Text>
+                  <Ionicons
+                    name={openIndex === index ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={colors.mutedForeground}
+                  />
+                </TouchableOpacity>
+                {openIndex === index && (
+                  <Text
+                    style={[
+                      styles.faqAnswer,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {item.answer}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Legal */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Legal
+          </Text>
+          <View style={[styles.faqCard, { backgroundColor: colors.card }]}>
+            <TouchableOpacity
+              style={styles.legalRow}
+              onPress={() =>
+                Linking.openURL('https://betcrowd.vercel.app/privacy')
+              }
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.legalText, { color: colors.foreground }]}>
+                Política de Privacidad
+              </Text>
+              <Ionicons
+                name="open-outline"
+                size={18}
+                color={colors.mutedForeground}
+              />
+            </TouchableOpacity>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <TouchableOpacity
+              style={styles.legalRow}
+              onPress={() =>
+                Linking.openURL('https://betcrowd.vercel.app/terms')
+              }
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.legalText, { color: colors.foreground }]}>
+                Términos y Condiciones
+              </Text>
+              <Ionicons
+                name="open-outline"
+                size={18}
+                color={colors.mutedForeground}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -194,94 +221,68 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: Spacing.md,
   },
-  topicsContainer: {
-    gap: Spacing.sm,
-  },
-  topicCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.md,
-  },
-  topicIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  topicContent: {
-    flex: 1,
-    gap: 4,
-  },
-  topicTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  topicDescription: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  contactContainer: {
-    gap: Spacing.sm,
-  },
-  contactCard: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
   },
-  contactLeft: {
+  rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
   },
-  contactIcon: {
+  iconBox: {
     width: 44,
     height: 44,
     borderRadius: BorderRadius.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  contactTitle: {
+  rowTitle: {
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 2,
   },
-  contactValue: {
+  rowSubtitle: {
     fontSize: 13,
   },
-  quickHelpButton: {
-    marginBottom: Spacing.md,
+  faqCard: {
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
   },
-  quickHelpGradient: {
+  divider: {
+    height: 1,
+    marginHorizontal: Spacing.md,
+  },
+  faqRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
-  },
-  quickHelpText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  infoBox: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
     gap: Spacing.sm,
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
   },
-  infoText: {
+  faqQuestion: {
     flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  faqAnswer: {
     fontSize: 13,
+    lineHeight: 19,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+  },
+  legalText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
 

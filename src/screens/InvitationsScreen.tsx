@@ -3,7 +3,7 @@ import {
   Alert,
   View,
   Text,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -17,7 +17,7 @@ import { Card, EmptyState } from '../components/CommonComponents';
 import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { useSocial } from '../context/SocialContext';
+import { useInvites } from '../context/InvitesContext';
 import { TournamentInvite } from '../services/inviteService';
 import TournamentPreviewSheet from './tournament/components/TournamentPreviewSheet';
 
@@ -35,7 +35,7 @@ const InvitationsScreen = ({ navigation }: any) => {
     cancelInvite,
     dismissSentInvite,
     dismissReceivedInvite,
-  } = useSocial();
+  } = useInvites();
 
   const [activeTab, setActiveTab] = useState<TabType>('received');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -320,49 +320,25 @@ const InvitationsScreen = ({ navigation }: any) => {
     return cardContent;
   };
 
-  const renderContent = () => {
+  const activeData = useMemo<TournamentInvite[]>(() => {
     if (activeTab === 'received') {
-      // Primary truth: Firestore hiddenBy.to flag. Local set handles optimistic UI
-      // while the onSnapshot hasn't propagated yet.
-      const visibleReceived = receivedInvites.filter(
+      return receivedInvites.filter(
         inv => !inv.hiddenBy?.to && !dismissedReceivedIds.has(inv.id),
       );
-      if (visibleReceived.length === 0) {
-        return (
-          <EmptyState
-            iconName="trophy-outline"
-            title="Sin invitaciones"
-            message="No tienes invitaciones a torneos"
-          />
-        );
-      }
-      return visibleReceived.map(renderReceivedItem);
     }
-
-    if (sentInvites.length === 0) {
-      return (
-        <EmptyState
-          iconName="paper-plane-outline"
-          title="Sin invitaciones enviadas"
-          message="No has enviado invitaciones a torneos"
-        />
-      );
-    }
-    // Primary truth: Firestore hiddenBy.from flag. Local set handles optimistic UI.
-    const visibleSentInvites = sentInvites.filter(
+    return sentInvites.filter(
       inv => !inv.hiddenBy?.from && !dismissedIds.has(inv.id),
     );
-    if (visibleSentInvites.length === 0) {
-      return (
-        <EmptyState
-          iconName="paper-plane-outline"
-          title="Sin invitaciones enviadas"
-          message="No has enviado invitaciones a torneos"
-        />
-      );
-    }
-    return visibleSentInvites.map(renderSentItem);
-  };
+  }, [activeTab, receivedInvites, sentInvites, dismissedReceivedIds, dismissedIds]);
+
+  const renderInviteItem = ({ item }: { item: TournamentInvite }) =>
+    activeTab === 'received' ? renderReceivedItem(item) : renderSentItem(item);
+
+  const renderEmpty = () => (
+    activeTab === 'received'
+      ? <EmptyState iconName="trophy-outline" title="Sin invitaciones" message="No tienes invitaciones a torneos" />
+      : <EmptyState iconName="paper-plane-outline" title="Sin invitaciones enviadas" message="No has enviado invitaciones a torneos" />
+  );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -430,9 +406,15 @@ const InvitationsScreen = ({ navigation }: any) => {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        {renderContent()}
-      </ScrollView>
+      <FlatList
+        data={activeData}
+        keyExtractor={(item) => item.id}
+        renderItem={renderInviteItem}
+        ListEmptyComponent={renderEmpty}
+        extraData={actionLoading}
+        contentContainerStyle={[styles.content, styles.contentGrow]}
+        showsVerticalScrollIndicator={false}
+      />
 
       {/* Preview sheet for "Ver" on received invites */}
       <TournamentPreviewSheet
@@ -508,6 +490,9 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.md,
     gap: Spacing.sm,
+  },
+  contentGrow: {
+    flexGrow: 1,
   },
   inviteCard: {
     padding: Spacing.sm,

@@ -18,7 +18,7 @@ import { Card, EmptyState } from '../CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
-import { useSocial } from '../../context/SocialContext';
+import { useFriends } from '../../context/FriendsContext';
 import { searchTournaments, Tournament } from '../../services/tournamentService';
 import { searchUsersByUsernamePrefix, getFriendshipStatus, FriendshipStatus } from '../../services/friendsService';
 import { PublicProfile } from '../../services/publicProfileService';
@@ -41,7 +41,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ onClose }) => {
   const colors = Colors[theme];
   const { showToast } = useToast();
   const { user } = useAuth();
-  const { sendFriendRequest, acceptFriendRequest, cancelFriendRequest, getFriendshipStatus: checkStatus } = useSocial();
+  const { sendFriendRequest, acceptFriendRequest, cancelFriendRequest, getFriendshipStatus: checkStatus } = useFriends();
   const navigation = useNavigation<NavigationProp<any>>();
 
   const [activeTab, setActiveTab] = useState<TabType>('tournaments');

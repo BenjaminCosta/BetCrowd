@@ -15,7 +15,7 @@ import { Card, EmptyState } from '../components/CommonComponents';
 import { SwipeableRow } from '../components/BetanoComponents';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { useSocial } from '../context/SocialContext';
+import { useNotifications } from '../context/NotificationsContext';
 import { Notification } from '../services/notificationsService';
 
 const NotificationCenterScreen = ({ navigation }: any) => {
@@ -27,7 +27,7 @@ const NotificationCenterScreen = ({ navigation }: any) => {
     markAsRead,
     markAllAsRead,
     deleteNotification,
-  } = useSocial();
+  } = useNotifications();
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const { showToast } = useToast();

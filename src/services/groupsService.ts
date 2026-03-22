@@ -13,6 +13,14 @@ import { getPublicProfile, PublicProfile } from './publicProfileService';
 /** Lives for the app session; avoids redundant Firestore reads across calls. */
 const _profileCache = new Map<string, PublicProfile | null>();
 
+// ─── Balance cache (TTL: 2 min) ──────────────────────────────────────────────
+const _balanceCache = new Map<string, { balances: UserBalance[]; ts: number }>();
+const BALANCE_CACHE_TTL_MS = 2 * 60 * 1000;
+
+export const invalidateBalanceCache = (tournamentId: string) => {
+  _balanceCache.delete(tournamentId);
+};
+
 // ─── Concurrency helper ───────────────────────────────────────────────────────
 /**
  * Process `items` with at most `limit` concurrent Promises.
@@ -59,6 +67,10 @@ export interface Debt {
 export const calculateTournamentBalances = async (
   tournamentId: string
 ): Promise<UserBalance[]> => {
+  const cached = _balanceCache.get(tournamentId);
+  if (cached && Date.now() - cached.ts < BALANCE_CACHE_TTL_MS) {
+    return cached.balances;
+  }
   try {
     // Fetch members + events concurrently
     const membersRef = collection(db, 'tournaments', tournamentId, 'members');
@@ -234,7 +246,9 @@ export const calculateTournamentBalances = async (
     });
 
     // Sort by net balance descending
-    return userBalances.sort((a, b) => b.netBalance - a.netBalance);
+    const sorted = userBalances.sort((a, b) => b.netBalance - a.netBalance);
+    _balanceCache.set(tournamentId, { balances: sorted, ts: Date.now() });
+    return sorted;
   } catch (error) {
     console.error('Error calculating tournament balances:', error);
     throw error;

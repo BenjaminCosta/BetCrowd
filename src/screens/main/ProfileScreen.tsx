@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Alert,
+  Linking,
   View,
   Text,
   ScrollView,
@@ -15,7 +16,8 @@ import UserAvatar from '../../components/UserAvatar';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
-import { useSocial } from '../../context/SocialContext';
+import { useFriends } from '../../context/FriendsContext';
+import { useInvites } from '../../context/InvitesContext';
 import { getUserProfile } from '../../services/userService';
 
 const ProfileScreen = ({ navigation }: any) => {
@@ -23,7 +25,8 @@ const ProfileScreen = ({ navigation }: any) => {
   const colors = Colors[theme];
   const { user, signOut } = useAuth();
   const { showToast } = useToast();
-  const { friends, incomingRequests, pendingInviteCount } = useSocial();
+  const { friends, incomingRequests } = useFriends();
+  const { pendingInviteCount } = useInvites();
   const [fullName, setFullName] = useState<string>('');
 
   useEffect(() => {
@@ -202,9 +205,13 @@ const ProfileScreen = ({ navigation }: any) => {
 
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.settingRow}
-              onPress={() => navigation.navigate('Privacy')}
+              onPress={() => {
+                Linking.openURL('https://betcrowd.vercel.app/privacy').catch(() => {
+                  Alert.alert('Error', 'No se pudo abrir la página de privacidad.');
+                });
+              }}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="lock-closed" size={20} color={colors.foreground} />

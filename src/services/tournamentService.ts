@@ -221,6 +221,7 @@ export const joinTournamentByInviteCode = async (code: string): Promise<string> 
     role: 'member',
     joinedAt: serverTimestamp(),
   });
+  invalidateMemberCountCache(tournamentId);
 
   // ── Step 4: Now as a member, read tournament for denormalization ──────────
   // Rules allow: `allow get: if isTournamentMember(tournamentId)` — we just joined
@@ -381,14 +382,28 @@ export const getTournament = async (tournamentId: string): Promise<Tournament | 
   }
 };
 
+// ─── Member count cache (TTL: 5 min) ─────────────────────────────────────────
+const _memberCountCache = new Map<string, { count: number; ts: number }>();
+const MEMBER_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export const invalidateMemberCountCache = (tournamentId: string) => {
+  _memberCountCache.delete(tournamentId);
+};
+
 /**
- * Get member count for a tournament
+ * Get member count for a tournament (cached 5 min)
  */
 export const getTournamentMemberCount = async (tournamentId: string): Promise<number> => {
+  const cached = _memberCountCache.get(tournamentId);
+  if (cached && Date.now() - cached.ts < MEMBER_COUNT_CACHE_TTL_MS) {
+    return cached.count;
+  }
   try {
     const membersRef = collection(db, 'tournaments', tournamentId, 'members');
     const snapshot = await getDocs(membersRef);
-    return snapshot.size;
+    const count = snapshot.size;
+    _memberCountCache.set(tournamentId, { count, ts: Date.now() });
+    return count;
   } catch (error) {
     console.error('Error getting member count:', error);
     return 0;
@@ -1087,4 +1102,5 @@ export const removeMemberFromTournament = async (
   );
 
   await batch.commit();
+  invalidateMemberCountCache(tournamentId);
 };

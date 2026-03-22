@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Alert,
   View,
   Text,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -16,7 +16,7 @@ import { Card, EmptyState } from '../components/CommonComponents';
 import UserAvatar from '../components/UserAvatar';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { useSocial } from '../context/SocialContext';
+import { useFriends } from '../context/FriendsContext';
 
 type TabType = 'friends' | 'incoming' | 'outgoing';
 
@@ -32,7 +32,7 @@ const FriendsScreen = ({ navigation }: any) => {
     rejectFriendRequest,
     cancelFriendRequest,
     removeFriend,
-  } = useSocial();
+  } = useFriends();
 
   const [activeTab, setActiveTab] = useState<TabType>('friends');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -243,7 +243,25 @@ const FriendsScreen = ({ navigation }: any) => {
     );
   };
 
-  const renderContent = () => {
+  const activeData = useMemo(() => {
+    if (activeTab === 'friends') return friends;
+    if (activeTab === 'incoming') return incomingRequests;
+    return outgoingRequests;
+  }, [activeTab, friends, incomingRequests, outgoingRequests]);
+
+  const renderItem = ({ item }: { item: any }) => {
+    if (activeTab === 'friends') return renderFriendItem(item, true);
+    if (activeTab === 'incoming') return renderIncomingItem(item);
+    return renderOutgoingItem(item);
+  };
+
+  const emptyMessages = {
+    friends: { icon: 'people-outline', title: 'No tienes amigos aún', message: 'Busca usuarios y envía solicitudes de amistad' },
+    incoming: { icon: 'mail-outline', title: 'No hay solicitudes', message: 'No tienes solicitudes de amistad pendientes' },
+    outgoing: { icon: 'paper-plane-outline', title: 'No hay solicitudes enviadas', message: 'No has enviado solicitudes de amistad' },
+  } as const;
+
+  const renderEmpty = useCallback(() => {
     if (friendsLoading) {
       return (
         <View style={styles.loadingContainer}>
@@ -251,46 +269,9 @@ const FriendsScreen = ({ navigation }: any) => {
         </View>
       );
     }
-
-    if (activeTab === 'friends') {
-      if (friends.length === 0) {
-        return (
-          <EmptyState
-            iconName="people-outline"
-            title="No tienes amigos aún"
-            message="Busca usuarios y envía solicitudes de amistad"
-          />
-        );
-      }
-      return friends.map(friend => renderFriendItem(friend, true));
-    }
-
-    if (activeTab === 'incoming') {
-      if (incomingRequests.length === 0) {
-        return (
-          <EmptyState
-            iconName="mail-outline"
-            title="No hay solicitudes"
-            message="No tienes solicitudes de amistad pendientes"
-          />
-        );
-      }
-      return incomingRequests.map(request => renderIncomingItem(request));
-    }
-
-    if (activeTab === 'outgoing') {
-      if (outgoingRequests.length === 0) {
-        return (
-          <EmptyState
-            iconName="paper-plane-outline"
-            title="No hay solicitudes enviadas"
-            message="No has enviado solicitudes de amistad"
-          />
-        );
-      }
-      return outgoingRequests.map(request => renderOutgoingItem(request));
-    }
-  };
+    const { icon, title, message } = emptyMessages[activeTab];
+    return <EmptyState iconName={icon} title={title} message={message} />;
+  }, [friendsLoading, activeTab, colors.primary]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -380,9 +361,14 @@ const FriendsScreen = ({ navigation }: any) => {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        {renderContent()}
-      </ScrollView>
+      <FlatList
+        data={friendsLoading ? [] : activeData}
+        keyExtractor={(item) => item.uid}
+        renderItem={renderItem}
+        ListEmptyComponent={renderEmpty}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 };

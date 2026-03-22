@@ -1,7 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  ImageBackground,
+  Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
   StyleSheet,
@@ -42,6 +42,17 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onFinish }) => {
   const slides = useMemo(() => SLIDES, []);
   const isLastSlide = activeIndex === slides.length - 1;
 
+  useEffect(() => {
+    slides.forEach((slide) => {
+      const resolved = Image.resolveAssetSource(slide.image);
+      if (resolved?.uri) {
+        Image.prefetch(resolved.uri).catch((error: unknown) => {
+          if (__DEV__) console.warn('OnboardingScreen: asset preload error', error);
+        });
+      }
+    });
+  }, [slides]);
+
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
     setActiveIndex(Math.max(0, Math.min(nextIndex, slides.length - 1)));
@@ -66,6 +77,20 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onFinish }) => {
     setActiveIndex(nextIndex);
   };
 
+  const renderItem = useCallback(
+    ({ item }: { item: Slide }) => (
+      <View style={{ width, height }}>
+        <Image
+          source={item.image}
+          style={[styles.slideImage, { backgroundColor }]}
+          resizeMode="contain"
+          fadeDuration={0}
+        />
+      </View>
+    ),
+    [backgroundColor, height, width],
+  );
+
   return (
     <View style={[styles.container, { backgroundColor }]}>
       <FlatList
@@ -77,21 +102,16 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onFinish }) => {
         bounces={false}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleMomentumEnd}
-        renderItem={({ item }) => (
-          <View style={{ width, height }}>
-            <ImageBackground
-              source={item.image}
-              style={[styles.slide, { backgroundColor }]}
-              imageStyle={styles.slideImage}
-              resizeMode="contain"
-            />
-          </View>
-        )}
+        renderItem={renderItem}
         getItemLayout={(_, index) => ({
           length: width,
           offset: width * index,
           index,
         })}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={2}
+        removeClippedSubviews
         extraData={width}
       />
 
@@ -138,9 +158,6 @@ export default OnboardingScreen;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  slide: {
     flex: 1,
   },
   slideImage: {

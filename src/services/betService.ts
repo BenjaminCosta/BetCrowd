@@ -9,6 +9,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   Timestamp,
   serverTimestamp,
@@ -89,7 +90,7 @@ export interface PickInput {
  */
 export const listBets = async (tournamentId: string, eventId: string): Promise<Bet[]> => {
   const betsRef = collection(db, 'tournaments', tournamentId, 'events', eventId, 'bets');
-  const q = query(betsRef, orderBy('createdAt', 'desc'));
+  const q = query(betsRef, orderBy('createdAt', 'desc'), limit(100));
   const snapshot = await getDocs(q);
   
   return snapshot.docs.map((doc) => ({

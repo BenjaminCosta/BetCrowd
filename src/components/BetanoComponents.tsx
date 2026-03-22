@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Modal } from 'react-native';
+import { useTooltip } from '../hooks/useTooltip';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -14,6 +15,48 @@ const { width } = Dimensions.get('window');
 // Strip 'de ' from over/under labels: 'Más de 2.5' → 'Más 2.5'
 const formatOptionLabel = (option: string) =>
   option.replace(/Más de /g, 'Más ').replace(/Menos de /g, 'Menos ');
+
+// ─── InlineTip ────────────────────────────────────────────────────────────────
+// Small dismissible banner rendered inside BetCardCompact for one-time tips.
+
+interface InlineTipProps {
+  colors: any;
+  message: string;
+  onDismiss: () => void;
+}
+
+const InlineTip: React.FC<InlineTipProps> = ({ colors, message, onDismiss }) => (
+  <View
+    style={[
+      inlineTipStyles.container,
+      { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' },
+    ]}
+  >
+    <Ionicons name="information-circle-outline" size={13} color={colors.primary} />
+    <Text style={[inlineTipStyles.text, { color: colors.mutedForeground }]}>{message}</Text>
+    <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <Text style={[inlineTipStyles.dismiss, { color: colors.primary }]}>OK</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+const inlineTipStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginHorizontal: 6,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  text: { flex: 1, fontSize: 11, lineHeight: 16 },
+  dismiss: { fontSize: 12, fontWeight: '700' },
+});
+
+// ─── BetCardCompact ────────────────────────────────────────────────────────────
 
 interface BetCardCompactProps {
   bet: Bet;
@@ -49,6 +92,12 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
         )
       : baseOdds
   );
+  // ── One-time contextual tips (T-05, T-06, T-07, T-08) ──────────────────────
+  const { seen: pendingTipSeen, markSeen: markPendingTipSeen } = useTooltip('bet_pending');
+  const { seen: lockedTipSeen, markSeen: markLockedTipSeen }   = useTooltip('bet_locked');
+  const { seen: voidTipSeen,   markSeen: markVoidTipSeen }     = useTooltip('bet_void');
+  const { seen: cancelTipSeen, markSeen: markCancelTipSeen }   = useTooltip('cancel_pick');
+
   const [showPendingTip, setShowPendingTip] = useState(false);
   const infoButtonRef = useRef<any>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, btnW: 0 });
@@ -221,6 +270,42 @@ export const BetCardCompact: React.FC<BetCardCompactProps> = ({
           )}
         </View>
       </LinearGradient>
+
+      {/* T-05: pending bet — one-time contextual tip */}
+      {bet.status === 'pending' && !pendingTipSeen && (
+        <InlineTip
+          colors={colors}
+          message="Esta apuesta se activa cuando haya participantes en ambos lados. Por ahora no hay cuotas."
+          onDismiss={markPendingTipSeen}
+        />
+      )}
+
+      {/* T-06: locked bet — one-time contextual tip (auto-lock by system) */}
+      {bet.status === 'locked' && !lockedTipSeen && (
+        <InlineTip
+          colors={colors}
+          message="Las apuestas se cierran automáticamente cuando el evento comienza. Ya no se pueden hacer cambios."
+          onDismiss={markLockedTipSeen}
+        />
+      )}
+
+      {/* T-07: void result — one-time contextual tip */}
+      {isVoid && !voidTipSeen && (
+        <InlineTip
+          colors={colors}
+          message="Apuesta anulada: solo un lado apostó. No hay ganadores ni perdedores."
+          onDismiss={markVoidTipSeen}
+        />
+      )}
+
+      {/* T-08: cancel own pick — one-time contextual tip */}
+      {!!onCancel && !!userSelection && (bet.status === 'open' || bet.status === 'pending') && !cancelTipSeen && (
+        <InlineTip
+          colors={colors}
+          message="Podés cancelar tu apuesta mientras el mercado esté abierto."
+          onDismiss={markCancelTipSeen}
+        />
+      )}
 
       {/* Options */}
       <View style={styles.optionsContainer}>

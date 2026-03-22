@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Unsubscribe, getDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
@@ -87,21 +87,24 @@ export const TournamentsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // updated when an admin deleted the tournament (they can only update their own ref).
       if (!hasVerifiedStatuses.current) {
         hasVerifiedStatuses.current = true;
-        refs.filter(r => r.status !== 'deleted').forEach(async (ref) => {
-          try {
-            const snap = await getDoc(doc(db, 'tournaments', ref.tournamentId));
-            if (isMounted.current && snap.exists() && snap.data()?.status === 'deleted') {
-              // Patch our own ref so the listener re-fires with the correct status
-              await setDoc(
-                doc(db, 'users', user.uid, 'tournamentRefs', ref.tournamentId),
-                { status: 'deleted' },
-                { merge: true },
-              );
+        // PERF: Parallel fetch — all tournament status checks fire simultaneously
+        const activeRefs = refs.filter(r => r.status !== 'deleted');
+        Promise.all(
+          activeRefs.map(async (ref) => {
+            try {
+              const snap = await getDoc(doc(db, 'tournaments', ref.tournamentId));
+              if (isMounted.current && snap.exists() && snap.data()?.status === 'deleted') {
+                await setDoc(
+                  doc(db, 'users', user.uid, 'tournamentRefs', ref.tournamentId),
+                  { status: 'deleted' },
+                  { merge: true },
+                );
+              }
+            } catch {
+              // Best-effort, never throw
             }
-          } catch {
-            // Best-effort, never throw
-          }
-        });
+          })
+        ).catch(() => {});
       }
     }, () => {
       // Error callback: stop loading on error
@@ -121,16 +124,13 @@ export const TournamentsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setRefreshing(false);
   }, []);
 
+  const value = useMemo(
+    () => ({ tournaments, adminStatuses, loading, refreshing, refresh }),
+    [tournaments, adminStatuses, loading, refreshing, refresh],
+  );
+
   return (
-    <TournamentsContext.Provider
-      value={{
-        tournaments,
-        adminStatuses,
-        loading,
-        refreshing,
-        refresh,
-      }}
-    >
+    <TournamentsContext.Provider value={value}>
       {children}
     </TournamentsContext.Provider>
   );

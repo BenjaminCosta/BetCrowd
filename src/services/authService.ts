@@ -4,7 +4,7 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { upsertPublicProfile } from './publicProfileService';
 
@@ -60,7 +60,7 @@ export const signIn = async (emailOrUsername: string, password: string) => {
       try {
         // Search for user with this username
         const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('username', '==', emailOrUsername.toLowerCase().trim()));
+        const q = query(usersRef, where('username', '==', emailOrUsername.toLowerCase().trim()), limit(1));
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {

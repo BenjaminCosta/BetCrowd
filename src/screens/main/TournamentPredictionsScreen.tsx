@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useTooltip } from '../../hooks/useTooltip';
+import { ContextualTooltip } from '../../components/ContextualTooltip';
 import {
   Alert,
   View,
@@ -20,9 +22,9 @@ import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
-import { getDocs, collection, query, orderBy } from 'firebase/firestore';
+import { getDocs, collection, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { listMyTournaments } from '../../services/tournamentService';
+import { useTournaments } from '../../context/TournamentsContext';
 import {
   getMyPick,
   getBet,
@@ -47,6 +49,10 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const colors = Colors[theme];
   const { showToast } = useToast();
   const { user } = useAuth();
+  const { tournaments: contextTournaments } = useTournaments();
+  // Ref so the async loadData always reads the latest value without extra deps
+  const contextTournamentsRef = useRef(contextTournaments);
+  useEffect(() => { contextTournamentsRef.current = contextTournaments; }, [contextTournaments]);
   const { tournamentId: routeTournamentId } = route?.params || {};
 
   // ── Pick lists ────────────────────────────────────────────────────────────
@@ -73,6 +79,12 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   // ── Tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
 
+  // ── T-10: swipe-to-hide tooltip on settled picks (one-time) ──────────────
+  const { seen: hideTipSeen, markSeen: markHideSeen, loaded: hideTipLoaded } =
+    useTooltip('hide_pick');
+  const [showHideTooltip, setShowHideTooltip] = useState(false);
+  const firstSettledCardRef = useRef<any>(null);
+
   // ── BetModal ──────────────────────────────────────────────────────────────
   const [showBetModal, setShowBetModal] = useState(false);
   const [modalBet, setModalBet] = useState<Bet | null>(null);
@@ -97,6 +109,13 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
   const deferredRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // In-flight guard: prevents concurrent hide/restore on the same pick key
   const inFlightKeysRef = useRef<Set<string>>(new Set());
+
+  // Show T-10 tooltip when user switches to settled tab and has picks to swipe
+  useEffect(() => {
+    if (hideTipSeen || !hideTipLoaded || activeTab !== 'settled' || settledPicks.length === 0) return;
+    const timer = setTimeout(() => setShowHideTooltip(true), 700);
+    return () => clearTimeout(timer);
+  }, [hideTipSeen, hideTipLoaded, activeTab, settledPicks.length]);
 
   // Hydrate hidden-keys cache from AsyncStorage on mount.
   // dismissedLoadedRef prevents the persist effect below from writing an
@@ -156,20 +175,23 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
       /** Settled picks with hiddenFromPredictionsAt != null */
       const allHiddenPicks: any[] = [];
 
-      // Step 1: Parallel-fetch tournament list + full picks index.
-      // A single picksIndex query replaces the N+1 cascade:
+      // Step 1: Read tournaments from context (no extra Firestore call) + fetch picks index.
+      // picksIndex query replaces the N+1 cascade:
       //   torneo → listEvents() → listBets() → getMyPick()   [O(T×E×B) reads]
       // becomes:
       //   picksIndex query → parallel-fetch only referenced docs  [O(P) reads]
-      const [allTournaments, indexSnap] = await Promise.all([
-        listMyTournaments(),
-        getDocs(
-          query(
-            collection(db, 'users', user.uid, 'picksIndex'),
-            orderBy('updatedAt', 'desc'),
-          ),
+      const allTournaments = contextTournamentsRef.current;
+      const indexSnap = await getDocs(
+        query(
+          collection(db, 'users', user.uid, 'picksIndex'),
+          orderBy('updatedAt', 'desc'),
+          limit(200),
         ),
-      ]);
+      );
+
+      if (indexSnap.docs.length === 200) {
+        console.warn('[TournamentPredictionsScreen] picksIndex query hit the 200-doc limit — some picks may be truncated.');
+      }
 
       const tournamentMap = new Map<string, any>(allTournaments.map((t) => [t.id, t]));
       const activeIds = new Set(
@@ -548,6 +570,18 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     return groups;
   }, [currentPicks, activeTab]);
 
+  // The compound key of the first visually-rendered settled pick, used to attach
+  // firstSettledCardRef to the correct card without relying on indexOf across arrays.
+  const firstSettledPickKey = useMemo(() => {
+    for (const group of groupedPicks) {
+      for (const pickData of group) {
+        const isSettled = pickData.bet?.status === 'settled' || pickData.bet?.status === 'cancelled';
+        if (isSettled) return `${pickData.tournamentId}__${pickData.eventId}__${pickData.betId}`;
+      }
+    }
+    return null;
+  }, [groupedPicks]);
+
   // ── Loading screen ────────────────────────────────────────────────────────
   if (!initialLoadDone) {
     return (
@@ -717,9 +751,13 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                         </View>
                       );
                       if (isSettled) {
+                        const isFirstSettled = `${pickData.tournamentId}__${pickData.eventId}__${pickData.betId}` === firstSettledPickKey;
                         return (
-                          <SwipeableRow
+                          <View
                             key={pickKey}
+                            ref={isFirstSettled ? firstSettledCardRef : undefined}
+                          >
+                          <SwipeableRow
                             actions={[
                               showHidden
                                 ? {
@@ -738,6 +776,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                           >
                             {betCard}
                           </SwipeableRow>
+                          </View>
                         );
                       }
                       return betCard;
@@ -784,6 +823,14 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
           currentPickStake={modalCurrentPickStake}
         />
       </View>
+      <ContextualTooltip
+        visible={showHideTooltip}
+        onDismiss={() => { setShowHideTooltip(false); markHideSeen(); }}
+        title="Ocultar predicción"
+        message="Deslizá una predicción resuelta hacia la izquierda para ocultarla de tu historial."
+        targetRef={firstSettledCardRef}
+        bubblePosition="top"
+      />
     </GestureHandlerRootView>
   );
 };

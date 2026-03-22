@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ActivityIndicator, Image, Linking, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { TournamentsProvider } from './src/context/TournamentsContext';
-import { SocialProvider } from './src/context/SocialContext';
+import { FriendsProvider } from './src/context/FriendsContext';
+import { NotificationsProvider } from './src/context/NotificationsContext';
+import { InvitesProvider } from './src/context/InvitesContext';
 import { ToastProvider } from './src/context/ToastContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import AppToast from './src/components/AppToast';
@@ -31,6 +34,14 @@ function AppContent() {
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [onboardingSeen, setOnboardingSeen] = useState(false);
   const colors = Colors[theme];
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    // setBackgroundColorAsync is a no-op with edgeToEdgeEnabled: true on Android 15+.
+    // The nav bar color is determined by the content rendered behind the transparent bar.
+    // We only set the button style (icon tint) which still works.
+    NavigationBar.setButtonStyleAsync(theme === 'dark' ? 'light' : 'dark');
+  }, [theme]);
 
   useEffect(() => {
     let mounted = true;
@@ -138,13 +149,17 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <SocialProvider>
-            <TournamentsProvider>
-              <ToastProvider>
-                <AppContent />
-              </ToastProvider>
-            </TournamentsProvider>
-          </SocialProvider>
+          <FriendsProvider>
+            <NotificationsProvider>
+              <InvitesProvider>
+                <TournamentsProvider>
+                  <ToastProvider>
+                    <AppContent />
+                  </ToastProvider>
+                </TournamentsProvider>
+              </InvitesProvider>
+            </NotificationsProvider>
+          </FriendsProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -22,6 +22,8 @@ import LoadResultsForm from '../../components/forms/LoadResultsForm';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useTooltip } from '../../hooks/useTooltip';
+import { ContextualTooltip } from '../../components/ContextualTooltip';
 import { sortEventsForFilter } from '../../utils/eventSorting';
 import {
   getTournament,
@@ -152,6 +154,12 @@ const TournamentScreen = ({ navigation, route }: any) => {
   // ── Invite sheet state ─────────────────────────────────────────────────────
   const [showInviteSheet, setShowInviteSheet] = useState(false);
   const [isInvitePostCreation, setIsInvitePostCreation] = useState(false);
+
+  // ── T-03: "Invitar" button tooltip (admin only) ───────────────────────────
+  const { seen: inviteTipSeen, markSeen: markInviteSeen, loaded: inviteTipLoaded } =
+    useTooltip('invitar_admin');
+  const [showInviteTooltip, setShowInviteTooltip] = useState(false);
+  const inviteButtonRef = useRef<any>(null);
   // ── Info tab state ───────────────────────────────────────────────────────────
   const [savingInfo, setSavingInfo] = useState(false);
 
@@ -206,6 +214,13 @@ const TournamentScreen = ({ navigation, route }: any) => {
     });
     return () => task.cancel();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show T-03 tooltip after admin status loads and header is visible
+  useEffect(() => {
+    if (inviteTipSeen || !inviteTipLoaded || !isAdmin || loadingHeader) return;
+    const timer = setTimeout(() => setShowInviteTooltip(true), 800);
+    return () => clearTimeout(timer);
+  }, [inviteTipSeen, inviteTipLoaded, isAdmin, loadingHeader]);
 
   const loadHeaderData = useCallback(async () => {
     try {
@@ -538,6 +553,7 @@ const TournamentScreen = ({ navigation, route }: any) => {
               <View style={styles.headerRight}>
                 {isAdmin && (
                   <TouchableOpacity
+                    ref={inviteButtonRef}
                     style={[styles.inviteBtn, { backgroundColor: colors.primary + '07', borderColor: colors.primary + '40' }]}
                     onPress={() => setShowInviteSheet(true)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -703,6 +719,16 @@ const TournamentScreen = ({ navigation, route }: any) => {
         />
 
       </View>
+
+      {/* T-03: Invitar button tooltip (admin only, one-time) */}
+      <ContextualTooltip
+        visible={showInviteTooltip}
+        onDismiss={() => { setShowInviteTooltip(false); markInviteSeen(); }}
+        title="Invitá a tus amigos"
+        message="Tocá Invitar para sumar amigos al torneo o compartir el código de acceso."
+        targetRef={inviteButtonRef}
+        bubblePosition="bottom"
+      />
     </GestureHandlerRootView>
   );
 };

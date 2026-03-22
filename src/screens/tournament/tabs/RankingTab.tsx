@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
+import { useTooltip } from '../../../hooks/useTooltip';
+import { ContextualTooltip } from '../../../components/ContextualTooltip';
 import { Card, EmptyState } from '../../../components/CommonComponents';
 import { UserBalance } from '../../../services/groupsService';
 import UserAvatar from '../../../components/UserAvatar';
@@ -70,6 +72,18 @@ const RankingTab: React.FC<RankingTabProps> = ({
   });
   const rowRefs = useRef<Record<string, any>>({});
   const usernameRefs = useRef<Record<string, any>>({});
+
+  // ── T-09: tap row tooltip (one-time) ──────────────────────────────────────
+  const { seen: tapTipSeen, markSeen: markTapSeen, loaded: tapTipLoaded } =
+    useTooltip('ranking_tap');
+  const [showTapTooltip, setShowTapTooltip] = useState(false);
+  const firstRowRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (tapTipSeen || !tapTipLoaded || balances.length === 0) return;
+    const timer = setTimeout(() => setShowTapTooltip(true), 800);
+    return () => clearTimeout(timer);
+  }, [tapTipSeen, tapTipLoaded, balances.length]);
 
   const showTooltip = (balance: UserBalance, index: number, uid: string) => {
     const nodeRef = rowRefs.current[uid];
@@ -143,7 +157,18 @@ const RankingTab: React.FC<RankingTabProps> = ({
 
         return (
           <TouchableOpacity
-            ref={(ref) => { if (ref) rowRefs.current[balance.uid] = ref as any; }}
+            ref={(ref) => {
+              if (ref) {
+                rowRefs.current[balance.uid] = ref as any;
+                if (index === 0) firstRowRef.current = ref;
+              } else {
+                const stored = rowRefs.current[balance.uid];
+                delete rowRefs.current[balance.uid];
+                if (firstRowRef.current === stored) {
+                  firstRowRef.current = null;
+                }
+              }
+            }}
             activeOpacity={0.75}
             onPress={() => showTooltip(balance, index, balance.uid)}
           >
@@ -307,6 +332,18 @@ const RankingTab: React.FC<RankingTabProps> = ({
         </View>
       </TouchableWithoutFeedback>
     </Modal>
+
+    {/* T-09: tap row tooltip (one-time) */}
+    <ContextualTooltip
+      visible={showTapTooltip}
+      onDismiss={() => { setShowTapTooltip(false); markTapSeen(); }}
+      title="Ver participante"
+      message={isAdmin
+        ? 'Tocá una fila para ver el perfil del participante o removelo del torneo.'
+        : 'Tocá una fila para ver el perfil del participante.'}
+      targetRef={firstRowRef}
+      bubblePosition="bottom"
+    />
     </>  );
 };
 

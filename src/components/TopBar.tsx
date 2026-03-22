@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { SheetModal } from './SheetModal';
 import SearchPanel from './forms/SearchPanel';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { useSocial } from '../context/SocialContext';
+import { useNotifications } from '../context/NotificationsContext';
 import { getUserProfile } from '../services/userService';
 import UserAvatar from './UserAvatar';
 
@@ -15,12 +16,14 @@ interface TopBarProps {
   showBackButton?: boolean;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
+export const TopBar: React.FC<TopBarProps> = React.memo(({ showBackButton = false }) => {
   const navigation = useNavigation<NavigationProp<any>>();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const insets = useSafeAreaInsets();
+  const paddingTop = Platform.OS === 'android' ? insets.top : Math.max(insets.top, 44);
   const { user } = useAuth();
-  const { unreadCount } = useSocial();
+  const { unreadCount } = useNotifications();
   const [fullName, setFullName] = useState<string>('');
   const [showSearch, setShowSearch] = useState(false);
 
@@ -58,7 +61,7 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
 
   return (
     <>
-    <View style={[styles.container, { backgroundColor: colors.background, borderBottomColor: theme === 'dark' ? '#2A2A2A' : '#E0E0E0' }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, borderBottomColor: theme === 'dark' ? '#2A2A2A' : '#E0E0E0', paddingTop }]}>
       <View style={styles.content}>
         {showBackButton ? (
           <TouchableOpacity 
@@ -120,11 +123,10 @@ export const TopBar: React.FC<TopBarProps> = ({ showBackButton = false }) => {
       </SheetModal>
     </>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 50,
     paddingBottom: 2,
     paddingHorizontal: 16,
     borderBottomWidth: 1,

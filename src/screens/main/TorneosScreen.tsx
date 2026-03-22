@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTooltip } from '../../hooks/useTooltip';
+import { ContextualTooltip } from '../../components/ContextualTooltip';
 import {
   Alert,
   View,
@@ -13,7 +15,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
@@ -25,12 +26,10 @@ import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
 import JoinCodeForm from '../../components/forms/JoinCodeForm';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
-import { useAuth } from '../../context/AuthContext';
+import { useTournaments } from '../../context/TournamentsContext';
 import {
-  listMyTournaments,
   getTournamentMemberCount,
   deleteTournamentSoft,
-  getMyRolesMap,
   Tournament,
 } from '../../services/tournamentService';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -79,92 +78,45 @@ const TorneosScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { tournaments, adminStatuses, loading, refreshing, refresh } = useTournaments();
 
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
-  const [myRoles, setMyRoles] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<TorneoFilter>('active');
-  const isFirstFocusRef = useRef(true);
   const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [showJoinCodeSheet, setShowJoinCodeSheet] = useState(false);
+
+  // ── T-01: swipe admin tooltip ─────────────────────────────────────────────
+  const { seen: swipeTipSeen, markSeen: markSwipeSeen, loaded: swipeTipLoaded } =
+    useTooltip('swipe_torneo_admin');
+  const [showSwipeTooltip, setShowSwipeTooltip] = useState(false);
+  const firstAdminCardRef = useRef<any>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const tooltipFade = useRef(new Animated.Value(0)).current;
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overdueButtonRefs = useRef<Record<string, any>>({});
 
-  // ── Initial load ──────────────────────────────────────────────────────────
+  // ── Member counts (lazy, cached) ──────────────────────────────────────────
 
   useEffect(() => {
-    if (!user) return;
-    loadTournaments();
-  }, [user]);
+    if (tournaments.length === 0) return;
+    let cancelled = false;
+    const active = tournaments.filter((t) => t.status !== 'deleted');
+    const counts: Record<string, number> = {};
+    Promise.all(
+      active.map(async (t) => {
+        try { counts[t.id] = await getTournamentMemberCount(t.id); }
+        catch { counts[t.id] = 0; }
+      }),
+    ).then(() => { if (!cancelled) setMemberCounts(counts); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [tournaments]);
 
-  // ── Reload on focus (skip first mount, same pattern as EventsScreen) ──────
-
-  useFocusEffect(
-    useCallback(() => {
-      if (isFirstFocusRef.current) {
-        isFirstFocusRef.current = false;
-        return;
-      }
-      loadTournaments(false, true); // silent reload
-    }, [])
-  );
-
-  // ── Data loader ───────────────────────────────────────────────────────────
-
-  const loadTournaments = async (isRefreshing = false, silent = false) => {
-    if (isRefreshing) setRefreshing(true);
-    else if (!silent) setLoading(true);
-
-    try {
-      // ── Phase 1: Fetch list + roles in parallel ────────────────────────────
-      // These two reads are independent, so we fire them simultaneously.
-      const [data, roles] = await Promise.all([
-        listMyTournaments(),
-        getMyRolesMap(),
-      ]);
-      const filtered = data.filter((t) => t.status !== 'deleted');
-
-      // PERF: Render the list immediately — don't block on member counts.
-      // The user sees the tournament cards as soon as the list arrives.
-      setTournaments(filtered);
-      setMyRoles(roles);
-      setLoading(false);    // ← unblock loading screen the moment list data is ready
-      setRefreshing(false); // ← hide pull-to-refresh spinner
-
-      // ── Phase 2: Hydrate member counts lazily in the background ───────────
-      // Counts are secondary UI — running them after the list is visible keeps
-      // perceived load time low even as the number of tournaments grows.
-      // Individual errors are swallowed so one bad read never blocks the rest.
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        filtered.map(async (t) => {
-          try {
-            counts[t.id] = await getTournamentMemberCount(t.id);
-          } catch {
-            counts[t.id] = 0; // fallback: show 0 rather than crash the card
-          }
-        }),
-      );
-      setMemberCounts(counts);
-    } catch (e) {
-      console.error('TorneosScreen loadTournaments:', e);
-      // Phase 1 failed — ensure loading indicators are cleared
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const onRefresh = () => loadTournaments(true);
+  const onRefresh = () => refresh();
 
   // ── Filtered list ─────────────────────────────────────────────────────────
 
-  const filteredTournaments = (() => {
+  const filteredTournaments = useMemo(() => {
     const list = tournaments.filter((t) => {
       if (filter === 'active') return t.status === 'active' || t.status === 'locked';
       if (filter === 'finished') return t.status === 'finished';
@@ -176,7 +128,23 @@ const TorneosScreen = ({ navigation }: any) => {
       return bTime - aTime;
     });
     return list;
-  })();
+  }, [tournaments, filter]);
+
+  // The id of the first admin tournament in the filtered list so renderTournamentCard
+  // can attach firstAdminCardRef without mutating a ref during render.
+  const firstAdminId = useMemo(
+    () => filteredTournaments.find((t) => adminStatuses[t.id])?.id ?? null,
+    [filteredTournaments, adminStatuses],
+  );
+
+  // Show T-01 swipe tooltip once the first admin card is on screen
+  useEffect(() => {
+    if (swipeTipSeen || !swipeTipLoaded) return;
+    const hasAdmin = filteredTournaments.some((t) => adminStatuses[t.id]);
+    if (!hasAdmin) return;
+    const timer = setTimeout(() => setShowSwipeTooltip(true), 700);
+    return () => clearTimeout(timer);
+  }, [swipeTipSeen, swipeTipLoaded, filteredTournaments, adminStatuses]);
 
   // ── Swipe actions ─────────────────────────────────────────────────────────
 
@@ -196,7 +164,7 @@ const TorneosScreen = ({ navigation }: any) => {
           onPress: async () => {
             try {
               await deleteTournamentSoft(t.id);
-              setTournaments((prev) => prev.filter((x) => x.id !== t.id));
+              // El listener de TournamentsContext actualizará la lista automáticamente
             } catch (e: any) {
               showToast({ type: 'error', message: e.message || 'No se pudo eliminar el torneo' });
             }
@@ -264,23 +232,22 @@ const TorneosScreen = ({ navigation }: any) => {
     });
   };
 
-  const getRoleInfo = (tournamentId: string, ownerId: string) => {
-    const role = myRoles[tournamentId] || (ownerId === user?.uid ? 'owner' : 'member');
-    switch (role) {
-      case 'owner':
-      case 'admin':  return { label: 'Admin',    icon: 'shield-checkmark-outline' as const, color: colors.mutedForeground };
-      default:       return { label: 'Miembro',  icon: 'person-outline' as const,           color: colors.mutedForeground };
-    }
+  const getRoleInfo = (tournamentId: string) => {
+    const isAdmin = adminStatuses[tournamentId] ?? false;
+    if (isAdmin) return { label: 'Admin',   icon: 'shield-checkmark-outline' as const, color: colors.mutedForeground };
+    return           { label: 'Miembro', icon: 'person-outline' as const,           color: colors.mutedForeground };
   };
 
-  const renderTournamentCard = ({ item: t }: { item: Tournament }) => {
-    const isOwner = t.ownerId === user?.uid ||
-      (myRoles[t.id] === 'owner');
+  const renderTournamentCard = useCallback(({ item: t }: { item: Tournament }) => {
+    const isOwner = adminStatuses[t.id] ?? false;
     const count = memberCounts[t.id] ?? 0;
     const max = Math.max(t.participantsEstimated || 1, 1);
-    const roleInfo = getRoleInfo(t.id, t.ownerId);
+    const roleInfo = getRoleInfo(t.id);
     const today = new Date().toISOString().split('T')[0];
     const isOverdue = t.status === 'active' && !!t.endDate && t.endDate < today;
+
+    // Attach ref to the first admin card for the swipe tooltip spotlight
+    const isFirstAdmin = t.id === firstAdminId;
 
     return (
       <SwipeableRow
@@ -301,6 +268,7 @@ const TorneosScreen = ({ navigation }: any) => {
         ]}
       >
         <TouchableOpacity
+          ref={isFirstAdmin ? firstAdminCardRef : undefined}
           style={[styles.card, { backgroundColor: colors.card }]}
           onPress={() => navigation.navigate('Tournament', { tournamentId: t.id })}
           activeOpacity={0.7}
@@ -369,7 +337,7 @@ const TorneosScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </SwipeableRow>
     );
-  };
+  }, [memberCounts, adminStatuses, firstAdminId, navigation, handleEdit, handleDelete, showOverdueTooltip, colors]);
 
   const renderEmpty = () => (
     <View style={styles.emptyWrapper}>
@@ -483,10 +451,10 @@ const TorneosScreen = ({ navigation }: any) => {
       {/* Create Tournament Sheet */}
       <SheetModal
         visible={showCreateSheet}
-        onClose={() => { setShowCreateSheet(false); loadTournaments(false, true); }}
+        onClose={() => setShowCreateSheet(false)}
       >
         <CreateTournamentForm
-          onSuccess={() => { setShowCreateSheet(false); loadTournaments(false, true); }}
+          onSuccess={() => setShowCreateSheet(false)}
         />
       </SheetModal>
       {/* Join Code Sheet */}
@@ -501,6 +469,16 @@ const TorneosScreen = ({ navigation }: any) => {
           }}
         />
       </SheetModal>
+
+      {/* T-01: swipe tooltip for admin tournament cards */}
+      <ContextualTooltip
+        visible={showSwipeTooltip}
+        onDismiss={() => { setShowSwipeTooltip(false); markSwipeSeen(); }}
+        title="Gestionar torneo"
+        message="Deslizá una tarjeta hacia la izquierda para editarla o eliminarla."
+        targetRef={firstAdminCardRef}
+        bubblePosition="bottom"
+      />
     </GestureHandlerRootView>
   );
 };

@@ -2,7 +2,8 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text, Image } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text, Image, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
@@ -23,7 +24,6 @@ import TournamentSettingsScreen from '../screens/edit/TournamentSettingsScreen';
 // Screens — tournament
 import TournamentScreen from '../screens/tournament/TournamentScreen';
 // Screens — other
-import PrivacyScreen from '../screens/PrivacyScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
 import JoinCodeScreen from '../screens/JoinCodeScreen';
 import NotFoundScreen from '../screens/NotFoundScreen';
@@ -38,10 +38,13 @@ const Stack = createNativeStackNavigator();
 const MainTabs = () => {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === 'android' ? insets.bottom : 0;
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        lazy: true,
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'home';
@@ -61,12 +64,21 @@ const MainTabs = () => {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.card,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 70,
-          paddingBottom: 10,
+          height: 70 + bottomInset,
+          paddingBottom: 10 + bottomInset,
         },
+        // Android only: split background — card color behind icons, background
+        // color behind the system nav bar so it appears dark through the
+        // transparent overlay (edgeToEdgeEnabled: true).
+        tabBarBackground: Platform.OS === 'android' ? () => (
+          <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, backgroundColor: colors.card }} />
+            <View style={{ height: bottomInset, backgroundColor: colors.background }} />
+          </View>
+        ) : undefined,
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
@@ -98,7 +110,6 @@ const AppStack = () => {
       <Stack.Screen name="Tournament" component={TournamentScreen} />
       <Stack.Screen name="TournamentSettings" component={TournamentSettingsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-      <Stack.Screen name="Privacy" component={PrivacyScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
       <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
       <Stack.Screen name="Friends" component={FriendsScreen} />

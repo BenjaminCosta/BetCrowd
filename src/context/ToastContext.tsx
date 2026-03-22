@@ -5,6 +5,7 @@ import React, {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
 } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -75,8 +76,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   // setCurrent on an already-unmounted component.
   useEffect(() => () => { clearTimer(); }, []);
 
+  const value = useMemo(
+    () => ({ showToast, hideToast, current }),
+    [showToast, hideToast, current],
+  );
+
   return (
-    <ToastContext.Provider value={{ showToast, hideToast, current }}>
+    <ToastContext.Provider value={value}>
       {children}
     </ToastContext.Provider>
   );

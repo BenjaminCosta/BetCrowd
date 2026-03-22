@@ -23,11 +23,13 @@ import JoinCodeForm from '../../components/forms/JoinCodeForm';
 import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { getDocs, collection, query, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { useTournaments } from '../../context/TournamentsContext';
 import { getUserProfile } from '../../services/userService';
 import { getTournamentMemberCount } from '../../services/tournamentService';
-import { Event, listenEvents, listEvents } from '../../services/eventService';
-import { Bet, Pick, listBets, listenBets, getMyPick, upsertMyPick, calculateOdds, calculateEstimatedOdds, listenBetPicks } from '../../services/betService';
+import { Event, listEvents, getEvent } from '../../services/eventService';
+import { Bet, Pick, listBets, getBet, getMyPick, upsertMyPick, calculateOdds, calculateEstimatedOdds, listenBetPicks } from '../../services/betService';
 import { isEventToday, getEventBadgeLabel } from '../../utils/formatters';
 
 // Format label mapping
@@ -283,51 +285,60 @@ const HomeScreen = ({ navigation }: any) => {
   const loadUserBets = async () => {
     if (!user) return;
     try {
-      // PERF: Reuse tournaments already in context — avoids calling listMyTournaments()
-      // again which would fire another N+1 Firestore round-trip.
-      // FIX: Include 'pending' bets so picks made before a bet is activated are
-      // also reflected in the event card selection indicator.
       const found: UserBetInfo[] = [];
 
+      // PERF: picksIndex approach — single query instead of O(T×E×B) cascade.
+      // Only fetches bets referenced by actual picks, then filters to open/pending.
+      const activeTournamentIds = new Set(
+        tournaments.filter((t) => t.status !== 'deleted').map((t) => t.id),
+      );
+
+      const indexSnap = await getDocs(
+        query(
+          collection(db, 'users', user.uid, 'picksIndex'),
+          orderBy('updatedAt', 'desc'),
+          limit(200),
+        ),
+      );
+
+      const indexEntries = indexSnap.docs
+        .map((d) => d.data() as { tournamentId: string; eventId: string; betId: string })
+        .filter((d) => activeTournamentIds.has(d.tournamentId));
+
+      // Deduplicate by bet key, then parallel-fetch bet → filter open/pending → pick + event
+      const betKeys = [...new Set(indexEntries.map((d) => JSON.stringify([d.tournamentId, d.eventId, d.betId])))];
+
       await Promise.allSettled(
-        tournaments
-          .filter((t) => t.status !== 'deleted')
-          .map(async (t) => {
-            try {
-              const events = await listEvents(t.id);
-              await Promise.allSettled(
-                events.map(async (event) => {
-                  try {
-                    const bets = await listBets(t.id, event.id);
-                    await Promise.allSettled(
-                      bets.map(async (bet) => {
-                        // Include open AND pending bets so picks on both statuses
-                        // are reflected in the event-card selection indicator.
-                        if (bet.status !== 'open' && bet.status !== 'pending') return;
-                        try {
-                          const pick = await getMyPick(t.id, event.id, bet.id, user.uid);
-                          if (!pick) return;
-                          found.push({
-                            eventId: event.id,
-                            betId: bet.id,
-                            eventTitle: event.title,
-                            tournamentName: t.name,
-                            tournamentId: t.id,
-                            status: bet.status,
-                            pickSelection: typeof pick.selection === 'string'
-                              ? pick.selection
-                              : JSON.stringify(pick.selection),
-                            stakeAmount: pick.stakeAmount,
-                            eventStartsAt: event.startsAt ? event.startsAt.toMillis() : undefined,
-                          });
-                        } catch { /* no pick for this bet, skip */ }
-                      }),
-                    );
-                  } catch { /* no bets for this event, skip */ }
-                }),
-              );
-            } catch { /* no events for this tournament, skip */ }
-          }),
+        betKeys.map(async (k) => {
+          const [tid, eid, bid] = JSON.parse(k) as [string, string, string];
+          try {
+            const bet = await getBet(tid, eid, bid);
+            // Include open AND pending bets so picks on both statuses
+            // are reflected in the event-card selection indicator.
+            if (!bet || (bet.status !== 'open' && bet.status !== 'pending')) return;
+
+            const [pick, event] = await Promise.all([
+              getMyPick(tid, eid, bid, user.uid),
+              getEvent(tid, eid),
+            ]);
+            if (!pick || !event) return;
+
+            const t = tournaments.find((x) => x.id === tid);
+            found.push({
+              eventId: eid,
+              betId: bid,
+              eventTitle: event.title,
+              tournamentName: t?.name ?? '',
+              tournamentId: tid,
+              status: bet.status,
+              pickSelection: typeof pick.selection === 'string'
+                ? pick.selection
+                : JSON.stringify(pick.selection),
+              stakeAmount: pick.stakeAmount,
+              eventStartsAt: event.startsAt ? event.startsAt.toMillis() : undefined,
+            });
+          } catch { /* skip — bet/pick not found or removed */ }
+        }),
       );
 
       // Sort by soonest event first so the most immediate open bets appear first
@@ -338,11 +349,11 @@ const HomeScreen = ({ navigation }: any) => {
         return 0;
       });
 
-      // FIX: userBetsAll retains open+pending picks for event-card selection lookups.
+      // userBetsAll retains open+pending picks for event-card selection lookups.
       // userBets is filtered to only 'open' status — the "Apuestas abiertas" block
       // must not show pending bets (market not yet activated).
       setUserBetsAll(found);
-      setUserBets(found.filter(b => b.status === 'open').slice(0, 3));
+      setUserBets(found.filter((b) => b.status === 'open').slice(0, 3));
     } catch (error) {
       console.error('Error loading user bets:', error);
     }

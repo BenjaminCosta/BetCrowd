@@ -53,6 +53,7 @@ export const upsertPublicProfile = async (
     }
 
     await setDoc(publicProfileRef, publicProfileData, { merge: true });
+    invalidatePublicProfileCache(uid);
   } catch (error) {
     console.error('Error upserting public profile:', error);
     throw error;
@@ -78,16 +79,34 @@ export const upsertPublicProfileFromUser = async (
   });
 };
 
+// ─── In-memory cache ──────────────────────────────────────────────────────────
+// Module-level map survives re-renders. TTL prevents stale data across sessions.
+const _profileCache = new Map<string, { profile: PublicProfile | null; ts: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Invalidate a specific uid from the cache (e.g. after a profile update) */
+export const invalidatePublicProfileCache = (uid: string) => {
+  _profileCache.delete(uid);
+};
+
 /**
- * Get public profile by UID
+ * Get public profile by UID.
+ * Results are cached in-memory for 5 minutes to avoid repeated Firestore reads
+ * when the same uid is requested multiple times (e.g. on friends list refreshes).
  */
 export const getPublicProfile = async (uid: string): Promise<PublicProfile | null> => {
+  const cached = _profileCache.get(uid);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.profile;
+  }
+
   try {
     const publicProfileDoc = await getDoc(doc(db, 'publicProfiles', uid));
-    if (publicProfileDoc.exists()) {
-      return publicProfileDoc.data() as PublicProfile;
-    }
-    return null;
+    const profile = publicProfileDoc.exists()
+      ? (publicProfileDoc.data() as PublicProfile)
+      : null;
+    _profileCache.set(uid, { profile, ts: Date.now() });
+    return profile;
   } catch (error) {
     // Non-throwing — callers must handle null gracefully
     console.warn('[getPublicProfile] Could not load profile for', uid, error);

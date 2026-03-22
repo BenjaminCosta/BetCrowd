@@ -18,6 +18,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "^15.0.8",
+    "expo-navigation-bar": "~5.0.10",
     "expo-status-bar": "~3.0.9",
     "firebase": "^12.10.0",
     "react": "19.1.0",

@@ -32,15 +32,29 @@ export interface UpdateProfileData {
 }
 
 /**
- * Get user profile from Firestore
+ * Get user profile from Firestore.
+ * Results are cached in-memory for 5 minutes so TopBar and ProfileScreen
+ * don't each make a separate read for the same document.
  */
+const _userProfileCache = new Map<string, { profile: UserProfile | null; ts: number }>();
+const USER_PROFILE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Invalidate a uid's entry (e.g. after a profile update) */
+export const invalidateUserProfileCache = (uid: string) => {
+  _userProfileCache.delete(uid);
+};
+
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
+  const cached = _userProfileCache.get(uid);
+  if (cached && Date.now() - cached.ts < USER_PROFILE_CACHE_TTL_MS) {
+    return cached.profile;
+  }
+
   try {
     const userDoc = await getDoc(doc(db, 'users', uid));
-    if (userDoc.exists()) {
-      return userDoc.data() as UserProfile;
-    }
-    return null;
+    const profile = userDoc.exists() ? (userDoc.data() as UserProfile) : null;
+    _userProfileCache.set(uid, { profile, ts: Date.now() });
+    return profile;
   } catch (error) {
     console.error('Error getting user profile:', error);
     throw error;
@@ -153,6 +167,7 @@ export const updateUserProfile = async (
     delete updateData.username;
 
     await updateDoc(userDocRef, updateData);
+    invalidateUserProfileCache(uid);
   } catch (error) {
     console.error('Error updating user profile:', error);
     throw error;
@@ -171,6 +186,7 @@ export const updateFullProfile = async (
     // Handle username separately if it changed
     if (data.username && data.username !== oldUsername) {
       await updateUsernameTransaction(uid, oldUsername, data.username);
+      invalidateUserProfileCache(uid);
     }
 
     // Update other fields

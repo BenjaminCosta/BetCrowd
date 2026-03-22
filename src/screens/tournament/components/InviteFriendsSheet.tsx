@@ -18,7 +18,7 @@ import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { Card } from '../../../components/CommonComponents';
 import UserAvatar from '../../../components/UserAvatar';
-import { useSocial, FriendWithProfile } from '../../../context/SocialContext';
+import { useFriends, FriendWithProfile } from '../../../context/FriendsContext';
 import { useToast } from '../../../context/ToastContext';
 import { sendTournamentInvites } from '../../../services/inviteService';
 import { db } from '../../../lib/firebase';
@@ -50,7 +50,7 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { friends, friendsLoading } = useSocial();
+  const { friends, friendsLoading } = useFriends();
   const { showToast } = useToast();
   const { onGestureEvent, onHandlerStateChange, animatedContainerStyle, doClose } =
     useSwipeToClose(visible, onClose);
@@ -60,15 +60,25 @@ const InviteFriendsSheet: React.FC<InviteFriendsSheetProps> = ({
   const [sending, setSending] = useState(false);
   const [sharingLink, setSharingLink] = useState(false);
   const [memberUidSet, setMemberUidSet] = useState<Set<string>>(new Set());
+  // Cache member UIDs per tournament for the lifetime of this component mount
+  // so repeated open/close of the sheet doesn't re-read Firestore each time.
+  const memberUidsCacheRef = React.useRef<{ tid: string; uids: Set<string> } | null>(null);
 
   // Fetch current tournament members when sheet opens
   useEffect(() => {
     if (!visible || !tournamentId) return;
+    // Reuse cached result if it's for the same tournament
+    if (memberUidsCacheRef.current?.tid === tournamentId) {
+      setMemberUidSet(memberUidsCacheRef.current.uids);
+      return;
+    }
     let cancelled = false;
     getDocs(collection(db, 'tournaments', tournamentId, 'members'))
       .then((snap) => {
         if (!cancelled) {
-          setMemberUidSet(new Set(snap.docs.map((d) => d.id)));
+          const uids = new Set(snap.docs.map((d) => d.id));
+          memberUidsCacheRef.current = { tid: tournamentId, uids };
+          setMemberUidSet(uids);
         }
       })
       .catch(() => { /* silent — worst case we show all as invitable */ });

@@ -8,6 +8,7 @@ import {
   deleteDoc,
   query,
   orderBy,
+  limit,
   onSnapshot,
   Timestamp,
   serverTimestamp,
@@ -54,7 +55,7 @@ export type EventInput = Omit<Event, 'id' | 'createdBy' | 'createdAt' | 'updated
 export const listEvents = async (tournamentId: string): Promise<Event[]> => {
   try {
     const eventsRef = collection(db, `tournaments/${tournamentId}/events`);
-    const q = query(eventsRef, orderBy('order', 'asc'));
+    const q = query(eventsRef, orderBy('order', 'asc'), limit(100));
     const snapshot = await getDocs(q);
     
     const events: Event[] = [];

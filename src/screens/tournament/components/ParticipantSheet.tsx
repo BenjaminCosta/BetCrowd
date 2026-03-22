@@ -318,7 +318,7 @@ const ParticipantSheet: React.FC<ParticipantSheetProps> = ({
                       return (
                         <>
                           {!bal.isZero && <Text style={{ color: balanceColor }}>{bal.sign}</Text>}
-                          <Text style={{ color: colors.foreground }}>{bal.formatted}</Text>
+                          <Text style={{ color: balanceColor }}>{bal.formatted}</Text>
                         </>
                       );
                     })()}
