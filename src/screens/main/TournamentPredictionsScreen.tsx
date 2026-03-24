@@ -17,7 +17,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
-import { SwipeableRow, BetCardCompact } from '../../components/BetanoComponents';
+import { SwipeableRow, BetCardCompact, SwipeableRowHandle } from '../../components/BetanoComponents';
 import BetModal from '../tournament/components/BetModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
@@ -84,6 +84,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     useTooltip('hide_pick');
   const [showHideTooltip, setShowHideTooltip] = useState(false);
   const firstSettledCardRef = useRef<any>(null);
+  const firstSettledSwipeRef = useRef<SwipeableRowHandle>(null);
 
   // ── BetModal ──────────────────────────────────────────────────────────────
   const [showBetModal, setShowBetModal] = useState(false);
@@ -116,6 +117,14 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
     const timer = setTimeout(() => setShowHideTooltip(true), 700);
     return () => clearTimeout(timer);
   }, [hideTipSeen, hideTipLoaded, activeTab, settledPicks.length]);
+
+  // Auto-swipe demo: when tooltip shows, open then close the first settled card
+  useEffect(() => {
+    if (!showHideTooltip) return;
+    const t1 = setTimeout(() => firstSettledSwipeRef.current?.openRight(), 900);
+    const t2 = setTimeout(() => firstSettledSwipeRef.current?.close(), 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [showHideTooltip]);
 
   // Hydrate hidden-keys cache from AsyncStorage on mount.
   // dismissedLoadedRef prevents the persist effect below from writing an
@@ -686,7 +695,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                 {showHidden
                   ? 'Aquí verás las apuestas que ocultaste'
                   : activeTab === 'open'
-                  ? 'Participa en eventos para ver tus apuestas aquí'
+                  ? 'Las apuestas aparecen cuando hay eventos activos en tus torneos'
                   : 'Las apuestas finalizadas aparecerán aquí'}
               </Text>
             </View>
@@ -758,6 +767,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
                             ref={isFirstSettled ? firstSettledCardRef : undefined}
                           >
                           <SwipeableRow
+                            ref={isFirstSettled ? firstSettledSwipeRef : undefined}
                             actions={[
                               showHidden
                                 ? {
@@ -830,6 +840,7 @@ const TournamentPredictionsScreen = ({ navigation, route }: any) => {
         message="Deslizá una predicción resuelta hacia la izquierda para ocultarla de tu historial."
         targetRef={firstSettledCardRef}
         bubblePosition="top"
+        showSwipeHint
       />
     </GestureHandlerRootView>
   );

@@ -21,6 +21,7 @@ export interface UserProfile {
   photoURL?: string;
   createdAt?: any;
   updatedAt?: any;
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface UpdateProfileData {

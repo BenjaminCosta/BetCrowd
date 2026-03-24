@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../../theme/colors';
 import { useTheme } from '../../../context/ThemeContext';
 import { EmptyState } from '../../../components/CommonComponents';
-import { EventCard, SwipeableRow } from '../../../components/BetanoComponents';
+import { EventCard, SwipeableRow, SwipeableRowHandle } from '../../../components/BetanoComponents';
 import { Event } from '../../../services/eventService';
 import { useTooltip } from '../../../hooks/useTooltip';
 import { ContextualTooltip } from '../../../components/ContextualTooltip';
@@ -71,6 +71,7 @@ const EventsTab: React.FC<EventsTabProps> = ({
   const [showSwipeEventTooltip, setShowSwipeEventTooltip] = useState(false);
   const firstEventCardRef = useRef<any>(null);
   const firstEventAssignedRef = useRef(false);
+  const firstEventSwipeRef = useRef<SwipeableRowHandle>(null);
 
   // Reset ref assignment when the events list changes so the ref stays fresh
   useEffect(() => {
@@ -83,6 +84,14 @@ const EventsTab: React.FC<EventsTabProps> = ({
     const timer = setTimeout(() => setShowSwipeEventTooltip(true), 700);
     return () => clearTimeout(timer);
   }, [isAdmin, swipeEventTipSeen, swipeEventTipLoaded, filteredEvents.length]);
+
+  // Auto-swipe demo: when tooltip shows, open then close the first card
+  useEffect(() => {
+    if (!showSwipeEventTooltip) return;
+    const t1 = setTimeout(() => firstEventSwipeRef.current?.openRight(), 900);
+    const t2 = setTimeout(() => firstEventSwipeRef.current?.close(), 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [showSwipeEventTooltip]);
 
   return (
     <>
@@ -149,6 +158,7 @@ const EventsTab: React.FC<EventsTabProps> = ({
                   ref={isFirstCard ? firstEventCardRef : undefined}
                 >
                   <SwipeableRow
+                    ref={isFirstCard ? firstEventSwipeRef : undefined}
                     enabled={isAdmin}
                     actions={[
                       {
@@ -216,6 +226,7 @@ const EventsTab: React.FC<EventsTabProps> = ({
         message="Deslizá un evento hacia la izquierda para editarlo o eliminarlo."
         targetRef={firstEventCardRef}
         bubblePosition="bottom"
+        showSwipeHint
       />
     </>
   );

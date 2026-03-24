@@ -19,7 +19,7 @@ import { Colors, Spacing, BorderRadius } from '../../theme/colors';
 import { TopBar } from '../../components/TopBar';
 import { LoadingBar } from '../../components/LoadingBar';
 import { EmptyState } from '../../components/CommonComponents';
-import { SwipeableRow } from '../../components/BetanoComponents';
+import { SwipeableRow, SwipeableRowHandle } from '../../components/BetanoComponents';
 import { FloatingActionButton } from '../../components/FloatingActionButton';
 import { SheetModal } from '../../components/SheetModal';
 import CreateTournamentForm from '../../components/forms/CreateTournamentForm';
@@ -90,6 +90,7 @@ const TorneosScreen = ({ navigation }: any) => {
     useTooltip('swipe_torneo_admin');
   const [showSwipeTooltip, setShowSwipeTooltip] = useState(false);
   const firstAdminCardRef = useRef<any>(null);
+  const firstAdminSwipeRef = useRef<SwipeableRowHandle>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const tooltipFade = useRef(new Animated.Value(0)).current;
@@ -145,6 +146,14 @@ const TorneosScreen = ({ navigation }: any) => {
     const timer = setTimeout(() => setShowSwipeTooltip(true), 700);
     return () => clearTimeout(timer);
   }, [swipeTipSeen, swipeTipLoaded, filteredTournaments, adminStatuses]);
+
+  // Auto-swipe demo: when tooltip shows, open then close the first admin card
+  useEffect(() => {
+    if (!showSwipeTooltip) return;
+    const t1 = setTimeout(() => firstAdminSwipeRef.current?.openRight(), 900);
+    const t2 = setTimeout(() => firstAdminSwipeRef.current?.close(), 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [showSwipeTooltip]);
 
   // ── Swipe actions ─────────────────────────────────────────────────────────
 
@@ -251,6 +260,7 @@ const TorneosScreen = ({ navigation }: any) => {
 
     return (
       <SwipeableRow
+        ref={isFirstAdmin ? firstAdminSwipeRef : undefined}
         enabled={isOwner}
         actions={[
           {
@@ -351,12 +361,22 @@ const TorneosScreen = ({ navigation }: any) => {
         }
       />
       {filter === 'active' && (
-        <TouchableOpacity
-          style={[styles.ctaButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowCreateSheet(true)}
-        >
-          <Text style={styles.ctaButtonText}>Crear torneo</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity
+            style={[styles.ctaButton, { backgroundColor: colors.primary }]}
+            onPress={() => setShowCreateSheet(true)}
+          >
+            <Text style={styles.ctaButtonText}>Crear torneo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.ctaButtonOutline, { borderColor: colors.border }]}
+            onPress={() => setShowJoinCodeSheet(true)}
+          >
+            <Text style={[styles.ctaButtonOutlineText, { color: colors.foreground }]}>
+              Unirme con código
+            </Text>
+          </TouchableOpacity>
+        </>
       )}
     </View>
   );
@@ -478,6 +498,7 @@ const TorneosScreen = ({ navigation }: any) => {
         message="Deslizá una tarjeta hacia la izquierda para editarla o eliminarla."
         targetRef={firstAdminCardRef}
         bubblePosition="bottom"
+        showSwipeHint
       />
     </GestureHandlerRootView>
   );
@@ -553,6 +574,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   ctaButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  ctaButtonOutline: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  ctaButtonOutlineText: { fontSize: 15, fontWeight: '600' },
 
   // Tournament card
   card: {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '../theme/colors';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { hasCompletedWelcome } from '../services/onboardingService';
 
 // Screens — auth
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -25,6 +26,7 @@ import TournamentSettingsScreen from '../screens/edit/TournamentSettingsScreen';
 import TournamentScreen from '../screens/tournament/TournamentScreen';
 // Screens — other
 import HelpSupportScreen from '../screens/HelpSupportScreen';
+import WelcomeScreen from '../screens/WelcomeScreen';
 import JoinCodeScreen from '../screens/JoinCodeScreen';
 import NotFoundScreen from '../screens/NotFoundScreen';
 import SearchScreen from '../screens/SearchScreen';
@@ -104,8 +106,25 @@ const AuthStack = () => {
 };
 
 const AppStack = () => {
+  const { user } = useAuth();
+  const [initialRoute, setInitialRoute] = useState<'Welcome' | 'Main' | null>(null);
+
+  useEffect(() => {
+    const uid = user?.uid;
+    if (!uid) {
+      setInitialRoute('Main');
+      return;
+    }
+    hasCompletedWelcome(uid)
+      .then((done) => setInitialRoute(done ? 'Main' : 'Welcome'))
+      .catch(() => setInitialRoute('Main'));
+  }, [user?.uid]);
+
+  if (!initialRoute) return <LoadingScreen />;
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="Tournament" component={TournamentScreen} />
       <Stack.Screen name="TournamentSettings" component={TournamentSettingsScreen} />

@@ -27,7 +27,7 @@ export const Card: React.FC<CardProps> = ({ children, style, gradient = false })
   if (gradient) {
     return (
       <LinearGradient
-        colors={Gradients.card}
+        colors={Gradients.card as [string, string, ...string[]]}
         style={[styles.card, style]}
       >
         {children}
@@ -214,6 +214,7 @@ interface InputProps {
   keyboardType?: 'default' | 'numeric' | 'email-address';
   secureTextEntry?: boolean;
   onFocus?: () => void;
+  editable?: boolean;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -225,6 +226,7 @@ export const Input: React.FC<InputProps> = ({
   keyboardType = 'default',
   secureTextEntry = false,
   onFocus,
+  editable = true,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -249,6 +251,7 @@ export const Input: React.FC<InputProps> = ({
       multiline={multiline}
       keyboardType={keyboardType}
       secureTextEntry={secureTextEntry}
+      editable={editable}
     />
   );
 };

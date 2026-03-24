@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useImperativeHandle } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Modal } from 'react-native';
 import { useTooltip } from '../hooks/useTooltip';
 import { Ionicons } from '@expo/vector-icons';
@@ -947,12 +947,22 @@ interface SwipeableRowProps {
   enabled?: boolean;
 }
 
-export const SwipeableRow: React.FC<SwipeableRowProps> = ({
+export interface SwipeableRowHandle {
+  openRight: () => void;
+  close: () => void;
+}
+
+export const SwipeableRow = React.forwardRef<SwipeableRowHandle, SwipeableRowProps>(({
   children,
   actions,
   enabled = true,
-}) => {
+}, ref) => {
   const swipeableRef = useRef<Swipeable>(null);
+
+  useImperativeHandle(ref, () => ({
+    openRight: () => swipeableRef.current?.openRight(),
+    close: () => swipeableRef.current?.close(),
+  }));
 
   const renderRightActions = (
     progress: Animated.AnimatedInterpolation<number>,
@@ -1006,4 +1016,4 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({
       {children}
     </Swipeable>
   );
-};
+});

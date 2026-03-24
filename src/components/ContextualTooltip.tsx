@@ -34,6 +34,8 @@ interface ContextualTooltipProps {
   targetRef?: React.RefObject<any>;
   /** Where to place the bubble relative to the spotlight. Defaults to 'bottom'. */
   bubblePosition?: 'top' | 'bottom';
+  /** Shows an animated ← arrow inside the bubble to hint a left-swipe action. */
+  showSwipeHint?: boolean;
 }
 
 export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
@@ -43,12 +45,21 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
   title,
   targetRef,
   bubblePosition = 'bottom',
+  showSwipeHint = false,
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const BUBBLE_W = Math.min(SCREEN_W - 40, 300);
+
+  // Scrim fade (quick, flat)
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  // Bubble spring entrance
+  const bubbleScaleAnim = useRef(new Animated.Value(0.85)).current;
+  const bubbleSlideAnim = useRef(new Animated.Value(12)).current;
+  // Swipe hint arrow loop
+  const arrowAnim = useRef(new Animated.Value(0)).current;
+
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
 
   useEffect(() => {
@@ -56,6 +67,10 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
 
     if (!visible) {
       fadeAnim.setValue(0);
+      bubbleScaleAnim.setValue(0.85);
+      bubbleSlideAnim.setValue(12);
+      arrowAnim.stopAnimation();
+      arrowAnim.setValue(0);
       setTargetRect(null);
       return () => { cancelled = true; };
     }
@@ -66,18 +81,49 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
       });
     }
 
-    const anim = Animated.timing(fadeAnim, {
+    // Scrim: simple fade
+    const scrimAnim = Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 240,
+      duration: 200,
       useNativeDriver: true,
     });
-    anim.start();
+
+    // Bubble: spring scale + slide + fade together
+    const bubbleEntrance = Animated.parallel([
+      Animated.spring(bubbleScaleAnim, {
+        toValue: 1,
+        friction: 7,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(bubbleSlideAnim, {
+        toValue: 0,
+        friction: 7,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    const entrance = Animated.parallel([scrimAnim, bubbleEntrance]);
+    entrance.start(() => {
+      if (cancelled) return;
+      // Start arrow loop after entrance finishes
+      if (showSwipeHint) {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(arrowAnim, { toValue: -8, duration: 450, useNativeDriver: true }),
+            Animated.timing(arrowAnim, { toValue: 0, duration: 450, useNativeDriver: true }),
+          ])
+        ).start();
+      }
+    });
 
     return () => {
       cancelled = true;
-      anim.stop();
+      entrance.stop();
+      arrowAnim.stopAnimation();
     };
-  }, [visible, targetRef]);
+  }, [visible, targetRef, showSwipeHint]);
 
   if (!visible) return null;
 
@@ -141,8 +187,8 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
           />
         )}
 
-        {/* ── Tooltip bubble ── */}
-        <View
+        {/* ── Tooltip bubble (spring entrance) ── */}
+        <Animated.View
           style={[
             styles.bubble,
             {
@@ -151,6 +197,10 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
               left: bubbleLeft,
               top: bubbleTop,
               width: BUBBLE_W,
+              transform: [
+                { scale: bubbleScaleAnim },
+                { translateY: bubbleSlideAnim },
+              ],
             },
           ]}
         >
@@ -176,6 +226,16 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
               </TouchableOpacity>
             </View>
 
+            {/* Swipe hint row */}
+            {showSwipeHint && (
+              <View style={styles.swipeHintRow}>
+                <Animated.View style={{ transform: [{ translateX: arrowAnim }] }}>
+                  <Ionicons name="arrow-back" size={15} color={colors.primary} />
+                </Animated.View>
+                <Ionicons name="arrow-back" size={15} color={colors.primary} style={{ opacity: 0.33, marginLeft: 3 }} />
+              </View>
+            )}
+
             <Text style={[styles.bubbleText, { color: colors.mutedForeground }]}>{message}</Text>
 
             <TouchableOpacity
@@ -189,7 +249,7 @@ export const ContextualTooltip: React.FC<ContextualTooltipProps> = ({
               <Text style={styles.dismissBtnText}>Entendido</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
       </Animated.View>
     </Modal>
@@ -245,6 +305,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     flex: 1,
+  },
+  swipeHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
   },
   bubbleText: {
     fontSize: 13,

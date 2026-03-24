@@ -14,7 +14,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
-import { PrimaryButton } from '../../components/CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -23,7 +22,7 @@ import { getFirebaseErrorMessage } from '../../services/authService';
 const SignUpScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { signUp } = useAuth();
+  const { signInWithGoogle, signUp } = useAuth();
   const { showToast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -33,6 +32,7 @@ const SignUpScreen = ({ navigation }: any) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleSignUp = async () => {
     // Basic validation
@@ -66,6 +66,19 @@ const SignUpScreen = ({ navigation }: any) => {
       showToast({ type: 'error', message });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setIsGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (error: unknown) {
+      const code = (error as any)?.code;
+      const message = getFirebaseErrorMessage(code ?? 'UNKNOWN');
+      showToast({ type: 'error', message });
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -245,7 +258,7 @@ const SignUpScreen = ({ navigation }: any) => {
             <TouchableOpacity
               onPress={handleSignUp}
               style={[styles.signUpButton, { backgroundColor: colors.primary }]}
-              disabled={isLoading}
+              disabled={isLoading || isGoogleLoading}
             >
               {isLoading ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -269,11 +282,19 @@ const SignUpScreen = ({ navigation }: any) => {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
               }]}
+              onPress={handleGoogleSignUp}
+              disabled={isLoading || isGoogleLoading}
             >
-              <Ionicons name="logo-google" size={20} color={colors.foreground} />
-              <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
-                Google
-              </Text>
+              {isGoogleLoading ? (
+                <ActivityIndicator color={colors.foreground} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color={colors.foreground} />
+                  <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
+                    Google
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 

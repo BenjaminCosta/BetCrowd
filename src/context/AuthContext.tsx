@@ -1,13 +1,20 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useMemo, ReactNode } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { signIn as signInService, signUp as signUpService, signOutUser as signOutService, SignUpData } from '../services/authService';
+import {
+  signIn as signInService,
+  signInWithGoogle as signInWithGoogleService,
+  signUp as signUpService,
+  signOutUser as signOutService,
+  SignUpData,
+} from '../services/authService';
 import { ensureUserProfile } from '../services/userService';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signUp: (data: SignUpData) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -36,6 +43,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await signInService(email, password);
   }, []);
 
+  const signInWithGoogle = useCallback(async () => {
+    await signInWithGoogleService();
+  }, []);
+
   const signUp = useCallback(async (data: SignUpData) => {
     await signUpService(data);
   }, []);
@@ -45,8 +56,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, signIn, signUp, signOut }),
-    [user, loading, signIn, signUp, signOut],
+    () => ({ user, loading, signIn, signInWithGoogle, signUp, signOut }),
+    [user, loading, signIn, signInWithGoogle, signUp, signOut],
   );
 
   return (

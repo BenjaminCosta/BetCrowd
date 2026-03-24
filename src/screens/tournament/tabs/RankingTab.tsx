@@ -78,6 +78,15 @@ const RankingTab: React.FC<RankingTabProps> = ({
     useTooltip('ranking_tap');
   const [showTapTooltip, setShowTapTooltip] = useState(false);
   const firstRowRef = useRef<any>(null);
+  const autoDemoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoDemoTimerRef.current !== null) {
+        clearTimeout(autoDemoTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (tapTipSeen || !tapTipLoaded || balances.length === 0) return;
@@ -336,7 +345,14 @@ const RankingTab: React.FC<RankingTabProps> = ({
     {/* T-09: tap row tooltip (one-time) */}
     <ContextualTooltip
       visible={showTapTooltip}
-      onDismiss={() => { setShowTapTooltip(false); markTapSeen(); }}
+      onDismiss={() => {
+        setShowTapTooltip(false);
+        markTapSeen();
+        // Auto-demo: open the participant dropdown on the first row after dismiss
+        if (balances.length > 0) {
+          autoDemoTimerRef.current = setTimeout(() => showTooltip(balances[0], 0, balances[0].uid), 300);
+        }
+      }}
       title="Ver participante"
       message={isAdmin
         ? 'Tocá una fila para ver el perfil del participante o removelo del torneo.'

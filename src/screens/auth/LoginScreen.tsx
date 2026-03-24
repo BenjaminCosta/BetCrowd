@@ -14,7 +14,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Spacing, BorderRadius } from '../../theme/colors';
-import { PrimaryButton } from '../../components/CommonComponents';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -23,12 +22,13 @@ import { getFirebaseErrorMessage } from '../../services/authService';
 const LoginScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const { showToast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -45,6 +45,18 @@ const LoginScreen = ({ navigation }: any) => {
       showToast({ type: 'error', message });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      const message = getFirebaseErrorMessage(error.code);
+      showToast({ type: 'error', message });
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -138,7 +150,7 @@ const LoginScreen = ({ navigation }: any) => {
             <TouchableOpacity 
               onPress={handleLogin}
               style={[styles.loginButton, { backgroundColor: colors.primary }]}
-              disabled={isLoading}
+              disabled={isLoading || isGoogleLoading}
             >
               {isLoading ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -160,13 +172,20 @@ const LoginScreen = ({ navigation }: any) => {
                 backgroundColor: colors.secondary,
                 borderColor: colors.border,
               }]}
-              onPress={() => showToast({ type: 'info', message: 'El inicio de sesión con Google estará disponible pronto' })}
+              onPress={handleGoogleLogin}
+              disabled={isLoading || isGoogleLoading}
               accessibilityRole="button"
             >
-              <Ionicons name="logo-google" size={20} color={colors.foreground} />
-              <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
-                Google
-              </Text>
+              {isGoogleLoading ? (
+                <ActivityIndicator color={colors.foreground} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color={colors.foreground} />
+                  <Text style={[styles.socialButtonText, { color: colors.foreground }]}>
+                    Google
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity 

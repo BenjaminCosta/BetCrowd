@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
+import * as WebBrowser from 'expo-web-browser';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ActivityIndicator, Image, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -23,6 +24,8 @@ import {
 } from './src/services/deepLinkService';
 import { hasSeenOnboarding, markOnboardingAsSeen } from './src/services/onboardingService';
 import { Colors } from './src/theme/colors';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const navigationRef = createNavigationContainerRef<any>();
 

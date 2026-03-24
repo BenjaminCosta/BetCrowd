@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "BetCrowd Mobile",
-    "slug": "betcrowd-mobile",
+    "name": "BetCrowd",
+    "slug": "betcrowd",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -28,6 +28,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "betcrowd"
+    "scheme": ["betcrowd", "com.betcrowd.mobile"],
+    "extra": {
+      "eas": {
+        "projectId": "104517fc-4f5f-4f9d-94c1-34accf18645a"
+      }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

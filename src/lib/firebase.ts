@@ -1,9 +1,9 @@
 // src/lib/firebase.ts
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { initializeAuth, getAuth } from "firebase/auth";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Custom AsyncStorage-based persistence for React Native.
 // Firebase v12 removed getReactNativePersistence. Internally it calls
@@ -40,21 +40,30 @@ class AsyncStoragePersistence {
   _removeListener(_key: string, _listener: unknown): void {}
 }
 
+const getRequiredEnv = (key: string): string => {
+  const value = process.env[key];
+
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+
+  return value;
+};
+
 const firebaseConfig = {
-  apiKey: "AIzaSyAq-uVfR4kX_d1rO5O3jI0nMcRSZxus61o",
-  authDomain: "betcrowd-6123a.firebaseapp.com",
-  projectId: "betcrowd-6123a",
-  storageBucket: "betcrowd-6123a.firebasestorage.app",
-  messagingSenderId: "844074817118",
-  appId: "1:844074817118:web:0c3b43491884df0a0f86cf",
-  measurementId: "G-Z2P1TC1C25", // opcional, no se usa acá
+  apiKey: getRequiredEnv('EXPO_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: getRequiredEnv('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: getRequiredEnv('EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
+  storageBucket: getRequiredEnv('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getRequiredEnv('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getRequiredEnv('EXPO_PUBLIC_FIREBASE_APP_ID'),
 };
 
 // Evita reinicializar con hot reload (Expo)
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 // ✅ Auth con persistencia real en RN
-let authInstance;
+let authInstance: Auth;
 try {
   authInstance = initializeAuth(app, {
     persistence: AsyncStoragePersistence as any, // class constructor, not instance

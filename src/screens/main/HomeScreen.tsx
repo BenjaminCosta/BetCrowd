@@ -769,18 +769,18 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           ) : tournaments.filter((t) => t.status !== 'deleted').length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="trophy-outline" size={64} color={colors.mutedForeground} />
+              <Ionicons name="moon-outline" size={64} color={colors.mutedForeground} />
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                Sin torneos
+                Todo tranquilo por acá
               </Text>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                Crea tu primer torneo o únete usando un código de invitación
+                La actividad de tus torneos va a aparecer aquí
               </Text>
               <TouchableOpacity
                 style={[styles.emptyCreateButton, { backgroundColor: colors.primary }]}
-                onPress={() => setShowCreateTournamentSheet(true)}
+                onPress={() => navigation.navigate('Torneos')}
               >
-                <Text style={styles.createButtonText}>Crear Torneo</Text>
+                <Text style={styles.createButtonText}>Ver mis torneos</Text>
               </TouchableOpacity>
             </View>
           ) : (
